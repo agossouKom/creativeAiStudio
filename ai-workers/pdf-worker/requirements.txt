@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-multipart
+kafka-python
+minio
+boto3
+PyMuPDF==1.24.2
+python-docx
+pdf2docx
+reportlab
+Pillow
+requests
+python-dotenv
+aiofiles

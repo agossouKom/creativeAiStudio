@@ -1,0 +1,389 @@
+Développer un jeu de football complet pour le web inspiré des jeux mobiles modernes.
+
+Cahier des charges — Jeu de Football Web
+
+Document de référence destiné à guider une IA (ou un développeur) dans la création d'un jeu de football jouable dans un navigateur. Il couvre les règles essentielles, le design du terrain, le déroulement d'un match et les éléments techniques à préciser pour l'implémentation.
+
+
+1. Le terrain (stade)
+
+1.1 Dimensions réglementaires (à adapter pour un jeu 2D/3D simplifié)
+
+
+Longueur : 90 à 120 m (référence FIFA : 105 m pour les matchs internationaux)
+Largeur : 45 à 90 m (référence FIFA : 68 m)
+Ratio recommandé pour un jeu : garder un ratio proche de 105:68 (~1.54:1) pour un rendu réaliste
+
+
+1.2 Zones et marquages du terrain
+
+
+Ligne médiane : divise le terrain en deux moitiés égales
+Cercle central : rayon de 9,15 m, centré sur le point médian (utilisé au coup d'envoi)
+Surface de réparation (grande surface) : 40,3 m x 16,5 m devant chaque but
+Surface de but (petite surface) : 18,3 m x 5,5 m devant chaque but
+Point de penalty : à 11 m du but, au centre
+Arc de cercle du penalty : rayon de 9,15 m depuis le point de penalty, visible uniquement hors de la surface de réparation
+Corners (quarts de cercle) : rayon de 1 m à chaque coin du terrain
+Buts : 7,32 m de large x 2,44 m de haut
+
+
+1.3 Éléments visuels du stade (facultatifs mais utiles pour l'immersion)
+
+
+Gradins/tribunes autour du terrain (avec ou sans public animé)
+Éclairage (projecteurs, ombres dynamiques si 3D)
+Panneaux publicitaires en bord de terrain
+Ciel/météo (jour, nuit, pluie) pouvant influencer le gameplay (glissade, visibilité)
+Textures de pelouse (tondue en bandes alternées clair/foncé pour le réalisme)
+
+
+
+2. Les équipes et joueurs
+
+2.1 Composition
+
+
+11 joueurs par équipe sur le terrain (jeu simplifié possible avec 5 à 7 joueurs par équipe)
+1 gardien de but obligatoire par équipe
+Remplaçants : jusqu'à 5 changements autorisés dans les compétitions officielles (optionnel selon la complexité du jeu)
+
+
+2.2 Postes à modéliser (pour l'IA ou les stats des joueurs)
+
+
+Gardien (GK) : seul à pouvoir toucher le ballon avec les mains, dans sa surface de réparation
+Défenseurs (DEF) : centraux, latéraux
+Milieux (MID) : défensifs, relayeurs, offensifs
+Attaquants (ATT) : ailiers, avant-centre
+
+
+2.3 Attributs de joueur à définir (pour un jeu avec stats)
+
+
+Vitesse, puissance de tir, précision de passe, dribble, tacle, résistance physique, réflexes (gardien)
+
+
+
+3. Règles fondamentales à implémenter
+
+3.1 But
+
+
+Un but est marqué quand le ballon franchit entièrement la ligne de but, entre les poteaux et sous la barre transversale
+L'équipe avec le plus de buts à la fin du temps réglementaire gagne
+
+
+3.2 Hors-jeu (offside)
+
+
+Un joueur est hors-jeu s'il est plus proche de la ligne de but adverse que le ballon et l'avant-dernier adversaire (souvent le dernier défenseur), au moment où le ballon lui est joué
+Pas de hors-jeu sur une remise en jeu (touche), un corner ou un six mètres
+Simplification possible pour un jeu casual : désactiver le hors-jeu ou le limiter à une version simplifiée (ligne verticale de référence)
+
+
+3.3 Fautes et cartons
+
+
+Faute simple : coup franc pour l'équipe adverse
+Carton jaune : avertissement (deux jaunes = expulsion)
+Carton rouge direct : expulsion immédiate, joueur sorti du terrain, pas de remplacement
+Penalty : accordé si une faute est commise par l'équipe défendante dans sa propre surface de réparation
+
+
+3.4 Remises en jeu
+
+
+Touche : quand le ballon sort par les lignes de côté, remise en jeu à la main par l'équipe adverse à celle qui a touché le ballon en dernier
+Corner : quand le ballon sort par la ligne de but suite à un contact avec un défenseur
+Six mètres (goal kick) : quand le ballon sort par la ligne de but suite à un contact avec un attaquant
+Coup franc direct/indirect : selon la nature de la faute
+
+
+3.5 Durée du match
+
+
+Match complet : 2 x 45 minutes + temps additionnel
+Mi-temps : pause de 15 minutes
+Prolongations (si égalité en phase à élimination) : 2 x 15 minutes
+Séance de tirs au but : si égalité après prolongations
+Pour un jeu web : prévoir une durée raccourcie configurable (ex : 2 x 3 ou 5 minutes) pour des sessions de jeu courtes
+
+
+
+4. Déroulement d'un match (flux de jeu à coder)
+
+
+Coup d'envoi (kickoff) : au centre du terrain, l'équipe qui engage joue le ballon vers l'avant
+Phase de jeu ouverte : passes, dribbles, tirs, tacles jusqu'à un arrêt de jeu
+Arrêt de jeu déclenché par :
+
+Ballon sorti du terrain (touche, corner, six mètres)
+Faute sifflée
+But marqué → retour au centre pour l'équipe qui vient d'encaisser
+Fin de la mi-temps
+
+
+
+Reprise du jeu selon le type d'arrêt (remise en touche, corner, coup franc, penalty)
+Fin de la mi-temps → changement de camp
+Fin du match → décompte du score, affichage du vainqueur ou égalité
+
+
+
+5. Éléments techniques à préciser pour l'IA développeuse
+
+5.1 Type de jeu
+
+
+Vue du dessus (2D top-down) — plus simple à développer
+Vue de côté (2D side-scroll) — pour un style arcade
+Vue 3D (isométrique ou caméra suiveuse) — plus complexe, moteur type Three.js/Babylon.js recommandé
+
+
+5.2 Moteur/technologies suggérées
+
+
+2D : Canvas API, Phaser.js, ou PixiJS
+3D : Three.js, Babylon.js
+Physique du ballon : gravité, rebond, frottement, effet (spin) — utiliser un moteur physique (Matter.js pour 2D, Cannon.js/Rapier pour 3D)
+
+
+5.3 Contrôles à définir
+
+
+Déplacement du joueur contrôlé (clavier flèches/ZQSD ou manette)
+Passe (touche courte)
+Tir (touche + éventuellement jauge de puissance en maintenant la touche)
+Tacle/pressing
+Changement de joueur contrôlé (le plus proche du ballon)
+Sprint (touche dédiée avec gestion de l'endurance)
+
+
+5.4 Intelligence artificielle des joueurs non contrôlés
+
+
+Coéquipiers : se positionner, proposer des appels de balle, marquer un adversaire
+Adversaires : pressing, marquage, anticipation de passes, tirs au but
+Niveaux de difficulté ajustables (réactivité, précision des IA)
+
+
+5.5 Interface utilisateur (UI/UX)
+
+
+Score et temps de jeu affichés en permanence
+Mini-carte ou indicateur de position (optionnel)
+Jauge de puissance de tir
+Indicateur du joueur actif
+Écrans : menu principal, sélection d'équipe, résultat de match, pause
+
+
+5.6 Système de score et statistiques
+
+
+Score en temps réel
+Statistiques de fin de match (possession, tirs, passes réussies, fautes)
+Historique ou sauvegarde de progression (optionnel, via localStorage ou backend)
+
+
+5.7 Son et ambiance (optionnel mais recommandé)
+
+
+Bruit de foule, sifflet d'arbitre, son de frappe de balle, commentaire simple
+
+
+
+6. Niveaux de complexité suggérés (du plus simple au plus abouti)
+
+
+MVP (Minimum Viable Product) : 1 vs 1 ou 3 vs 3, terrain simplifié, tir/passe basique, pas de hors-jeu, match chronométré court
+Intermédiaire : 11 vs 11 avec IA, règles de hors-jeu, cartons, corners/touches
+Avancé : gestion d'équipe complète, statistiques joueurs, mode carrière/tournoi, effets visuels avancés (replay, ralenti sur les buts)
+
+
+
+7. Résumé — Ce qu'il faut donner à l'IA en une phrase
+
+
+"Crée un jeu de football web en [2D/3D], vue [dessus/côté/caméra suiveuse], terrain aux proportions 105x68 avec surfaces de réparation et buts de 7,32x2,44 m, contrôles clavier pour déplacement/passe/tir, IA pour les joueurs non contrôlés, règles de base (touche, corner, six mètres, faute, hors-jeu optionnel), match chronométré de [X] minutes avec score affiché, en utilisant [Phaser.js / Three.js / Canvas natif]."
+
+
+
+
+
+
+
+Technologies :
+- Angular 20
+- TypeScript
+- Babylon.js
+- Cannon-es
+- WebAudio API
+- spring boot pour le backend
+
+Fonctionnalités :
+- Match 11 contre 11
+- IA des joueurs
+- Contrôle clavier et manette
+- Passes
+- Tirs
+- Centres
+- Tacles
+- Hors-jeu
+- Fautes
+- Cartons
+- Corners
+- Coups francs
+- Penalties
+- Championnat
+- Classement
+- Sauvegarde
+
+Architecture modulaire et extensible.
+
+Le jeu doit fonctionner sur :
+- PC
+- Tablettes
+- Mobiles
+
+Le moteur doit viser 60 FPS.
+
+************detaill**************************
+Niveau 1 : Jeu d'arcade simple ⚽
+
+Exemples :
+
+tirs au but
+coups francs
+gardien de but
+mini-matchs 3 contre 3
+
+Technologies :
+
+Angular + Phaser
+React + Phaser
+PixiJS
+
+Temps de développement :
+
+1 à 3 mois
+
+Complexité :
+⭐⭐⭐☆☆
+
+Niveau 2 : Football arcade type mobile
+
+Exemples :
+
+contrôle d'un seul joueur
+passes
+tirs
+tacles
+IA simplifiée
+matchs rapides 5v5 ou 7v7
+
+Technologies recommandées :
+
+Angular pour l'interface
+Phaser ou Babylon.js pour le moteur
+
+Temps de développement :
+
+6 à 12 mois
+
+Complexité :
+⭐⭐⭐⭐☆
+
+Niveau 3 : Jeu proche de celui de votre image
+
+Caractéristiques :
+
+11 contre 11
+IA des joueurs
+formations tactiques
+gestion des remplacements
+arbitre
+hors-jeu
+fautes
+corners
+coups francs
+championnat
+carrière
+statistiques
+
+Technologies recommandées :
+
+Frontend : Angular
+Moteur 3D : Babylon.js ou Three.js
+Physique : cannon-es
+Backend : NestJS
+Base de données : PostgreSQL
+
+Temps de développement :
+
+équipe de 3 à 10 développeurs
+1 à 3 ans de travail
+
+Complexité :
+⭐⭐⭐⭐⭐
+
+Architecture recommandée
+Frontend Angular
+│
+├── Accueil
+├── Sélection équipe
+├── Boutique
+├── Carrière
+├── Paramètres
+└── MatchComponent
+        │
+        ├── RenderEngine
+        ├── PhysicsEngine
+        ├── BallSystem
+        ├── AIEngine
+        ├── RefereeEngine
+        ├── MatchEngine
+        └── AnimationEngine
+Systèmes à développer
+Match Engine
+
+Gère :
+
+temps de jeu
+score
+périodes
+prolongations
+Ball Engine
+
+Gère :
+
+rebonds
+trajectoires
+collisions
+Player AI
+
+Chaque joueur possède :
+
+speed
+acceleration
+shootPower
+passAccuracy
+stamina
+defense
+attackPositioning
+Referee Engine
+
+Gère :
+
+fautes
+cartons
+hors-jeu
+penalties
+Tactical Engine
+
+Permet :
+
+4-4-2
+4-3-3
+3-5-2
+5-3-2

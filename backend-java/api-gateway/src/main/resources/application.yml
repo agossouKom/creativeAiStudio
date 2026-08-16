@@ -1,0 +1,299 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  cloud:
+    gateway:
+      httpclient:
+        response-timeout: 600s   # SSE / agentic loop peut prendre jusqu'à 10 min sur CPU Ollama
+        connect-timeout: 10000   # 10s pour établir la connexion upstream
+      default-filters:
+        - name: RequestSize
+          args:
+            maxSize: 210MB
+      globalcors:
+        add-to-simple-url-handler-mapping: true
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:4200"
+              - "http://localhost:4400"
+              - "http://localhost"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+      routes:
+        # Auth Service
+        - id: auth-service
+          uri: http://${AUTH_SERVICE_HOST:localhost}:8081
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - RewritePath=/api/auth/(?<segment>.*), /${segment}
+
+        # Gmail OAuth2 — callback public (pas de JWT requis)
+        - id: gmail-callback
+          uri: http://${AUTH_SERVICE_HOST:localhost}:8081
+          predicates:
+            - Path=/api/auth/gmail/callback
+          filters:
+            - RewritePath=/api/auth/(?<segment>.*), /${segment}
+
+        # Gmail API — endpoints protégés (JWT requis)
+        - id: gmail-api
+          uri: http://${AUTH_SERVICE_HOST:localhost}:8081
+          predicates:
+            - Path=/api/gmail/**
+          filters:
+            - RewritePath=/api/gmail/(?<segment>.*), /gmail/${segment}
+
+        # Search Service
+        - id: search-service
+          uri: http://${SEARCH_SERVICE_HOST:localhost}:8082
+          predicates:
+            - Path=/api/search/**
+          filters:
+            # - AuthenticationFilter
+            - RewritePath=/api/search/(?<segment>.*), /search/${segment}
+
+        # AI Audio Worker (Python)
+        - id: audio-ai
+          uri: http://${AUDIO_AI_HOST:localhost}:8001
+          predicates:
+            - Path=/api/ai/audio/**
+          filters:
+            - AuthenticationFilter
+
+        # AI Video Worker (Python)
+        - id: video-ai
+          uri: http://${VIDEO_AI_HOST:localhost}:8002
+          predicates:
+            - Path=/api/ai/video/**
+          filters:
+            - AuthenticationFilter
+
+        # AI Face Worker (Python)
+        - id: face-ai
+          uri: http://${FACE_AI_HOST:localhost}:8003
+          predicates:
+            - Path=/api/ai/face/**
+          filters:
+            - AuthenticationFilter
+
+        # DocFusion Service
+        - id: docfusion-service
+          uri: http://${DOCFUSION_SERVICE_HOST:localhost}:8083
+          predicates:
+            - Path=/api/docfusion/**
+          filters:
+            # - AuthenticationFilter
+            - RewritePath=/api/docfusion/(?<segment>.*), /docfusion/${segment}
+
+        # RAG Service
+        - id: rag-service
+          uri: http://${RAG_SERVICE_HOST:creativeai-rag}:8084
+          predicates:
+            - Path=/api/rag/**
+          filters:
+            - RewritePath=/api/rag/(?<segment>.*), /rag/${segment}
+
+        # OCR Worker (Groq Vision → Tesseract fallback)
+        - id: ocr-worker
+          uri: http://${OCR_AI_HOST:creativeai-ocr-ai}:8005
+          predicates:
+            - Path=/api/ocr/**
+          filters:
+            - RewritePath=/api/ocr/(?<segment>.*), /ocr/${segment}
+
+        # CV Workspace (analyses CV par utilisateur — auth gérée par le service)
+        - id: cv-workspace
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/cv-workspace/**
+
+        # Card Designs (créations graphiques par utilisateur)
+        - id: card-designs
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/card-designs/**
+
+        # Card Data (tables spécialisées par catégorie)
+        - id: card-data
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/card-data/**
+
+        # Card Persons (données personnes par catégorie de carte)
+        - id: card-persons
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/card-persons/**
+
+        # Card Entreprises (sociétés/organisations centralisées)
+        - id: card-entreprises
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/card-entreprises/**
+
+        # ── Agent Team Service — DOIT être AVANT les routes agent génériques ──────
+        - id: agent-team-agents
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/agents/**
+          filters:
+            - RewritePath=/api/agents/(?<segment>.*), /api/agents/${segment}
+
+        - id: agent-team-teams
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/teams/**
+          filters:
+            - RewritePath=/api/teams/(?<segment>.*), /api/teams/${segment}
+
+        - id: agent-team-tasks
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/tasks/**
+          filters:
+            - RewritePath=/api/tasks/(?<segment>.*), /api/tasks/${segment}
+
+        - id: agent-team-workflows
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/workflows/**
+          filters:
+            - RewritePath=/api/workflows/(?<segment>.*), /api/workflows/${segment}
+
+        - id: agent-team-inbox
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/inbox/**
+          filters:
+            - RewritePath=/api/inbox/(?<segment>.*), /api/inbox/${segment}
+
+        - id: agent-team-enums
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/enums/**
+          filters:
+            - RewritePath=/api/enums/(?<segment>.*), /api/enums/${segment}
+
+        - id: agent-team-audit
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/audit/**
+          filters:
+            - RewritePath=/api/audit/(?<segment>.*), /api/audit/${segment}
+
+        - id: agent-team-facebook
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/facebook/**
+          filters:
+            - RewritePath=/api/facebook/(?<segment>.*), /api/facebook/${segment}
+
+        # ── Email Agent (auth-service) — DOIT être AVANT la route agent générale ──
+        - id: email-agent
+          uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081
+          predicates:
+            - Path=/api/agent/email/**
+          filters:
+            - RewritePath=/api/agent/email/(?<segment>.*), /api/agent/email/${segment}
+
+        - id: agent-tasks
+          uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081
+          predicates:
+            - Path=/api/agent/tasks/**
+          filters:
+            - RewritePath=/api/agent/tasks/(?<segment>.*), /api/agent/tasks/${segment}
+
+        - id: agent-scheduled
+          uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081
+          predicates:
+            - Path=/api/agent/scheduled/**
+          filters:
+            - RewritePath=/api/agent/scheduled/(?<segment>.*), /api/agent/scheduled/${segment}
+
+        - id: user-credentials
+          uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081
+          predicates:
+            - Path=/api/user/credentials/**
+          filters:
+            - RewritePath=/api/user/credentials/(?<segment>.*), /api/user/credentials/${segment}
+
+        - id: user-profil
+          uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081
+          predicates:
+            - Path=/api/user/profil/**
+          filters:
+            - RewritePath=/api/user/profil(?<segment>.*), /api/user/profil${segment}
+
+        - id: user-clients
+          uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081
+          predicates:
+            - Path=/api/user/clients/**
+          filters:
+            - RewritePath=/api/user/clients(?<segment>.*), /api/user/clients${segment}
+
+        - id: user-products
+          uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081
+          predicates:
+            - Path=/api/user/products/**
+          filters:
+            - RewritePath=/api/user/products(?<segment>.*), /api/user/products${segment}
+
+        - id: media-upload
+          uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081
+          predicates:
+            - Path=/api/media/**
+          filters:
+            - RewritePath=/api/media/(?<segment>.*), /api/media/${segment}
+
+        # Agentique IA — agents RAG (chemin /agent/* général — APRÈS les routes spécifiques)
+        - id: agent-service
+          uri: http://${RAG_SERVICE_HOST:creativeai-rag}:8084
+          predicates:
+            - Path=/api/agent/**
+          filters:
+            - RewritePath=/api/agent/(?<segment>.*), /agent/${segment}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:creativeaistudio-super-secret-key-that-is-long-enough-for-hs256}
+    expiration: 86400000  # 24h en ms
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: Authentication
+        url: /api/auth/v3/api-docs
+      - name: Search AI
+        url: /api/search/v3/api-docs
+      - name: Agent Team Service
+        url: /api/agents/v3/api-docs
+  api-docs:
+    path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

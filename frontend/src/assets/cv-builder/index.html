@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CV Builder – 100+ Modèles Professionnels</title>
+  <meta name="description" content="Créez votre CV professionnel en ligne avec plus de 100 modèles personnalisables. Téléchargez en PDF." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="app-layout">
+
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon"><i class="fas fa-file-alt"></i></div>
+        <div>
+          <div class="logo-title">CV BUILDER</div>
+          <div class="logo-sub">100+ Modèles professionnels</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-nav="all" id="nav-all">
+          <i class="fas fa-th-large"></i><span>Tous les modèles</span>
+          <span class="badge">100</span>
+        </button>
+        <button class="nav-item" data-nav="recent" id="nav-recent">
+          <i class="fas fa-clock"></i><span>Récents</span>
+          <span class="badge">12</span>
+        </button>
+        <button class="nav-item" data-nav="favorites" id="nav-favorites">
+          <i class="fas fa-heart"></i><span>Favoris</span>
+          <span class="badge">8</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-section-title">CATÉGORIES</div>
+      <div class="category-list" id="categoryList">
+        <button class="cat-item active" data-cat="all"><i class="fas fa-border-all"></i><span>Tous</span><span class="cat-count">100</span></button>
+        <button class="cat-item" data-cat="Moderne"><i class="fas fa-star"></i><span>Moderne</span><span class="cat-count">20</span></button>
+        <button class="cat-item" data-cat="Minimaliste"><i class="fas fa-minus"></i><span>Minimaliste</span><span class="cat-count">15</span></button>
+        <button class="cat-item" data-cat="Créatif"><i class="fas fa-palette"></i><span>Créatif</span><span class="cat-count">15</span></button>
+        <button class="cat-item" data-cat="Corporate"><i class="fas fa-briefcase"></i><span>Corporate</span><span class="cat-count">15</span></button>
+        <button class="cat-item" data-cat="IT/Développeur"><i class="fas fa-code"></i><span>IT / Développeur</span><span class="cat-count">10</span></button>
+        <button class="cat-item" data-cat="Marketing"><i class="fas fa-bullhorn"></i><span>Marketing</span><span class="cat-count">10</span></button>
+        <button class="cat-item" data-cat="Designer"><i class="fas fa-pen-nib"></i><span>Designer</span><span class="cat-count">10</span></button>
+        <button class="cat-item" data-cat="Étudiant"><i class="fas fa-graduation-cap"></i><span>Étudiant</span><span class="cat-count">5</span></button>
+        <button class="cat-item" data-cat="Executive"><i class="fas fa-crown"></i><span>Executive</span><span class="cat-count">5</span></button>
+      </div>
+
+      <div class="sidebar-section-title">COULEURS</div>
+      <div class="color-grid" id="colorGrid">
+        <button class="color-swatch" data-color="#4F8EF7" style="background:#4F8EF7" title="Bleu"></button>
+        <button class="color-swatch" data-color="#0BC5EA" style="background:#0BC5EA" title="Cyan"></button>
+        <button class="color-swatch" data-color="#38A169" style="background:#38A169" title="Vert"></button>
+        <button class="color-swatch" data-color="#2C9E7F" style="background:#2C9E7F" title="Teal"></button>
+        <button class="color-swatch" data-color="#7C3AED" style="background:#7C3AED" title="Violet"></button>
+        <button class="color-swatch" data-color="#E53E3E" style="background:#E53E3E" title="Rouge"></button>
+        <button class="color-swatch" data-color="#ED8936" style="background:#ED8936" title="Orange"></button>
+        <button class="color-swatch" data-color="#ECC94B" style="background:#ECC94B" title="Jaune"></button>
+        <button class="color-swatch" data-color="#276749" style="background:#276749" title="Vert Foncé"></button>
+        <button class="color-swatch" data-color="#1A202C" style="background:#1A202C" title="Noir"></button>
+        <button class="color-swatch" data-color="#718096" style="background:#718096" title="Gris"></button>
+        <button class="color-swatch color-more" id="colorMore">+</button>
+      </div>
+
+      <div class="sidebar-section-title">OPTIONS</div>
+      <div class="options-list">
+        <label class="option-toggle">
+          <span><i class="fas fa-user-circle"></i> Avec photo</span>
+          <div class="toggle" id="togglePhoto"><div class="toggle-knob"></div></div>
+        </label>
+        <label class="option-toggle">
+          <span><i class="fas fa-user-slash"></i> Sans photo</span>
+          <div class="toggle" id="toggleNoPhoto"><div class="toggle-knob"></div></div>
+        </label>
+        <label class="option-toggle">
+          <span><i class="fas fa-robot"></i> ATS Friendly</span>
+          <div class="toggle active" id="toggleATS"><div class="toggle-knob"></div></div>
+        </label>
+        <label class="option-toggle">
+          <span><i class="fas fa-fire"></i> Nouveautés <span class="badge-new">NEW</span></span>
+          <div class="toggle" id="toggleNew"><div class="toggle-knob"></div></div>
+        </label>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN CONTENT ============ -->
+    <main class="main-content" id="mainContent">
+      <div class="main-header">
+        <h1 class="main-title">100 Modèles de CV Professionnels</h1>
+        <div class="main-toolbar">
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="searchInput" placeholder="Rechercher un modèle..." />
+          </div>
+          <div class="sort-box">
+            <span>Trier par :</span>
+            <select id="sortSelect">
+              <option value="popular">Populaire</option>
+              <option value="recent">Récent</option>
+              <option value="name">Nom A-Z</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="template-grid" id="templateGrid"></div>
+    </main>
+
+    <!-- ============ EDITOR PANEL ============ -->
+    <aside class="editor-panel" id="editorPanel">
+      <div class="editor-header">
+        <div class="editor-title"><i class="fas fa-edit"></i> ÉDITEUR DE CV</div>
+        <div class="editor-header-actions">
+          <button class="btn-icon" id="btnUndo" title="Annuler"><i class="fas fa-undo"></i></button>
+          <button class="btn-icon" id="btnRedo" title="Rétablir"><i class="fas fa-redo"></i></button>
+          <button class="btn-icon" id="btnExpand" title="Agrandir"><i class="fas fa-expand-alt"></i></button>
+          <button class="btn-icon btn-close" id="btnCloseEditor" title="Fermer"><i class="fas fa-times"></i></button>
+        </div>
+      </div>
+      <button class="btn-download" id="btnDownloadPDF">
+        <i class="fas fa-download"></i> Télécharger en PDF
+      </button>
+      <div class="editor-tabs">
+        <button class="tab-btn active" data-tab="content" id="tab-content">CONTENU</button>
+        <button class="tab-btn" data-tab="layout" id="tab-layout">MISE EN PAGE</button>
+        <button class="tab-btn" data-tab="theme" id="tab-theme">THÈME</button>
+      </div>
+      <div class="editor-body" id="editorBody"></div>
+    </aside>
+  </div>
+
+  <!-- ============ PREVIEW MODAL ============ -->
+  <div class="modal-overlay" id="previewModal">
+    <div class="modal-container">
+      <div class="modal-header">
+        <span id="previewTitle">Aperçu du modèle</span>
+        <div class="modal-actions">
+          <button class="btn-primary" id="btnUseTemplate"><i class="fas fa-edit"></i> Utiliser ce modèle</button>
+          <button class="btn-icon" id="btnCloseModal"><i class="fas fa-times"></i></button>
+        </div>
+      </div>
+      <div class="modal-body" id="previewBody"></div>
+    </div>
+  </div>
+
+  <!-- ============ TOAST ============ -->
+  <div class="toast" id="toast"></div>
+
+  <script src="js/templates.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

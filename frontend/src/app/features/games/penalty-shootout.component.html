@@ -1,0 +1,89 @@
+<div class="penalty-shell">
+  <!-- HUD Principal -->
+  <div class="hud">
+    <div class="hud-top">
+      <div class="match-title">⚽ Tirs au but</div>
+      <div class="round-info" *ngIf="!matchOver">
+        Manche {{ currentRound }} / {{ maxRounds }}
+      </div>
+    </div>
+
+    <!-- Scoreboard -->
+    <div class="scoreboard">
+      <div class="score-item player" [class.active]="isPlayerTurn && !matchOver">
+        <span class="score-label">Vous</span>
+        <span class="score-value">{{ playerScore }}</span>
+      </div>
+      <div class="score-vs">VS</div>
+      <div class="score-item ai" [class.active]="!isPlayerTurn && !matchOver">
+        <span class="score-label">IA</span>
+        <span class="score-value">{{ aiScore }}</span>
+      </div>
+    </div>
+
+    <!-- Statut -->
+    <div class="status-bar" [class.but]="lastResult === 'but'" [class.rate]="lastResult === 'raté'" [class.gardien]="lastResult === 'gardien'">
+      {{ status }}
+    </div>
+
+    <!-- Résultat du match -->
+    <div class="match-result" *ngIf="matchOver">
+      <div class="result-icon" *ngIf="matchWinner === 'player'">🏆</div>
+      <div class="result-icon" *ngIf="matchWinner === 'ai'">😔</div>
+      <div class="result-text">
+        {{ matchWinner === 'player' ? 'Victoire !' : matchWinner === 'ai' ? 'Défaite…' : '' }}
+      </div>
+      <div class="final-score">{{ playerScore }} - {{ aiScore }}</div>
+      <button class="btn-restart" (click)="restartMatch()">🔄 Rejouer</button>
+    </div>
+
+    <!-- Contrôles de visée -->
+    <div class="aim-controls" *ngIf="isAiming && !matchOver">
+      <div class="aim-group">
+        <span class="aim-label">🎯 Direction</span>
+        <div class="aim-bar">
+          <div class="aim-fill" [style.width.%]="aimX < 0 ? -aimX : aimX" [style.marginLeft.%]="aimX < 0 ? 0 : 50" [style.background]="aimX < 0 ? '#3b82f6' : '#ef4444'"></div>
+        </div>
+        <span class="aim-value">{{ aimX > 0 ? 'Droite' : aimX < 0 ? 'Gauche' : 'Centre' }}</span>
+      </div>
+      <div class="aim-group">
+        <span class="aim-label">📐 Hauteur</span>
+        <div class="aim-bar">
+          <div class="aim-fill" [style.width.%]="aimY" style="background: #f59e0b"></div>
+        </div>
+        <span class="aim-value">{{ aimY }}%</span>
+      </div>
+      <div class="aim-group">
+        <span class="aim-label">💪 Puissance</span>
+        <div class="aim-bar">
+          <div class="aim-fill" [style.width.%]="power" [style.background]="power < 40 ? '#22c55e' : power < 70 ? '#f59e0b' : '#ef4444'"></div>
+        </div>
+        <span class="aim-value">{{ power }}%</span>
+      </div>
+    </div>
+
+    <!-- Indicateur de tir -->
+    <div class="shoot-hint" *ngIf="isAiming && isPlayerTurn && !matchOver">
+      <kbd>← →</kbd> Direction &nbsp; <kbd>↑ ↓</kbd> Hauteur &nbsp; <kbd>W/S</kbd> Puissance &nbsp; <kbd>␣</kbd> Tirer
+    </div>
+  </div>
+
+  <!-- Canvas 3D -->
+  <canvas #rendererCanvas class="game-canvas"></canvas>
+
+  <!-- Historique -->
+  <div class="history-bar" *ngIf="history.length > 0">
+    <div class="history-title">📊 Statistiques</div>
+    <div class="history-stats">
+      <span>Précision: <strong>{{ accuracyPercent }}%</strong></span>
+      <span>Meilleure série: <strong>{{ bestStreak }}</strong></span>
+      <span>Tirs: <strong>{{ history.length }}</strong></span>
+    </div>
+    <div class="history-dots">
+      <span *ngFor="let h of history" class="dot" [class.scored]="h.scored" [class.missed]="!h.scored"
+            [title]="'Tir #' + h.id + ': ' + (h.scored ? 'But' : 'Raté')">
+        {{ h.scored ? '⚽' : '❌' }}
+      </span>
+    </div>
+  </div>
+</div>

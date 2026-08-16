@@ -1,0 +1,173 @@
+server:
+  port: ${SERVER_PORT:8087}
+
+# URL publique de la plateforme — utilisée pour générer les URLs de webhook Facebook par canal
+app:
+  public-url: ${APP_PUBLIC_URL:http://localhost:8480}
+
+spring:
+  application:
+    name: agent-team-service
+
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 210MB
+
+  # Spring AI est utilisé via ChatModelFactory (dynamique par agent) — l'auto-config
+  # statique est désactivée pour éviter les erreurs de propriétés manquantes au démarrage.
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration
+      - org.springframework.ai.autoconfigure.anthropic.AnthropicAutoConfiguration
+
+  mail:
+    host:     ${MAIL_HOST:mail.labibpro.com}
+    port:     ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:contact@labibpro.com}
+    password: ${MAIL_PASSWORD:L9@T5k_mX3Pq}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable:   true
+            required: true
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/creativeai_agents
+    username: ${DB_USER:creativeai}
+    password: ${DB_PASSWORD:creativeai123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+    show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19095}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: agent-team-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.creativeai.agentteam.*"
+
+minio:
+  endpoint: ${MINIO_URL:http://localhost:9400}
+  public-url: ${MINIO_PUBLIC_URL:http://localhost:9400}
+  access-key: ${MINIO_ACCESS_KEY:creativeai}
+  secret-key: ${MINIO_SECRET_KEY:creativeai123}
+  bucket: agent-photos
+
+agent:
+  jwt-secret: ${JWT_SECRET:creativeaistudio-super-secret-key-that-is-long-enough-for-hs256}
+  encryption-key: ${ENCRYPTION_KEY:Q3JlYXRpdmVBSVN0dWRpb0tleUNoYW5nZU1lSW5Qcm9k}
+  # LLM providers base URLs
+  groq-base-url: ${GROQ_BASE_URL:https://api.groq.com/openai/v1}
+  openai-base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  anthropic-base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com/v1}
+  ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
+  # Default model
+  default-model: ${DEFAULT_MODEL:llama-3.3-70b-versatile}
+  # Memory
+  max-memory-messages: ${MAX_MEMORY_MESSAGES:30}
+  memory-ttl-hours: ${MEMORY_TTL_HOURS:24}
+  # Agent task limits
+  max-agent-iterations: ${MAX_AGENT_ITERATIONS:10}
+  task-timeout-seconds: ${TASK_TIMEOUT_SECONDS:120}
+  # Scheduler
+  daily-briefing-cron: ${DAILY_BRIEFING_CRON:0 0 9 * * *}
+  workflow-scheduler-enabled: ${WORKFLOW_SCHEDULER_ENABLED:true}
+  task-scheduler-enabled: ${TASK_SCHEDULER_ENABLED:true}
+  # File generation
+  upload-dir: ${AGENT_UPLOAD_DIR:./uploads}
+  public-url: ${AGENT_PUBLIC_URL:http://localhost:8087}
+
+telegram:
+  bot-token: ${TELEGRAM_BOT_TOKEN:}
+  webhook-secret: ${TELEGRAM_WEBHOOK_SECRET:}
+
+whatsapp:
+  verify-token: ${WHATSAPP_VERIFY_TOKEN:creativeai-whatsapp-verify}
+  app-secret: ${WHATSAPP_APP_SECRET:}
+
+facebook:
+  verify-token: ${FACEBOOK_VERIFY_TOKEN:creativeai-facebook-verify}
+  app-secret: ${FACEBOOK_APP_SECRET:}
+  polling-enabled: ${FACEBOOK_POLLING_ENABLED:false}
+  poll-fixed-delay-ms: ${FACEBOOK_POLL_DELAY_MS:300000}
+
+instagram:
+  polling-enabled: ${INSTAGRAM_POLLING_ENABLED:false}
+  poll-fixed-delay-ms: ${INSTAGRAM_POLL_DELAY_MS:300000}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+  info:
+    title: "Agent Team Service API"
+    description: "API complète pour la gestion de l'équipe d'agents IA"
+    version: "1.0.0"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+logging:
+  level:
+    com.creativeai.agentteam: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
+
+services:
+  auth-base-url: ${AUTH_SERVICE_BASE_URL:http://auth-service:8081}

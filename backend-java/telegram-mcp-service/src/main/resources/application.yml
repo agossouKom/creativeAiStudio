@@ -1,0 +1,57 @@
+server:
+  port: ${SERVER_PORT:8092}
+
+spring:
+  application:
+    name: telegram-mcp-service
+
+  # ─── Redis ──────────────────────────────────────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # ─── Spring AI ──────────────────────────────────────────────────────────────
+  ai:
+    mcp:
+      server:
+        name: creativeai-mcp-server
+        version: 1.0.0
+        # Endpoints exposés : /mcp/sse (SSE) et /mcp/message (POST)
+        # Compatible avec Claude Desktop, Cursor, et tout client MCP standard
+
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY:}
+      chat:
+        options:
+          model:       ${LLM_MODEL:deepseek-chat}
+          temperature: 0.2
+
+# ─── Application ──────────────────────────────────────────────────────────────
+app:
+  agent-team-base-url:  ${AGENT_TEAM_BASE_URL:http://localhost:8087}
+  auth-service-base-url: ${AUTH_SERVICE_BASE_URL:http://localhost:8081}
+  jwt-secret:          ${JWT_SECRET:creativeai-super-secret-key-that-is-long-enough-for-hs256}
+  telegram:
+    bot-token:      ${TELEGRAM_BOT_TOKEN:}
+    bot-name:       ${TELEGRAM_BOT_NAME:creatveiai_bot}
+    # En prod : URL HTTPS publique → webhook (latence quasi-nulle, pas de polling)
+    # En dev  : laisser vide → long-polling automatique
+    webhook-url:    ${TELEGRAM_WEBHOOK_URL:}
+    webhook-secret: ${TELEGRAM_WEBHOOK_SECRET:}
+
+# ─── Actuator ────────────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+# ─── Logging ─────────────────────────────────────────────────────────────────
+logging:
+  level:
+    com.creativeai.telegram: INFO
+    org.springframework.ai:  WARN

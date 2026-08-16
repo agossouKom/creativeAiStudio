@@ -1,0 +1,28 @@
+Note: Unnecessary use of -X or --request, POST is already inferred.
+* Host localhost:8081 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying [::1]:8081...
+* Connected to localhost (::1) port 8081
+> POST /login HTTP/1.1
+> Host: localhost:8081
+> User-Agent: curl/8.5.0
+> Accept: */*
+> Content-Type: application/json
+> Content-Length: 58
+> 
+} [58 bytes data]
+< HTTP/1.1 200 OK
+< Content-Type: application/json; charset=utf-8
+< Content-Length: 67
+< ETag: W/"43-HfrUa4J0jX2VjkFUUdd/3bbl8Zg"
+< Date: Sat, 16 May 2026 17:05:54 GMT
+< Connection: keep-alive
+< Keep-Alive: timeout=5
+< 
+{ [67 bytes data]
+100   125  100    67  100    58   1565   1355 --:--:-- --:--:-- --:--:--  2976
+* Connection #0 to host localhost left intact
+{"ok":false,"message":"invalid or missing hostname or socket path"}

@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package mediasearch.ai;
+
+option java_multiple_files = true;
+option java_package = "com.mediasearch.proto.ai";
+option java_outer_classname = "MediaSearchProto";
+
+// ─── Audio Service ───────────────────────────────────────────────
+
+service AudioAnalysisService {
+  // Streaming bidirectionnel pour envoyer les résultats au fil de l'analyse
+  rpc StreamRecognize(StreamAudioRequest) returns (stream RecognitionResponse);
+  
+  // Analyse ponctuelle
+  rpc AnalyzeFeatures(AudioRequest) returns (AudioFeatures);
+}
+
+message AudioRequest {
+  string file_url = 1;
+}
+
+message StreamAudioRequest {
+  oneof payload {
+    string file_url = 1;
+    bytes  audio_content = 2;
+  }
+}
+
+message RecognitionResponse {
+  string status = 1;
+  float confidence = 2;
+  TrackInfo track = 3;
+}
+
+message TrackInfo {
+  string title = 1;
+  string artist = 2;
+  string album = 3;
+  string lyrics_url = 4;
+}
+
+message AudioFeatures {
+  float bpm = 1;
+  string key = 2;
+  float energy = 3;
+}
+
+// ─── Face Service ────────────────────────────────────────────────
+
+service FaceAnalysisService {
+  rpc DetectFaces(ImageRequest) returns (FaceList);
+  rpc SearchIdentity(EmbeddingRequest) returns (IdentityResult);
+}
+
+message ImageRequest {
+  string image_url = 1;
+}
+
+message FaceList {
+  repeated Face faces = 1;
+}
+
+message Face {
+  repeated int32 bbox = 1;
+  int32 age = 2;
+  string gender = 3;
+  repeated float embedding = 4;
+}
+
+message EmbeddingRequest {
+  repeated float embedding = 1;
+}
+
+message IdentityResult {
+  string name = 1;
+  float score = 2;
+  string info_url = 3;
+}

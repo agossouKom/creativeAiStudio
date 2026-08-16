@@ -1,0 +1,318 @@
+.penalty-shell {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #061f33 0%, #0f2b3f 55%, #1e4d70 100%);
+  color: #f4f6fb;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ─── HUD ─────────────────────────────────────────────────────────────── */
+
+.hud {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(5, 17, 29, 0.88);
+  border-radius: 16px;
+  padding: 14px 18px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.3);
+  backdrop-filter: blur(8px);
+}
+
+.hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.match-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.round-info {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  background: rgba(255,255,255,0.06);
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+/* ─── Scoreboard ──────────────────────────────────────────────────────── */
+
+.scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.score-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 24px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 2px solid transparent;
+  transition: all 0.3s;
+  min-width: 100px;
+}
+
+.score-item.active {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 20px rgba(14,165,233,0.2);
+}
+
+.score-item.player.active {
+  border-color: #3b82f6;
+  box-shadow: 0 0 20px rgba(59,130,246,0.2);
+}
+
+.score-item.ai.active {
+  border-color: #ef4444;
+  box-shadow: 0 0 20px rgba(239,68,68,0.2);
+}
+
+.score-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.score-value {
+  margin-top: 4px;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.score-vs {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* ─── Status ──────────────────────────────────────────────────────────── */
+
+.status-bar {
+  text-align: center;
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #cdd8e5;
+  transition: all 0.3s;
+}
+
+.status-bar.but {
+  background: rgba(34,197,94,0.2);
+  color: #4ade80;
+  border: 1px solid rgba(34,197,94,0.3);
+}
+
+.status-bar.rate {
+  background: rgba(239,68,68,0.2);
+  color: #f87171;
+  border: 1px solid rgba(239,68,68,0.3);
+}
+
+.status-bar.gardien {
+  background: rgba(250,204,21,0.2);
+  color: #facc15;
+  border: 1px solid rgba(250,204,21,0.3);
+}
+
+/* ─── Match Result ────────────────────────────────────────────────────── */
+
+.match-result {
+  text-align: center;
+  padding: 16px;
+  margin-top: 8px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.result-icon {
+  font-size: 3rem;
+  margin-bottom: 8px;
+}
+
+.result-text {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 4px;
+}
+
+.final-score {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #0ea5e9;
+  margin-bottom: 12px;
+}
+
+.btn-restart {
+  padding: 10px 28px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0ea5e9, #3b82f6);
+  color: white;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-restart:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(14,165,233,0.3);
+}
+
+/* ─── Aim Controls ────────────────────────────────────────────────────── */
+
+.aim-controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.aim-group {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aim-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.aim-bar {
+  height: 8px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.aim-fill {
+  height: 100%;
+  border-radius: 10px;
+  transition: all 0.15s;
+}
+
+.aim-value {
+  font-size: 0.8rem;
+  color: #cdd8e5;
+  font-weight: 600;
+}
+
+/* ─── Shoot Hint ──────────────────────────────────────────────────────── */
+
+.shoot-hint {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.shoot-hint kbd {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  font-size: 0.75rem;
+  color: #cdd8e5;
+}
+
+/* ─── Canvas ──────────────────────────────────────────────────────────── */
+
+.game-canvas {
+  flex: 1;
+  width: 100%;
+  min-height: 55vh;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: inset 0 0 80px rgba(0,0,0,0.2);
+}
+
+/* ─── History ─────────────────────────────────────────────────────────── */
+
+.history-bar {
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(5, 17, 29, 0.8);
+  border-radius: 14px;
+  padding: 12px 16px;
+}
+
+.history-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.history-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.history-stats strong {
+  color: #cdd8e5;
+}
+
+.history-dots {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.dot {
+  font-size: 0.9rem;
+  transition: transform 0.2s;
+}
+
+.dot:hover {
+  transform: scale(1.3);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .penalty-shell {
+    padding: 8px;
+  }
+  .hud {
+    padding: 10px 12px;
+  }
+  .score-item {
+    padding: 8px 16px;
+    min-width: 70px;
+  }
+  .score-value {
+    font-size: 1.5rem;
+  }
+  .aim-controls {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .game-canvas {
+    min-height: 40vh;
+  }
+}

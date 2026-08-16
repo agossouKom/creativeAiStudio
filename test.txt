@@ -1,0 +1,59 @@
+Email: dadaahouawe@gmail.com
+Default Password: Admin@2024!Admin@2024! (configurable via ADMIN_PASSWORD env var).
+Role: ADMIN
+Abonnement: PRO
+
+{
+  "email": "labibprocontact@gmail.com",
+  "password": "Labpro@2024!",
+  "otpCode": "328835" 
+}
+***********************************
+{
+  "email": "dadaahouawe@gmail.com",
+  "password": "Admin@2024!",
+  "otpCode": "328835" 
+}
+*************pgadmin mediaCore************
+Paramètres de Connexion (pgAdmin) :
+Host Name/Address : localhost
+Port : 5436 (⚠️ très important, ce n'est pas le port 5432 par défaut)
+Maintenance Database : mediasearch_auth
+Username : mediasearch
+Password : mediasearch123
+ 
+
+*************************************
+
+{
+  "fullName": "Damien GB",
+  "email": "dadaahouawe@gmail.com",
+  "password": "Admin@2024!!",
+  "confirmPassword": "Admin@2024!!"
+}
+
+validation test
+{
+  "fullName": "Damien GB",
+  "email": "dadaahouawe@gmail.com",
+  "password": "Password",
+  "confirmPassword": "Password"
+}
+**************************
+{
+  "email": "dadaahouawe@gmail.com",
+  "password": "Admin@2024!!",
+  "otpCode": "119627" 
+}
+
+{
+  "email": "dadaahouawe@gmail.com",
+  "password": "Admin@2024!",
+  "otpCode": "083036"
+}
+************************************
+dadaahouawe@gmail.com
+agossiedna@gmail.com
+
+TestUser123
+**************

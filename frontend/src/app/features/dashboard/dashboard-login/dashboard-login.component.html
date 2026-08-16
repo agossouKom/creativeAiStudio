@@ -1,0 +1,66 @@
+<div class="admin-login-container">
+  <div class="login-card">
+    <div class="logo-section">
+      <div class="logo-icon">
+        <span class="material-icons">security</span>
+      </div>
+      <h2>Administration</h2>
+      <p>Accès sécurisé CreativeAIStudio</p>
+    </div>
+
+    <div *ngIf="errorMessage()" class="alert alert-danger">
+      <span class="material-icons">error_outline</span>
+      {{ errorMessage() }}
+    </div>
+
+    <!-- Étape 1 : Identifiants -->
+    <form *ngIf="step() === 'LOGIN'" [formGroup]="loginForm" (ngSubmit)="requestOtp()">
+      <div class="form-group">
+        <label>Email professionnel</label>
+        <div class="input-wrapper">
+          <span class="material-icons">email</span>
+          <input type="email" formControlName="email" placeholder="admin@mediacore.com" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Mot de passe</label>
+        <div class="input-wrapper">
+          <span class="material-icons">lock</span>
+          <input type="password" formControlName="password" placeholder="••••••••">
+        </div>
+      </div>
+
+      <button type="submit" class="btn-primary" [disabled]="loginForm.invalid || isLoading()">
+        <span *ngIf="!isLoading()">Suivant</span>
+        <span *ngIf="isLoading()" class="spinner"></span>
+      </button>
+    </form>
+
+    <!-- Étape 2 : Code OTP -->
+    <form *ngIf="step() === 'OTP'" [formGroup]="otpForm" (ngSubmit)="verifyOtp()">
+      <div class="alert alert-info">
+        <span class="material-icons">info</span>
+        Un code OTP a été envoyé à <strong>{{ loginForm.value.email }}</strong>.
+      </div>
+
+      <div class="form-group">
+        <label>Code de vérification (6 chiffres)</label>
+        <div class="input-wrapper otp-wrapper">
+          <span class="material-icons">pin</span>
+          <input type="text" formControlName="otpCode" placeholder="000000" maxlength="6" autocomplete="off" class="otp-input">
+        </div>
+      </div>
+
+      <div class="action-buttons">
+        <button type="button" class="btn-secondary" (click)="step.set('LOGIN')" [disabled]="isLoading()">
+          Retour
+        </button>
+        <button type="submit" class="btn-primary" [disabled]="otpForm.invalid || isLoading()">
+          <span *ngIf="!isLoading()">Vérifier et Connexion</span>
+          <span *ngIf="isLoading()" class="spinner"></span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

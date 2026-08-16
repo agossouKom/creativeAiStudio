@@ -1,0 +1,10 @@
+{
+  "properties": [
+    {
+      "name": "groq.vision.model",
+      "type": "java.lang.String",
+      "description": "Groq vision LLM model name used by IngestionService for image/video frame analysis.",
+      "defaultValue": "meta-llama/llama-4-scout-17b-16e-instruct"
+    }
+  ]
+}

@@ -1,0 +1,263 @@
+<button class="chrome-expand-btn" *ngIf="chromeHeaderHidden" (click)="toggleChromeHeader()" title="Afficher le menu">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+</button>
+
+<header class="main-nav animate-fade" *ngIf="!isAdmin && !isEmbedded && !chromeHeaderHidden">
+  <div class="nav-inner">
+    <!-- Brand -->
+    <a routerLink="/" class="nav-brand">
+      <div class="brand-icon">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="mesG" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#6366f1"/><stop offset="1" stop-color="#0ea5e9"/>
+            </linearGradient>
+          </defs>
+          <rect width="36" height="36" rx="10" fill="url(#mesG)"/>
+          <path d="M6 26V12L12.5 21L18 12L23.5 21L30 12V26" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <circle cx="29" cy="7" r="5.5" fill="#f59e0b"/>
+          <path d="M30 4.5L28 7.5H30L28 10" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="brand-name-wrap">
+        <span class="brand-name-main">Creative <span class="brand-express">AI</span></span>
+        <span class="brand-name-sub">Studio</span>
+      </div>
+    </a>
+
+    <!-- Nav Links -->
+    <nav class="nav-links-wrap">
+      <a routerLink="/"           routerLinkActive="nav-active" [routerLinkActiveOptions]="{exact:true}" class="nav-lnk">Accueil</a>
+      <a routerLink="/triage"          routerLinkActive="nav-active" class="nav-lnk">Tri Intelligent</a>
+      <a routerLink="/docfusion"       routerLinkActive="nav-active" class="nav-lnk">Document</a>
+      <a routerLink="/agentique/teams" routerLinkActive="nav-active" class="nav-lnk nav-lnk-agentique">🤖 Agentique IA</a>
+
+      <!-- ✦ Creative Studio — Mega Menu (clic stable) -->
+      <div class="mega-trigger" (click)="$event.stopPropagation()">
+        <span class="nav-lnk nav-lnk-studio nav-lnk-studio--trigger"
+              [class.nav-active]="megaOpen"
+              (click)="toggleMega()">
+          ✦ Creative Studio <span class="mega-chevron" [class.mega-chevron--open]="megaOpen">▾</span>
+        </span>
+
+        <div class="mega-menu" [class.mega-menu--open]="megaOpen">
+          <div class="mega-inner">
+
+            <!-- ── Col 1 : CV & Documents ── -->
+            <div class="mega-col">
+              <div class="mega-col-hdr">CV & Documents</div>
+              <a class="mi mi--star" routerLink="/cv-builder" (click)="closeMega()">
+                <span class="mi-ico mi-ico--grad">📄</span>
+                <span class="mi-name">CV Builder <span class="mega-new-badge">Custom</span></span>
+              </a>
+              <a class="mi mi--ats" routerLink="/agentique/cv-analyzer" (click)="closeMega()">
+                <span class="mi-ico mi-ico--ats">🎯</span>
+                <span class="mi-name">Analyseur ATS <span class="mega-new-badge mega-new-badge--ats">Score IA</span></span>
+              </a>
+              <a class="mi mi--cards" routerLink="/card-builder" (click)="closeMega()">
+                <span class="mi-ico mi-ico--cards">🪪</span>
+                <span class="mi-name">Card Builder <span class="mega-new-badge mega-new-badge--cards">Pro</span></span>
+              </a>
+            </div>
+
+            <!-- ── Col 2 : Suite Office ── -->
+            <div class="mega-col">
+              <div class="mega-col-hdr">Suite Office</div>
+              <a class="mi mi--office" routerLink="/creative-studio" [queryParams]="{tool:'office-word'}" (click)="closeMega()">
+                <span class="mi-ico mi-ico--blue">📝</span><span class="mi-name">Creative Word</span>
+              </a>
+              <a class="mi mi--office" routerLink="/creative-studio" [queryParams]="{tool:'office-excel'}" (click)="closeMega()">
+                <span class="mi-ico mi-ico--green">📊</span><span class="mi-name">Creative Excel</span>
+              </a>
+              <a class="mi mi--office" routerLink="/creative-studio" [queryParams]="{tool:'office-pptx'}" (click)="closeMega()">
+                <span class="mi-ico mi-ico--orange">📽</span><span class="mi-name">Creative PowerPoint</span>
+              </a>
+            </div>
+
+            <!-- ── Col 3 : Jeux & Distractions ── -->
+            <div class="mega-col">
+              <div class="mega-col-hdr">🎮 Jeux & Distractions</div>
+              <a class="mi mi--games" routerLink="/games" (click)="closeMega()">
+                <span class="mi-ico">🕹️</span>
+                <span class="mi-name">Tous les jeux <span class="mega-new-badge mega-new-badge--games">15 jeux</span></span>
+              </a>
+            </div>
+
+          </div>
+          <div class="mega-footer">
+            <span class="mega-footer-text">✦ Propulsé par IA — Creative AI Studio</span>
+            <a routerLink="/creative-studio" class="mega-footer-link" (click)="closeMega()">Ouvrir le Studio →</a>
+          </div>
+        </div>
+      </div>
+      <a routerLink="/pricing"         routerLinkActive="nav-active" class="nav-lnk">Plans</a>
+      <a routerLink="/contact"    routerLinkActive="nav-active" class="nav-lnk">Contact</a>
+      <a *ngIf="isLoggedIn" routerLink="/history" routerLinkActive="nav-active" class="nav-lnk">Historique</a>
+    </nav>
+
+    <!-- CTA & User Session Profile Panel -->
+    <div class="nav-cta">
+      <a *ngIf="!isLoggedIn" routerLink="/auth" class="cta-btn">Connexion</a>
+
+      <!-- Premium Glowing User Menu -->
+      <div *ngIf="isLoggedIn" class="user-profile-menu">
+        <button (click)="toggleDropdown()" class="user-avatar-btn" aria-label="Menu utilisateur">
+          <div class="avatar-circle">
+            <span>{{ userInitials }}</span>
+            <div class="status-pulse-online"></div>
+          </div>
+          <span class="user-name-label">{{ userName }}</span>
+          <span class="chevron-icon" [class.rotate]="showDropdown">&#9660;</span>
+        </button>
+
+        <!-- Dropdown Menu -->
+        <div *ngIf="showDropdown" class="user-dropdown-panel animate-slide-down">
+          <div class="dropdown-header">
+
+            <!-- Avatar + nom + email -->
+            <div class="dropdown-user-row">
+              <div class="dropdown-avatar-lg">{{ userInitials }}</div>
+              <div class="user-info-detail">
+                <span class="user-info-name">{{ userName }}</span>
+                <span class="user-info-email">{{ currentUser?.email }}</span>
+              </div>
+            </div>
+
+            <!-- Badge rôle -->
+            <span class="user-info-role" [ngClass]="userRoleBadgeClass">
+              <span class="role-dot"></span>{{ userRoleLabel }}
+            </span>
+
+            <!-- Crédits -->
+            <div class="user-credits-wrap" [class.credits-empty]="userCredits === 0">
+              <div class="credits-info">
+                <span class="credits-icon">⚡</span>
+                <div class="credits-text-block">
+                  <span class="credits-count">{{ userCredits }}</span>
+                  <span class="credits-label">crédits restants</span>
+                </div>
+              </div>
+              <a *ngIf="userCredits === 0" routerLink="/pricing" (click)="closeDropdown()" class="credits-recharge-btn">
+                Recharger
+              </a>
+            </div>
+
+          </div>
+
+          <div class="dropdown-divider"></div>
+
+          <div class="dropdown-links">
+            <a routerLink="/history" (click)="closeDropdown()" class="dropdown-lnk-item">
+              <span class="link-icon">&#9203;</span>
+              <span class="link-text">Mon Historique</span>
+            </a>
+            <a routerLink="/agentique/workspace" (click)="closeDropdown()" class="dropdown-lnk-item">
+              <span class="link-icon">⚙️</span>
+              <span class="link-text">Espace de travail</span>
+            </a>
+            <a *ngIf="currentUser?.role === 'ROLE_ADMIN'" routerLink="/dashboard" (click)="closeDropdown()" class="dropdown-lnk-item">
+              <span class="link-icon">&#9881;</span>
+              <span class="link-text">Tableau de Bord Admin</span>
+            </a>
+          </div>
+
+          <div class="dropdown-divider"></div>
+
+          <!-- Toggle thème -->
+          <button class="dropdown-lnk-item dropdown-theme-row" (click)="toggleTheme(); $event.stopPropagation()">
+            <span class="link-icon">{{ isDark ? '☀️' : '🌙' }}</span>
+            <span class="link-text">{{ isDark ? 'Mode clair' : 'Mode sombre' }}</span>
+            <span class="theme-pill" [class.theme-pill--dark]="isDark"></span>
+          </button>
+
+          <div class="dropdown-divider"></div>
+
+          <button (click)="logout()" class="dropdown-logout-btn">
+            <span class="link-icon">&#128682;</span>
+            <span>Déconnexion</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ── Layout 3 colonnes (non-admin) ─────────────────────────────────────── -->
+<div class="page-layout" *ngIf="!isAdmin">
+
+  <!-- Sidebar gauche — masquée si premium ou sur pages pleine largeur -->
+  <aside class="sidebar sidebar-left" *ngIf="!isPremium && !hideAllSidebars">
+    <app-sidebar-ad side="left"></app-sidebar-ad>
+  </aside>
+
+  <!-- Contenu principal -->
+  <main class="main-content" [class.no-ads]="isPremium || hideAllSidebars">
+    <router-outlet></router-outlet>
+  </main>
+
+  <!-- Sidebar droite — masquée si premium ou sur pages pleine largeur -->
+  <aside class="sidebar sidebar-right" *ngIf="!isPremium && !hideAllSidebars">
+    <app-sidebar-ad side="right"></app-sidebar-ad>
+  </aside>
+
+</div>
+
+<!-- Admin : pas de sidebars -->
+<div *ngIf="isAdmin">
+  <router-outlet></router-outlet>
+</div>
+
+<!-- Footer -->
+<footer class="site-footer" *ngIf="!isAdmin && !isEmbedded && !isFootballGame">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="footer-brand-logo">
+        <svg width="32" height="32" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="mesGf" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#6366f1"/><stop offset="1" stop-color="#0ea5e9"/>
+            </linearGradient>
+          </defs>
+          <rect width="36" height="36" rx="10" fill="url(#mesGf)"/>
+          <path d="M6 26V12L12.5 21L18 12L23.5 21L30 12V26" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <circle cx="29" cy="7" r="5.5" fill="#f59e0b"/>
+          <path d="M30 4.5L28 7.5H30L28 10" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div>
+          <div class="footer-brand-name">Creative <span class="footer-brand-express">AI</span></div>
+          <div class="footer-brand-sub">Studio</div>
+        </div>
+      </div>
+      <p class="text-sm max-w-xs" style="color:rgba(255,255,255,.55);margin-top:.5rem">La plateforme IA pour identifier sons, vidéos et visages.</p>
+    </div>
+    <div>
+      <h4 class="footer-heading">Solutions</h4>
+      <ul class="footer-links">
+        <li><a href="#">API Audio</a></li>
+        <li><a href="#">Reconnaissance Faciale</a></li>
+        <li><a href="#">Analyse Vidéo</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4 class="footer-heading">Ressources</h4>
+      <ul class="footer-links">
+        <li><a routerLink="/contact">Contact</a></li>
+        <li><a href="#">Documentation</a></li>
+        <li><a href="#">Status</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4 class="footer-heading">Légal</h4>
+      <ul class="footer-links">
+        <li><a href="#">Confidentialité</a></li>
+        <li><a href="#">CGU</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-copy">
+    &copy; 2026 Creative AI Studio &mdash; Tous droits réservés.
+  </div>
+</footer>
+
+<!-- Dialog system — global, rendered above everything -->
+<app-dialog-host></app-dialog-host>

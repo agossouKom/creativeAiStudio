@@ -1,0 +1,7 @@
+package com.creativeai.agentteam.model.enums;
+
+public enum ActionType {
+    CHAT, EXECUTE_TOOL, CLASSIFY, SUMMARIZE, GENERATE,
+    SEND_EMAIL, POST_SOCIAL, CREATE_TASK, ESCALATE,
+    CONVERT_DOCUMENT, RENDER_MEDIA, AUDIT_SECURITY
+}

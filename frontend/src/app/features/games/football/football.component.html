@@ -1,0 +1,1270 @@
+<div class="football-game">
+  <!-- Canvas 3D (match) -->
+  <canvas #renderCanvas class="game-canvas" [class.hidden]="!showMatch" (contextmenu)="onCanvasContextMenu($event)"></canvas>
+
+  <!-- Canvas 3D (aperçu du stade sélectionné, affiché en arrière-plan des écrans de préparation) -->
+  <canvas #previewCanvas class="preview-canvas" [class.hidden]="showMatch || showMenu || showResult"></canvas>
+
+  <!-- Statut manette partagé par tous les écrans d'avant-match (menu, tutoriel, sélection
+       des équipes, composition, réglages, récapitulatif) — un seul indicateur plutôt que
+       de le dupliquer dans chaque écran, gamepadConnected étant déjà à jour partout via
+       pollMenuGamepad(). -->
+  <div class="pre-match-gamepad-status" *ngIf="!showMatch">
+    <span class="gamepad-dot" [class.gamepad-dot-on]="gamepadConnected"></span>
+    {{ gamepadConnected ? ('🎮 ' + connectedGamepadNames[0]) : '🎮 Manette non détectée (appuie sur un bouton pour l\'activer)' }}
+  </div>
+
+  <!-- Révélation des compositions avant le coup d'envoi : schéma de formation, synchronisé
+       avec le drapeau/nom d'équipe projeté en filigrane sur la pelouse (playFormationReveal) -->
+  <div class="reveal-formation-overlay" *ngIf="revealingTeam">
+    <div class="reveal-formation-card">
+      <div class="reveal-formation-header">
+        <span class="reveal-formation-flag">{{ getCountryFlag((revealingTeam === 'home' ? selectedHomeTeam : selectedAwayTeam)?.country || '') }}</span>
+        <span class="reveal-formation-team">{{ (revealingTeam === 'home' ? selectedHomeTeam : selectedAwayTeam)?.name }}</span>
+      </div>
+      <div class="reveal-pitch">
+        <div class="reveal-pitch-circle"></div>
+        <div class="reveal-jersey" *ngFor="let p of getFormationLayout(revealingTeam)"
+             [class.reveal-jersey-gk]="p.role === 'gk'"
+             [style.left.%]="p.xPct" [style.top.%]="p.yPct"
+             [style.background]="formationJerseyColor(revealingTeam, p.role)">
+          {{ p.number }}
+        </div>
+      </div>
+      <span class="formation-label">{{ currentFormation(revealingTeam) }}</span>
+    </div>
+  </div>
+
+  <!-- Contrôles tactiles (mobile/tablette) -->
+  <div class="touch-controls" *ngIf="isTouchDevice" [class.hidden]="!showMatch">
+    <div #joystickZone class="touch-joystick-zone"></div>
+    <div class="touch-actions">
+      <button class="touch-btn touch-btn-tackle" title="Tacle" (touchstart)="touchTackle()" (mousedown)="touchTackle()">F</button>
+      <button class="touch-btn touch-btn-pass" title="Passe" (touchstart)="touchPass()" (mousedown)="touchPass()">E</button>
+      <button class="touch-btn touch-btn-kick" title="Tir" (touchstart)="touchKick()" (touchend)="touchKickRelease()" (mousedown)="touchKick()" (mouseup)="touchKickRelease()">⚽</button>
+      <button class="touch-btn touch-btn-switch" title="Changer de joueur" (touchstart)="touchSwitchPlayer()" (mousedown)="touchSwitchPlayer()">Q</button>
+      <button class="touch-btn touch-btn-sprint" title="Sprint"
+              (touchstart)="touchSprint(true)" (touchend)="touchSprint(false)"
+              (mousedown)="touchSprint(true)" (mouseup)="touchSprint(false)">⚡</button>
+    </div>
+  </div>
+
+  <!-- ÉCRAN MENU PRINCIPAL -->
+  <div class="menu-screen" *ngIf="showMenu">
+    <div class="menu-content">
+      <div class="menu-title">
+        <span class="menu-icon">⚽</span>
+        <h1>Football Manager</h1>
+        <p class="menu-subtitle">Jeu de Football 3D</p>
+      </div>
+
+      <div class="menu-options" #menuOptionsEl>
+        <button class="menu-btn primary" (click)="startGame()">
+          <span class="btn-icon">▶</span>
+          Nouveau Match
+        </button>
+        <button class="menu-btn secondary tutorial-btn" (click)="openTutorialMenu()">
+          <span class="btn-icon">🎓</span>
+          Tutoriel (ateliers d'apprentissage)
+        </button>
+        <button class="menu-btn secondary" disabled>
+          <span class="btn-icon">🏆</span>
+          Tournoi (Bientôt)
+        </button>
+        <button class="menu-btn secondary" disabled>
+          <span class="btn-icon">⚙</span>
+          Options (Bientôt)
+        </button>
+      </div>
+
+      <div class="menu-controls">
+        <h3>Contrôles</h3>
+        <div class="menu-controls-body">
+          <div class="controls-grid">
+            <div class="control-item"><kbd>W A S D</kbd> <span>Déplacement</span></div>
+            <div class="control-item"><kbd>Shift</kbd> <span>Sprint</span></div>
+            <div class="control-item"><kbd>Espace</kbd> <span>Tir</span></div>
+            <div class="control-item"><kbd>E</kbd> <span>Passe courte</span></div>
+            <div class="control-item"><kbd>T</kbd> <span>Passe profondeur</span></div>
+            <div class="control-item"><kbd>C</kbd> <span>Centre</span></div>
+            <div class="control-item"><kbd>F</kbd> <span>Tacle</span></div>
+            <div class="control-item"><kbd>Q</kbd> <span>Changer joueur</span></div>
+            <div class="control-item"><kbd>P</kbd> <span>Pause</span></div>
+          </div>
+          <!-- Manette : L1 changer de joueur, R1 sprint, "1" passe profondeur, "4" tir,
+               "2"/"3" contextuels (passe/centre avec le ballon, tacle sans) -->
+          <div class="menu-gamepad-ref">
+            <app-gamepad-diagram [highlight]="gamepadHighlight"></app-gamepad-diagram>
+            <span class="menu-gamepad-caption">Manette : L1 change de joueur, R1 sprint, 1 = profondeur, 4 = tir, 2/3 = passe/centre ou tacle selon le ballon</span>
+            <span class="menu-gamepad-caption">
+              <span class="gamepad-dot" [class.gamepad-dot-on]="gamepadConnected"></span>
+              {{ gamepadConnected ? ('Manette détectée : ' + (connectedGamepadNames[0] || '')) : 'Manette non détectée (appuie sur un bouton pour l\'activer)' }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN TUTORIEL : ateliers d'apprentissage (cartes) -->
+  <div class="tutorial-menu-screen" #tutorialMenuEl *ngIf="showTutorialCards">
+    <div class="tm-header">
+      <button class="nav-btn nav-btn-ghost" (click)="backToTutorialMenu()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
+        Retour
+      </button>
+      <div class="tm-header-center">
+        <span class="ts-header-icon">🎓</span>
+        <h2>Tutoriel — Choisis un atelier</h2>
+      </div>
+      <div style="width:96px"></div>
+    </div>
+
+    <div class="tm-grid">
+      <div class="tm-card" *ngFor="let ex of tutorialExercises" [class.tm-card-disabled]="!ex.enabled">
+        <div class="tm-card-icon">{{ ex.icon }}</div>
+        <div class="tm-card-title">{{ ex.title }}</div>
+        <div class="tm-card-desc">{{ ex.description }}</div>
+        <button class="tm-card-btn" [disabled]="!ex.enabled" (click)="selectExercise(ex.id)">
+          {{ ex.enabled ? 'Commencer' : 'Bientôt' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN SÉLECTION D'ÉQUIPES -->
+  <div class="team-select-screen" #teamSelectEl *ngIf="showTeamSelect">
+    <!-- Header -->
+    <div class="ts-header">
+      <button class="nav-btn nav-btn-ghost" (click)="backToMenu()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
+        Retour
+      </button>
+      <div class="ts-header-center">
+        <span class="ts-header-icon">⚽</span>
+        <h2>Sélection des Équipes</h2>
+      </div>
+      <button class="nav-btn nav-btn-primary" [class.disabled]="!selectedHomeTeam || (!trainingMode && !selectedAwayTeam)" (click)="confirmTeams()">
+        Confirmer
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="ts-body">
+      <!-- Colonne Domicile -->
+      <div class="ts-column">
+        <div class="ts-column-label">
+          <span class="ts-label-icon">🏠</span>
+          <span>DOMICILE</span>
+        </div>
+
+        <div class="ts-selected" [class.empty]="!selectedHomeTeam">
+          <ng-container *ngIf="selectedHomeTeam; else noHome">
+            <span class="ts-sel-logo">{{ selectedHomeTeam.logo }}</span>
+            <div class="ts-sel-info">
+              <span class="ts-sel-name">{{ selectedHomeTeam.name }}</span>
+              <span class="ts-sel-country">{{ selectedHomeTeam.country }}</span>
+            </div>
+            <!-- Sélecteur de maillot horizontal, en face du nom de l'équipe -->
+            <div class="ts-jersey-scroller" *ngIf="homeJerseys.length">
+              <button class="ts-jersey-arrow" (click)="cycleJersey('home', -1)" title="Maillot précédent">‹</button>
+              <span class="ts-jersey-current" [title]="selectedHomeJersey?.label">
+                <span class="jersey-swatch-color" [style.background]="selectedHomeJersey?.primary" [style.border-color]="selectedHomeJersey?.secondary"></span>
+                <span class="jersey-swatch-label">{{ selectedHomeJersey?.label }}</span>
+              </span>
+              <button class="ts-jersey-arrow" (click)="cycleJersey('home', 1)" title="Maillot suivant">›</button>
+            </div>
+            <span class="ts-sel-badge">Sélectionné</span>
+          </ng-container>
+          <ng-template #noHome>
+            <span class="ts-sel-placeholder">Cliquez sur une équipe</span>
+          </ng-template>
+        </div>
+
+        <!-- Attributs de l'équipe sélectionnée -->
+        <div class="ts-attributes" *ngIf="homeAttributes">
+          <div class="ts-attr-row">
+            <span class="ts-attr-label">⚡ Rapidité</span>
+            <div class="ts-attr-bar"><div class="ts-attr-fill speed" [style.width.%]="homeAttributes.rapidite"></div></div>
+            <span class="ts-attr-value">{{ homeAttributes.rapidite }}</span>
+          </div>
+          <div class="ts-attr-row">
+            <span class="ts-attr-label">🎯 Attaque</span>
+            <div class="ts-attr-bar"><div class="ts-attr-fill attack" [style.width.%]="homeAttributes.attaque"></div></div>
+            <span class="ts-attr-value">{{ homeAttributes.attaque }}</span>
+          </div>
+          <div class="ts-attr-row">
+            <span class="ts-attr-label">🛡 Défense</span>
+            <div class="ts-attr-bar"><div class="ts-attr-fill defense" [style.width.%]="homeAttributes.defense"></div></div>
+            <span class="ts-attr-value">{{ homeAttributes.defense }}</span>
+          </div>
+        </div>
+
+        <div class="ts-toolbar">
+          <div class="ts-filters">
+            <button class="ts-filter" [class.active]="selectedCategory==='all'" (click)="setCategory('all')">Toutes</button>
+            <button class="ts-filter" [class.active]="selectedCategory==='national'" (click)="setCategory('national')">Sélections</button>
+            <button class="ts-filter" [class.active]="selectedCategory==='club'" (click)="setCategory('club')">Clubs</button>
+          </div>
+          <div class="ts-search">
+            <svg class="ts-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" placeholder="Rechercher une équipe..." (input)="onSearch($event)">
+          </div>
+        </div>
+
+        <div class="ts-grid">
+          <div class="ts-card"
+               *ngFor="let team of filteredTeams"
+               [class.selected]="selectedHomeTeam?.id === team.id"
+               [title]="teamTooltip(team)"
+               (click)="selectHomeTeam(team)">
+            <div class="ts-card-bg"></div>
+            <button class="ts-card-info" title="Détail de l'équipe" (click)="openTeamDetail(team, $event)">ⓘ</button>
+            <span class="ts-card-logo">{{ team.logo }}</span>
+            <span class="ts-card-name">{{ team.shortName }}</span>
+            <span class="ts-card-country">{{ team.country }}</span>
+            <div class="ts-card-check" *ngIf="selectedHomeTeam?.id === team.id">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5L20 7"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VS Divider -->
+      <div class="ts-vs">
+        <div class="ts-vs-line"></div>
+        <span class="ts-vs-text">VS</span>
+        <div class="ts-vs-line"></div>
+      </div>
+
+      <!-- Colonne Extérieur -->
+      <div class="ts-column">
+        <div class="ts-column-label">
+          <span class="ts-label-icon">✈️</span>
+          <span>EXTÉRIEUR</span>
+        </div>
+
+        <ng-container *ngIf="!trainingMode; else trainingNotice">
+          <div class="ts-selected" [class.empty]="!selectedAwayTeam">
+            <ng-container *ngIf="selectedAwayTeam; else noAway">
+              <span class="ts-sel-logo">{{ selectedAwayTeam.logo }}</span>
+              <div class="ts-sel-info">
+                <span class="ts-sel-name">{{ selectedAwayTeam.name }}</span>
+                <span class="ts-sel-country">{{ selectedAwayTeam.country }}</span>
+              </div>
+              <!-- Sélecteur de maillot horizontal, en face du nom de l'équipe -->
+              <div class="ts-jersey-scroller" *ngIf="awayJerseys.length">
+                <button class="ts-jersey-arrow" (click)="cycleJersey('away', -1)" title="Maillot précédent">‹</button>
+                <span class="ts-jersey-current" [title]="selectedAwayJersey?.label">
+                  <span class="jersey-swatch-color" [style.background]="selectedAwayJersey?.primary" [style.border-color]="selectedAwayJersey?.secondary"></span>
+                  <span class="jersey-swatch-label">{{ selectedAwayJersey?.label }}</span>
+                </span>
+                <button class="ts-jersey-arrow" (click)="cycleJersey('away', 1)" title="Maillot suivant">›</button>
+              </div>
+              <span class="ts-sel-badge">Sélectionné</span>
+            </ng-container>
+            <ng-template #noAway>
+              <span class="ts-sel-placeholder">Cliquez sur une équipe</span>
+            </ng-template>
+          </div>
+
+          <!-- Attributs de l'équipe sélectionnée -->
+          <div class="ts-attributes" *ngIf="awayAttributes">
+            <div class="ts-attr-row">
+              <span class="ts-attr-label">⚡ Rapidité</span>
+              <div class="ts-attr-bar"><div class="ts-attr-fill speed" [style.width.%]="awayAttributes.rapidite"></div></div>
+              <span class="ts-attr-value">{{ awayAttributes.rapidite }}</span>
+            </div>
+            <div class="ts-attr-row">
+              <span class="ts-attr-label">🎯 Attaque</span>
+              <div class="ts-attr-bar"><div class="ts-attr-fill attack" [style.width.%]="awayAttributes.attaque"></div></div>
+              <span class="ts-attr-value">{{ awayAttributes.attaque }}</span>
+            </div>
+            <div class="ts-attr-row">
+              <span class="ts-attr-label">🛡 Défense</span>
+              <div class="ts-attr-bar"><div class="ts-attr-fill defense" [style.width.%]="awayAttributes.defense"></div></div>
+              <span class="ts-attr-value">{{ awayAttributes.defense }}</span>
+            </div>
+          </div>
+
+          <div class="ts-toolbar">
+            <div class="ts-filters">
+              <button class="ts-filter" [class.active]="selectedCategory==='all'" (click)="setCategory('all')">Toutes</button>
+              <button class="ts-filter" [class.active]="selectedCategory==='national'" (click)="setCategory('national')">Sélections</button>
+              <button class="ts-filter" [class.active]="selectedCategory==='club'" (click)="setCategory('club')">Clubs</button>
+            </div>
+            <div class="ts-search">
+              <svg class="ts-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="text" placeholder="Rechercher une équipe..." (input)="onSearch($event)">
+            </div>
+          </div>
+
+          <div class="ts-grid">
+            <div class="ts-card"
+                 *ngFor="let team of filteredTeams"
+                 [class.selected]="selectedAwayTeam?.id === team.id"
+                 [title]="teamTooltip(team)"
+                 (click)="selectAwayTeam(team)">
+              <div class="ts-card-bg"></div>
+              <button class="ts-card-info" title="Détail de l'équipe" (click)="openTeamDetail(team, $event)">ⓘ</button>
+              <span class="ts-card-logo">{{ team.logo }}</span>
+              <span class="ts-card-name">{{ team.shortName }}</span>
+              <span class="ts-card-country">{{ team.country }}</span>
+              <div class="ts-card-check" *ngIf="selectedAwayTeam?.id === team.id">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5L20 7"/></svg>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+        <ng-template #trainingNotice>
+          <div class="ts-training-notice">
+            <span class="ts-training-notice-icon">🎓</span>
+            <p>Mode entraînement : une seule équipe à choisir.</p>
+            <p>Un adversaire sera assigné automatiquement pour la partie.</p>
+          </div>
+        </ng-template>
+      </div>
+    </div>
+
+    <!-- Footer récap -->
+    <div class="ts-footer" *ngIf="selectedHomeTeam && (trainingMode || selectedAwayTeam)">
+      <div class="ts-footer-info">
+        <span class="ts-footer-match">{{ selectedHomeTeam.shortName }}</span>
+        <span class="ts-footer-vs">VS</span>
+        <span class="ts-footer-match">{{ trainingMode ? '🎓 Entraînement' : selectedAwayTeam?.shortName }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE DÉTAIL D'ÉQUIPE (icône ⓘ sur la carte) : liste des joueurs à gauche,
+       portrait du joueur sélectionné à droite -->
+  <div class="team-detail-backdrop" *ngIf="detailTeam" (click)="closeTeamDetail()">
+    <div class="team-detail-modal" #teamDetailModalEl (click)="$event.stopPropagation()">
+      <div class="td-header">
+        <span class="td-logo">{{ detailTeam.logo }}</span>
+        <div class="td-title">
+          <span class="td-name">{{ detailTeam.name }}</span>
+          <span class="td-country">{{ detailTeam.country }} — {{ detailTeam.formation }}</span>
+        </div>
+        <button class="td-close" (click)="closeTeamDetail()">✕</button>
+      </div>
+      <div class="td-body">
+        <!-- Colonne gauche : liste des joueurs -->
+        <div class="td-roster">
+          <button class="td-roster-row" *ngFor="let p of detailTeam.players; let i = index"
+                  [class.active]="detailSelectedIndex === i"
+                  (click)="selectDetailPlayer(i)">
+            <span class="td-roster-num">{{ p.number }}</span>
+            <span class="td-roster-name">{{ p.name }}</span>
+            <span class="td-roster-role role-{{ p.role }}">{{ p.role | uppercase }}</span>
+          </button>
+        </div>
+        <!-- Colonne droite : portrait du joueur sélectionné -->
+        <div class="td-portrait" *ngIf="detailSelectedPlayer as dp">
+          <div class="td-portrait-jersey" [style.background]="detailTeam.colors.home.primary" [style.color]="detailTeam.colors.home.secondary">
+            <span class="td-portrait-number">{{ dp.number }}</span>
+          </div>
+          <span class="td-portrait-name">{{ dp.name }}</span>
+          <span class="td-portrait-role role-{{ dp.role }}">{{ dp.role | uppercase }}</span>
+          <div class="td-portrait-stats">
+            <div class="td-portrait-stat"><span>Vitesse</span><b>{{ dp.stats.speed }}/10</b></div>
+            <div class="td-portrait-stat"><span>Accélération</span><b>{{ dp.stats.acceleration }}/10</b></div>
+            <div class="td-portrait-stat"><span>Puissance de tir</span><b>{{ dp.stats.shotPower }}/10</b></div>
+            <div class="td-portrait-stat"><span>Passes</span><b>{{ dp.stats.passAccuracy }}/10</b></div>
+            <div class="td-portrait-stat"><span>Défense</span><b>{{ dp.stats.defense }}/10</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN CONFIGURATION ET CLASSEMENT -->
+  <div class="formation-screen roster-bg" #formationEl *ngIf="showFormation">
+    <div class="formation-container">
+      <div class="formation-header">
+        <button class="nav-btn nav-btn-ghost" [class.disabled]="substitutionFlowActive" (click)="handleFormationBack()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
+          Retour
+        </button>
+        <h2>{{ substitutionFlowActive ? 'Remplacements en cours de match' : 'Configuration et classement' }}</h2>
+        <button class="nav-btn nav-btn-primary" (click)="confirmFormation()">
+          {{ substitutionFlowActive ? 'Appliquer et continuer' : 'Continuer' }}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
+        </button>
+      </div>
+
+      <div class="formation-body">
+        <!-- Deux colonnes : composition d'équipe gauche / droite -->
+        <div class="roster-columns">
+          <!-- Colonne DOMICILE -->
+          <div class="roster-column">
+            <div class="roster-team-header">
+              <span class="roster-flag">{{ getCountryFlag(selectedHomeTeam?.country || '') }}</span>
+              <span class="roster-team-name">{{ selectedHomeTeam?.name }}</span>
+              <span class="roster-subs-left" *ngIf="matchStarted">🔄 {{ remainingSubstitutions('home') }} remplacement(s) restant(s)</span>
+            </div>
+
+            <!-- Carrousel de formation -->
+            <div class="formation-carousel">
+              <button class="carousel-arrow" [disabled]="matchStarted" (click)="cycleFormation('home', -1)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <div class="formation-visual-wrap">
+                <div class="formation-visual">
+                  <div class="formation-row" *ngFor="let row of getFormationRows(currentFormation('home'))">
+                    <span class="formation-dot" *ngFor="let _ of row"></span>
+                  </div>
+                </div>
+                <span class="formation-label">{{ currentFormation('home') }}</span>
+              </div>
+              <button class="carousel-arrow" [disabled]="matchStarted" (click)="cycleFormation('home', 1)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+
+            <!-- Tableau des 22 joueurs -->
+            <div class="roster-table">
+              <div class="roster-table-head">
+                <span></span>
+                <span class="col-num">N°</span>
+                <span class="col-name">Nom</span>
+                <span class="col-role">Poste</span>
+                <span class="col-form">Forme</span>
+              </div>
+              <div class="roster-table-body">
+                <ng-container *ngFor="let p of getRosterState('home').roster; let i = index">
+                  <div class="roster-row-wrap" [class.bench-start]="i === 10">
+                    <div class="roster-row"
+                         [class.starter]="isStarter(i)"
+                         [class.bench]="!isStarter(i)"
+                         [class.active]="getRosterState('home').selectedIndex === i"
+                         (click)="selectRosterRow('home', i)">
+                      <button class="col-captain" [class.is-captain]="getRosterState('home').captainNumber === p.number"
+                              [disabled]="matchStarted" [title]="getRosterState('home').captainNumber === p.number ? 'Capitaine' : 'Nommer capitaine'"
+                              (click)="setCaptain('home', p.number); $event.stopPropagation()">
+                        {{ getRosterState('home').captainNumber === p.number ? '©' : '☆' }}
+                      </button>
+                      <span class="col-num">{{ p.number }}</span>
+                      <span class="col-name">{{ p.name }}</span>
+                      <span class="col-role role-{{ p.role }}">{{ p.role | uppercase }}</span>
+                      <span class="col-form form-{{ getExtendedAttributes(p, 'home').form }}">{{ getExtendedAttributes(p, 'home').form }}</span>
+                    </div>
+
+                    <!-- Menu contextuel : avatar/numéro + attributs étendus (3 colonnes) + déplacement -->
+                    <div class="roster-context-menu" *ngIf="getRosterState('home').selectedIndex === i">
+                      <div class="rcm-body">
+                        <div class="rcm-avatar-col">
+                          <div class="rcm-avatar" [style.background]="selectedHomeJersey?.primary" [style.color]="selectedHomeJersey?.secondary">{{ p.number }}</div>
+                          <span class="rcm-avatar-name">{{ p.name }}</span>
+                          <span class="rcm-avatar-role role-{{ p.role }}">{{ p.role | uppercase }}</span>
+                        </div>
+                        <div class="rcm-attrs">
+                          <div class="rcm-attr"><span>Vitesse</span><b>{{ p.stats.speed }}/10</b></div>
+                          <div class="rcm-attr"><span>Accélération</span><b>{{ p.stats.acceleration }}/10</b></div>
+                          <div class="rcm-attr"><span>Agilité</span><b>{{ getExtendedAttributes(p, 'home').agility }}/10</b></div>
+                          <div class="rcm-attr"><span>Poids</span><b>{{ getExtendedAttributes(p, 'home').weight }} kg</b></div>
+                        </div>
+                        <div class="rcm-attrs">
+                          <div class="rcm-attr"><span>Puissance de tir</span><b>{{ p.stats.shotPower }}/10</b></div>
+                          <div class="rcm-attr"><span>Dribble</span><b>{{ getExtendedAttributes(p, 'home').dribble }}/10</b></div>
+                          <div class="rcm-attr"><span>Pied fort</span><b>{{ getExtendedAttributes(p, 'home').strongFoot }}</b></div>
+                          <div class="rcm-attr"><span>Âge</span><b>{{ getExtendedAttributes(p, 'home').age }} ans</b></div>
+                        </div>
+                      </div>
+                      <div class="rcm-actions">
+                        <button (click)="moveRosterPlayer('home', -1); $event.stopPropagation()">▲ Monter</button>
+                        <button (click)="moveRosterPlayer('home', 1); $event.stopPropagation()">▼ Descendre</button>
+                        <button class="rcm-close" (click)="closeRosterContextMenu('home'); $event.stopPropagation()">Fermer</button>
+                      </div>
+                    </div>
+                  </div>
+                </ng-container>
+              </div>
+            </div>
+          </div>
+
+          <!-- Colonne EXTÉRIEUR -->
+          <div class="roster-column">
+            <div class="roster-team-header">
+              <span class="roster-flag">{{ getCountryFlag(selectedAwayTeam?.country || '') }}</span>
+              <span class="roster-team-name">{{ selectedAwayTeam?.name }}</span>
+              <span class="roster-subs-left" *ngIf="matchStarted">🔄 {{ remainingSubstitutions('away') }} remplacement(s) restant(s)</span>
+            </div>
+
+            <div class="formation-carousel">
+              <button class="carousel-arrow" [disabled]="matchStarted" (click)="cycleFormation('away', -1)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <div class="formation-visual-wrap">
+                <div class="formation-visual">
+                  <div class="formation-row" *ngFor="let row of getFormationRows(currentFormation('away'))">
+                    <span class="formation-dot" *ngFor="let _ of row"></span>
+                  </div>
+                </div>
+                <span class="formation-label">{{ currentFormation('away') }}</span>
+              </div>
+              <button class="carousel-arrow" [disabled]="matchStarted" (click)="cycleFormation('away', 1)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+
+            <div class="roster-table">
+              <div class="roster-table-head">
+                <span></span>
+                <span class="col-num">N°</span>
+                <span class="col-name">Nom</span>
+                <span class="col-role">Poste</span>
+                <span class="col-form">Forme</span>
+              </div>
+              <div class="roster-table-body">
+                <ng-container *ngFor="let p of getRosterState('away').roster; let i = index">
+                  <div class="roster-row-wrap" [class.bench-start]="i === 10">
+                    <div class="roster-row"
+                         [class.starter]="isStarter(i)"
+                         [class.bench]="!isStarter(i)"
+                         [class.active]="getRosterState('away').selectedIndex === i"
+                         (click)="selectRosterRow('away', i)">
+                      <button class="col-captain" [class.is-captain]="getRosterState('away').captainNumber === p.number"
+                              [disabled]="matchStarted" [title]="getRosterState('away').captainNumber === p.number ? 'Capitaine' : 'Nommer capitaine'"
+                              (click)="setCaptain('away', p.number); $event.stopPropagation()">
+                        {{ getRosterState('away').captainNumber === p.number ? '©' : '☆' }}
+                      </button>
+                      <span class="col-num">{{ p.number }}</span>
+                      <span class="col-name">{{ p.name }}</span>
+                      <span class="col-role role-{{ p.role }}">{{ p.role | uppercase }}</span>
+                      <span class="col-form form-{{ getExtendedAttributes(p, 'away').form }}">{{ getExtendedAttributes(p, 'away').form }}</span>
+                    </div>
+
+                    <div class="roster-context-menu" *ngIf="getRosterState('away').selectedIndex === i">
+                      <div class="rcm-body">
+                        <div class="rcm-avatar-col">
+                          <div class="rcm-avatar" [style.background]="selectedAwayJersey?.primary" [style.color]="selectedAwayJersey?.secondary">{{ p.number }}</div>
+                          <span class="rcm-avatar-name">{{ p.name }}</span>
+                          <span class="rcm-avatar-role role-{{ p.role }}">{{ p.role | uppercase }}</span>
+                        </div>
+                        <div class="rcm-attrs">
+                          <div class="rcm-attr"><span>Vitesse</span><b>{{ p.stats.speed }}/10</b></div>
+                          <div class="rcm-attr"><span>Accélération</span><b>{{ p.stats.acceleration }}/10</b></div>
+                          <div class="rcm-attr"><span>Agilité</span><b>{{ getExtendedAttributes(p, 'away').agility }}/10</b></div>
+                          <div class="rcm-attr"><span>Poids</span><b>{{ getExtendedAttributes(p, 'away').weight }} kg</b></div>
+                        </div>
+                        <div class="rcm-attrs">
+                          <div class="rcm-attr"><span>Puissance de tir</span><b>{{ p.stats.shotPower }}/10</b></div>
+                          <div class="rcm-attr"><span>Dribble</span><b>{{ getExtendedAttributes(p, 'away').dribble }}/10</b></div>
+                          <div class="rcm-attr"><span>Pied fort</span><b>{{ getExtendedAttributes(p, 'away').strongFoot }}</b></div>
+                          <div class="rcm-attr"><span>Âge</span><b>{{ getExtendedAttributes(p, 'away').age }} ans</b></div>
+                        </div>
+                      </div>
+                      <div class="rcm-actions">
+                        <button (click)="moveRosterPlayer('away', -1); $event.stopPropagation()">▲ Monter</button>
+                        <button (click)="moveRosterPlayer('away', 1); $event.stopPropagation()">▼ Descendre</button>
+                        <button class="rcm-close" (click)="closeRosterContextMenu('away'); $event.stopPropagation()">Fermer</button>
+                      </div>
+                    </div>
+                  </div>
+                </ng-container>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN RÉGLAGES DU MATCH -->
+  <div class="formation-screen settings-bg" #settingsEl *ngIf="showSettings">
+    <div class="formation-container">
+      <div class="formation-header">
+        <button class="nav-btn nav-btn-ghost" (click)="backToFormationFromSettings()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
+          Retour
+        </button>
+        <h2>Réglages du match</h2>
+        <button class="nav-btn nav-btn-primary" (click)="confirmSettings()">
+          Continuer
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"/></svg>
+        </button>
+      </div>
+
+      <div class="formation-body">
+        <!-- Réglages du match : partagés, verrouillés une fois le match commencé -->
+        <div class="settings-panel" [class.locked]="matchStarted">
+          <h3>Réglages du match <span class="settings-lock" *ngIf="matchStarted">🔒 verrouillés jusqu'à la fin du match</span></h3>
+
+          <div class="settings-grid">
+            <div class="settings-block">
+              <span class="settings-block-label">⚡ Difficulté (IA)</span>
+              <div class="settings-vlist">
+                <button class="settings-vitem" [class.active]="selectedDifficulty==='easy'" [disabled]="matchStarted" (click)="selectDifficulty('easy')">🌱 Facile</button>
+                <button class="settings-vitem" [class.active]="selectedDifficulty==='medium'" [disabled]="matchStarted" (click)="selectDifficulty('medium')">⚡ Moyen</button>
+                <button class="settings-vitem" [class.active]="selectedDifficulty==='hard'" [disabled]="matchStarted" (click)="selectDifficulty('hard')">🔥 Difficile</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">🔄 Remplacements autorisés</span>
+              <div class="settings-vscroller">
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('subs', substitutionOptions.length, -1)" (click)="scrollSettings('subs', substitutionOptions.length, -1)">‹</button>
+                <div class="settings-vlist">
+                  <button class="settings-vitem" *ngFor="let n of settingsWindow('subs', substitutionOptions)"
+                          [class.active]="matchSettings.substitutionsAllowed===n" [disabled]="matchStarted"
+                          (click)="matchSettings.substitutionsAllowed = n">{{ n }}</button>
+                </div>
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('subs', substitutionOptions.length, 1)" (click)="scrollSettings('subs', substitutionOptions.length, 1)">›</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">🏟 Stade</span>
+              <div class="settings-vscroller">
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('stadium', stadiums.length, -1, 2)" (click)="scrollSettings('stadium', stadiums.length, -1, 2)">‹</button>
+                <div class="settings-vlist">
+                  <button class="settings-vitem" *ngFor="let s of settingsWindow('stadium', stadiums, 2)"
+                          [class.active]="matchSettings.stadiumId===s.id" [disabled]="matchStarted"
+                          (click)="matchSettings.stadiumId = s.id; rebuildPreviewStadium()">{{ s.name }}<span *ngIf="s.premium"> ⭐</span> <small>({{ s.city }} · {{ s.capacity | number }})</small></button>
+                </div>
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('stadium', stadiums.length, 1, 2)" (click)="scrollSettings('stadium', stadiums.length, 1, 2)">›</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">⚽ Ballon</span>
+              <div class="settings-vscroller">
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('ball', balls.length, -1)" (click)="scrollSettings('ball', balls.length, -1)">‹</button>
+                <div class="settings-vlist">
+                  <button class="settings-vitem" *ngFor="let b of settingsWindow('ball', balls)"
+                          [class.active]="matchSettings.ballId===b.id" [disabled]="matchStarted"
+                          (click)="matchSettings.ballId = b.id">
+                    <span class="ball-swatch" [style.background]="b.accentColor"></span>{{ b.name }}
+                  </button>
+                </div>
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('ball', balls.length, 1)" (click)="scrollSettings('ball', balls.length, 1)">›</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">🌦 Météo</span>
+              <div class="settings-vlist">
+                <button class="settings-vitem" *ngFor="let w of weatherOptions"
+                        [class.active]="matchSettings.weather===w.id" [disabled]="matchStarted"
+                        (click)="matchSettings.weather = w.id">{{ w.icon }} {{ w.name }}</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">🌓 Moment / Éclairage</span>
+              <div class="settings-vlist">
+                <button class="settings-vitem" [class.active]="matchSettings.dayNight==='jour'" [disabled]="matchStarted" (click)="matchSettings.dayNight = 'jour'; rebuildPreviewStadium()">☀️ Jour</button>
+                <button class="settings-vitem" [class.active]="matchSettings.dayNight==='nuit'" [disabled]="matchStarted" (click)="matchSettings.dayNight = 'nuit'; rebuildPreviewStadium()">🌙 Nuit (projecteurs)</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">🎙 Commentateur</span>
+              <div class="settings-vscroller">
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('commentator', commentators.length, -1, 2)" (click)="scrollSettings('commentator', commentators.length, -1, 2)">‹</button>
+                <div class="settings-vlist">
+                  <button class="settings-vitem" *ngFor="let c of settingsWindow('commentator', commentators, 2)"
+                          [class.active]="matchSettings.commentatorId===c.id"
+                          (click)="matchSettings.commentatorId = c.id">{{ c.name }} <small>({{ c.language }})</small></button>
+                </div>
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('commentator', commentators.length, 1, 2)" (click)="scrollSettings('commentator', commentators.length, 1, 2)">›</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">📣 Ambiance des tribunes</span>
+              <div class="settings-vlist">
+                <button class="settings-vitem" *ngFor="let c of crowdStyles"
+                        [class.active]="matchSettings.crowdStyleId===c.id"
+                        [title]="c.description"
+                        (click)="matchSettings.crowdStyleId = c.id">{{ c.name }}</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">⏱ Durée du match</span>
+              <div class="settings-vscroller">
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('duration', matchDurations.length, -1)" (click)="scrollSettings('duration', matchDurations.length, -1)">‹</button>
+                <div class="settings-vlist">
+                  <button class="settings-vitem" *ngFor="let d of settingsWindow('duration', matchDurations)"
+                          [class.active]="matchSettings.durationId===d.id" [disabled]="matchStarted"
+                          (click)="matchSettings.durationId = d.id">{{ d.label }}</button>
+                </div>
+                <button class="settings-scroll-arrow" [disabled]="!canScrollSettings('duration', matchDurations.length, 1)" (click)="scrollSettings('duration', matchDurations.length, 1)">›</button>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">🧍 Taille des joueurs</span>
+              <div class="settings-vlist">
+                <button class="settings-vitem" *ngFor="let p of playerSizeOptions"
+                        [class.active]="matchSettings.playerSizeId===p.id" [disabled]="matchStarted"
+                        (click)="matchSettings.playerSizeId = p.id">{{ p.label }}</button>
+              </div>
+              <small class="settings-hint">Réajustable en direct pendant le match (clic droit → Taille des joueurs)</small>
+            </div>
+
+            <div class="settings-block">
+              <span class="settings-block-label">🏷 Affichage en jeu</span>
+              <label class="settings-toggle">
+                <input type="checkbox" [(ngModel)]="matchSettings.showPlayerLabels" name="showPlayerLabels">
+                Afficher nom/numéro du joueur sélectionné et du porteur du ballon
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN RÉCAPITULATIF (avant coup d'envoi) -->
+  <div class="recap-screen ball-bg" #recapEl *ngIf="showRecap">
+    <div class="recap-container">
+      <div class="recap-header">
+        <button class="nav-btn nav-btn-ghost" (click)="backToSettingsFromRecap()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
+          Modifier
+        </button>
+        <h2>Récapitulatif &amp; Coup d'envoi</h2>
+        <div class="header-spacer"></div>
+      </div>
+
+      <div class="recap-body">
+        <div class="recap-teams">
+          <div class="recap-team">
+            <span class="recap-logo">{{ selectedHomeTeam?.logo }}</span>
+            <span class="recap-name">{{ selectedHomeTeam?.name }}</span>
+            <span class="recap-formation">{{ currentFormation('home') }}</span>
+            <span class="recap-jersey" [style.background]="selectedHomeJersey?.primary" [style.color]="selectedHomeJersey?.secondary">{{ selectedHomeJersey?.label }}</span>
+          </div>
+          <div class="recap-vs">VS</div>
+          <div class="recap-team">
+            <span class="recap-logo">{{ selectedAwayTeam?.logo }}</span>
+            <span class="recap-name">{{ selectedAwayTeam?.name }}</span>
+            <span class="recap-formation">{{ currentFormation('away') }}</span>
+            <span class="recap-jersey" [style.background]="selectedAwayJersey?.primary" [style.color]="selectedAwayJersey?.secondary">{{ selectedAwayJersey?.label }}</span>
+          </div>
+        </div>
+
+        <div class="recap-settings">
+          <div class="recap-setting"><span>⚡ Difficulté</span><b>{{ selectedDifficulty }}</b></div>
+          <div class="recap-setting"><span>🔄 Remplacements</span><b>{{ matchSettings.substitutionsAllowed }}</b></div>
+          <div class="recap-setting"><span>🏟 Stade</span><b>{{ recapStadiumName }}</b></div>
+          <div class="recap-setting"><span>⚽ Ballon</span><b>{{ recapBallName }}</b></div>
+          <div class="recap-setting"><span>🌦 Météo</span><b>{{ matchSettings.weather }}</b></div>
+          <div class="recap-setting"><span>🌓 Moment</span><b>{{ matchSettings.dayNight }}</b></div>
+          <div class="recap-setting"><span>🎙 Commentateur</span><b>{{ recapCommentatorName }}</b></div>
+          <div class="recap-setting"><span>📣 Ambiance</span><b>{{ recapCrowdStyleName }}</b></div>
+          <div class="recap-setting"><span>⏱ Durée</span><b>{{ recapDurationLabel }}</b></div>
+        </div>
+      </div>
+
+      <div class="recap-footer">
+        <button class="confirm-btn" (click)="confirmRecapAndKickoff()">
+          ⚽ Coup d'envoi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HUD DU MATCH -->
+  <div class="match-hud" *ngIf="showMatch">
+    <!-- Jauges de puissance de tir du porteur du ballon, une par équipe (bas gauche =
+         domicile, bas droite = extérieur) — actives en tutoriel comme en match réel,
+         cf. updateShotPowerGauges(). Masquée quand personne de ce camp n'a le ballon. -->
+    <div class="shot-power-gauge gauge-home" *ngIf="homeShotPowerCarrier">
+      <span class="spg-label">#{{ homeShotPowerCarrier.number }} {{ homeShotPowerCarrier.name }}</span>
+      <div class="spg-bar"><div class="spg-fill spg-fill-home" [style.width.%]="homeShotPowerCarrier.pct"></div></div>
+    </div>
+    <div class="shot-power-gauge gauge-away" *ngIf="awayShotPowerCarrier">
+      <span class="spg-label">#{{ awayShotPowerCarrier.number }} {{ awayShotPowerCarrier.name }}</span>
+      <div class="spg-bar"><div class="spg-fill spg-fill-away" [style.width.%]="awayShotPowerCarrier.pct"></div></div>
+    </div>
+
+    <!-- Bandeau score (coin supérieur gauche), façon plaquette ovale -->
+    <div class="score-bar">
+      <div class="score-oval">
+        <div class="score-flag-badge home">
+          <span class="score-logo">{{ selectedHomeTeam?.logo }}</span>
+        </div>
+        <div class="score-plate">
+          <span class="score-home">{{ matchScore.home }}</span>
+          <span class="score-sep">-</span>
+          <span class="score-away">{{ matchScore.away }}</span>
+        </div>
+        <div class="score-flag-badge away">
+          <span class="score-logo">{{ selectedAwayTeam?.logo }}</span>
+        </div>
+      </div>
+      <div class="score-names">
+        <span class="score-name">{{ selectedHomeTeam?.shortName }} <em>{{ possessionHome }}%</em></span>
+        <span class="score-name">{{ selectedAwayTeam?.shortName }} <em>{{ possessionAway }}%</em></span>
+      </div>
+      <div class="match-info">
+        <span class="match-period">{{ matchPeriod }}</span>
+        <span class="match-clock">{{ matchClock }}</span>
+      </div>
+      <!-- "De quel côté suis-je ?" : le joueur humain contrôle toujours l'équipe domicile -->
+      <div class="attack-side-indicator" *ngIf="!autoPlayEnabled" title="Vous attaquez vers ce côté de l'écran">
+        🎯 Vous attaquez : {{ humanAttackingSideLabel }}
+      </div>
+    </div>
+
+    <!-- Étiquettes nom/numéro au-dessus de la tête des joueurs (flèche vers le joueur) -->
+    <div class="player-label" *ngFor="let l of labelPlayers"
+         [class.home]="l.teamId==='home'" [class.away]="l.teamId==='away'" [class.highlight]="l.highlight"
+         [style.left.px]="l.x" [style.top.px]="l.y">
+      {{ l.text }}
+    </div>
+
+    <!-- Radar (mini-carte) : positions des joueurs/ballon, fond semi-transparent pour
+         laisser voir la pelouse en dessous, togglable (menu contextuel) -->
+    <div class="radar" *ngIf="showRadar">
+      <div class="radar-pitch">
+        <div class="radar-halfway-line"></div>
+        <div class="radar-center-circle"></div>
+        <div class="radar-dot" *ngFor="let d of radarDots"
+             [class.home]="d.teamId==='home'" [class.away]="d.teamId==='away'"
+             [class.ball]="d.teamId==='ball'" [class.highlight]="d.highlight"
+             [style.left.%]="d.x" [style.top.%]="d.y"></div>
+      </div>
+    </div>
+
+    <!-- Notification de but -->
+    <div class="goal-notification" *ngIf="goalNotificationVisible">
+      {{ goalNotification }}
+    </div>
+
+    <!-- Notification arbitrale (faute, carton, hors-jeu, penalty) -->
+    <div class="referee-notification" *ngIf="refereeNotificationVisible">
+      {{ refereeNotification }}
+    </div>
+
+    <!-- Panneau pliable/dépliable : replié par défaut (simple onglet, ne masque plus la
+         pelouse) — uniquement le statut manette + le schéma des boutons d'action (la
+         sélection d'ateliers vit désormais sur la page Tutoriel, cf. selectExercise()). -->
+    <div class="controls-hint-tab" *ngIf="showControlsHint && !controlsHintExpanded" (click)="toggleControlsHint()">
+      <span class="gamepad-dot" [class.gamepad-dot-on]="gamepadConnected"></span>
+      🎮 Manette
+    </div>
+
+    <div class="controls-hint" *ngIf="showControlsHint && controlsHintExpanded">
+      <button class="controls-hint-close" (click)="toggleControlsHint()">✕</button>
+
+      <!-- Statut manette(s) : nom + branchée/débranchée, schéma mis à jour en direct -->
+      <div class="gamepad-status">
+        <div class="gamepad-status-row" *ngIf="!gamepadConnected">
+          <span class="gamepad-dot"></span> Manette débranchée
+        </div>
+        <div class="gamepad-status-row gamepad-status-on" *ngFor="let name of connectedGamepadNames">
+          <span class="gamepad-dot gamepad-dot-on"></span> {{ name }} — Branchée
+        </div>
+        <app-gamepad-diagram [highlight]="gamepadHighlight"></app-gamepad-diagram>
+      </div>
+
+      <button class="training-cat-btn" *ngIf="trainingMode" (click)="returnToTutorialCardsFromMatch()">🎓 Retour aux ateliers</button>
+    </div>
+
+    <!-- Tutoriel guidé : un pas-à-pas qui avance automatiquement dès que l'action
+         attendue est détectée (cf. advanceTutorialIfNeeded()) -->
+    <div class="tutorial-overlay" *ngIf="tutorialActive && tutorialCurrentStep as step">
+      <div class="tutorial-text">
+        <div class="tutorial-step-index">Étape {{ tutorialStepIndex + 1 }} / {{ tutorialSteps.length }}</div>
+        <div class="tutorial-title">{{ step.title }}</div>
+        <div class="tutorial-description">{{ step.description }}</div>
+        <div class="tutorial-controls">
+          <span class="tutorial-kbd">⌨ {{ step.kbd }}</span>
+          <span class="tutorial-pad">🎮 {{ step.pad }}</span>
+        </div>
+        <button class="tutorial-skip" (click)="skipTutorial()">Passer le tutoriel</button>
+      </div>
+      <app-gamepad-diagram class="tutorial-pad-diagram" [highlight]="step.padHighlight"></app-gamepad-diagram>
+    </div>
+
+    <!-- Tir au but : visée + puissance (tireur humain) -->
+    <div class="penalty-hud" *ngIf="penaltyPhase === 'aiming'">
+      <div class="penalty-goal-frame">
+        <div class="penalty-reticle" [style.left.%]="50 + penaltyAimX * 42" [style.bottom.%]="10 + penaltyAimY * 75"></div>
+      </div>
+      <div class="penalty-power-bar"><div class="penalty-power-fill" [style.width.%]="penaltyPower * 100"></div></div>
+      <div class="penalty-hint">← → ↑ ↓ viser · maintenir Espace puis relâcher pour tirer</div>
+    </div>
+
+    <!-- Tir au but : plongeon du gardien humain -->
+    <div class="penalty-hud" *ngIf="penaltyPhase === 'keeper'">
+      <div class="penalty-hint">Le tireur adverse s'avance… ← ou → pour plonger, ↓ pour rester au centre !</div>
+    </div>
+
+    <!-- Pause et verrouillage caméra : disponibles via le menu contextuel (clic droit) -->
+
+    <!-- Modal pause -->
+    <div class="pause-modal-backdrop" *ngIf="showPauseModal">
+      <div class="pause-modal" #pauseModalEl>
+        <h3>⏸ Match en pause</h3>
+        <button class="pause-modal-btn" (click)="resumeGame()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          Continuer
+        </button>
+        <button class="pause-modal-btn" (click)="openSubstitutionFlow()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          Remplacement
+        </button>
+        <button class="pause-modal-btn quit" (click)="backToMenu()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+          Quitter
+        </button>
+      </div>
+    </div>
+
+    <!-- Menu contextuel (clic droit sur le terrain) -->
+    <div class="context-menu-backdrop" *ngIf="contextMenuVisible" (click)="closeContextMenu()" (contextmenu)="$event.preventDefault(); closeContextMenu()"></div>
+    <div class="context-menu" #contextMenuEl *ngIf="contextMenuVisible" [style.left.px]="contextMenuX" [style.top.px]="contextMenuY">
+      <button (click)="contextTogglePause()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        {{ gameState?.match?.isPaused ? 'Reprendre' : 'Pause' }}
+      </button>
+      <button (click)="contextToggleViewLock()">
+        <svg *ngIf="!viewLocked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+        <svg *ngIf="viewLocked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        {{ viewLocked ? 'Déverrouiller la vue' : 'Verrouiller la vue' }}
+      </button>
+
+      <!-- Caméra : angle/zoom, repliable pour ne pas surcharger le menu -->
+      <button data-submenu-toggle (click)="toggleContextCameraPanel()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        Caméra &amp; taille des joueurs
+        <svg class="chevron" [class.open]="contextCameraOpen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="context-submenu" *ngIf="contextCameraOpen">
+        <div class="context-submenu-row">
+          <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg> Zoom</span>
+          <div class="context-stepper">
+            <button (click)="cameraZoomOut()" title="Zoom arrière">−</button>
+            <button (click)="cameraZoomIn()" title="Zoom avant">+</button>
+          </div>
+        </div>
+        <div class="context-chip-row">
+          <button class="context-chip" *ngFor="let preset of cameraPresets" [class.active]="activeCameraPresetId === preset.id" (click)="setCameraPreset(preset)">{{ preset.label }}</button>
+        </div>
+        <div class="context-submenu-row">
+          <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"/></svg> Taille des joueurs</span>
+          <div class="context-stepper">
+            <button (click)="decreasePlayerSize()" title="Réduire">−</button>
+            <span class="context-stepper-value">{{ (playerSizeMultiplier * 100) | number:'1.0-0' }}%</span>
+            <button (click)="increasePlayerSize()" title="Agrandir">+</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vitesse du jeu : chronomètre, déplacements et physique ralentis/accélérés ensemble -->
+      <button data-submenu-toggle (click)="toggleContextSpeedPanel()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Vitesse du jeu
+        <svg class="chevron" [class.open]="contextSpeedOpen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="context-submenu" *ngIf="contextSpeedOpen">
+        <div class="context-chip-row">
+          <button class="context-chip" *ngFor="let preset of gameSpeedPresets" [class.active]="gameSpeedMultiplier === preset.value" (click)="setGameSpeed(preset.value)">{{ preset.label }}</button>
+        </div>
+        <div class="context-submenu-row">
+          <input type="range" [min]="GAME_SPEED_MIN" [max]="GAME_SPEED_MAX" step="0.05" [value]="gameSpeedMultiplier" (input)="onGameSpeedSlider($event)" />
+          <span class="context-stepper-value">{{ (gameSpeedMultiplier * 100) | number:'1.0-0' }}%</span>
+        </div>
+      </div>
+
+      <button (click)="contextToggleAutoPlay()">
+        <svg width="16" height="16" viewBox="0 0 24 24" [attr.fill]="autoPlayEnabled ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z"/></svg>
+        {{ autoPlayEnabled ? 'Désactiver l\'auto-play' : 'Activer l\'auto-play' }}
+      </button>
+      <button (click)="contextToggleBallTrail()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="6" r="3"/><path d="M4 18c4-1 8-3 10-6s3-4 3-4" stroke-dasharray="2 2"/></svg>
+        {{ ballTrailEnabled ? 'Masquer la trajectoire du ballon' : 'Afficher la trajectoire du ballon' }}
+      </button>
+      <button (click)="contextToggleAllPlayerLabels()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="7" rx="2"/><path d="M12 11v4m-3 0h6"/></svg>
+        {{ showAllPlayerLabels ? 'Masquer les noms des joueurs' : 'Afficher les noms des joueurs' }}
+      </button>
+      <button (click)="contextToggleBallCarrierRing()">
+        <svg width="16" height="16" viewBox="0 0 24 24" [attr.fill]="showBallCarrierRing ? '#ffd700' : 'none'" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="4"/></svg>
+        {{ showBallCarrierRing ? 'Masquer le cercle du porteur du ballon' : 'Afficher le cercle du porteur du ballon' }}
+      </button>
+      <button (click)="contextToggleRadar()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><path d="M12 12L18 8"/></svg>
+        {{ showRadar ? 'Masquer le radar' : 'Afficher le radar' }}
+      </button>
+      <button (click)="contextTogglePitchOnly()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18"/></svg>
+        {{ pitchOnlyMode ? 'Afficher les tribunes' : 'Terrain seul (masquer les tribunes)' }}
+      </button>
+      <button *ngIf="isPremiumStadium" (click)="contextStadiumOverview()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        Vue d'ensemble du stade
+      </button>
+
+      <button *ngIf="hasActiveGoalCelebration" (click)="contextStopCelebration()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+        Stopper la célébration
+      </button>
+      <button *ngIf="hasGoalReplay" (click)="contextShowGoalReplay()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        Revoir le but (ralenti)
+      </button>
+
+      <button (click)="contextSubstitution()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        Remplacement
+      </button>
+      <button (click)="openHelpModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Comment jouer
+      </button>
+      <button class="quit" (click)="contextQuit()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        Quitter
+      </button>
+    </div>
+
+    <!-- Bandeau pendant la lecture du ralenti -->
+    <div class="replay-banner" *ngIf="replayActive">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+      Ralenti — Revoir le but
+    </div>
+
+    <!-- Modale d'aide "Comment jouer" -->
+    <div class="help-modal-backdrop" *ngIf="showHelpModal" (click)="closeHelpModal()">
+      <div class="help-modal" (click)="$event.stopPropagation()">
+        <div class="help-modal-header">
+          <h3>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/></svg>
+            Comment jouer
+          </h3>
+          <button class="help-modal-close" (click)="closeHelpModal()">✕</button>
+        </div>
+
+        <!-- Onglets -->
+        <div class="help-tabs">
+          <button class="help-tab" [class.active]="helpTab==='clavier'" (click)="setHelpTab('clavier')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
+            Clavier / souris
+          </button>
+          <button class="help-tab" [class.active]="helpTab==='manette'" (click)="setHelpTab('manette')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 12h4m-2-2v4M15.5 11.5h.01M18.5 13.5h.01M17 9.5h.01M14 15.5h.01"/><path d="M7.5 6h9a5 5 0 0 1 5 5.5l-.7 4a2.5 2.5 0 0 1-4.4 1.1L15 14H9l-1.4 2.6a2.5 2.5 0 0 1-4.4-1.1l-.7-4A5 5 0 0 1 7.5 6z"/></svg>
+            Manette
+          </button>
+          <button class="help-tab" [class.active]="helpTab==='tactile'" (click)="setHelpTab('tactile')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
+            Tactile
+          </button>
+        </div>
+
+        <!-- Onglet Clavier / souris -->
+        <ng-container *ngIf="helpTab==='clavier'">
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
+              Déplacement et actions
+            </h4>
+            <div class="help-controls-grid">
+              <div class="help-control"><kbd>W A S D</kbd><span>Déplacer le joueur (ou flèches directionnelles)</span></div>
+              <div class="help-control"><kbd>Shift</kbd><span>Sprinter (maintenir)</span></div>
+              <div class="help-control"><kbd>Espace</kbd><span>Tirer au but</span></div>
+              <div class="help-control"><kbd>E</kbd><span>Passer au coéquipier le mieux placé</span></div>
+              <div class="help-control"><kbd>F</kbd><span>Tacler l'adversaire porteur du ballon</span></div>
+              <div class="help-control"><kbd>Q</kbd><span>Changer de joueur contrôlé</span></div>
+              <div class="help-control"><kbd>P</kbd><span>Mettre en pause / reprendre</span></div>
+              <div class="help-control"><kbd>Clic droit</kbd><span>Ouvrir le menu contextuel</span></div>
+            </div>
+          </div>
+
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a15 15 0 0 1 0 20M2 12h20"/></svg>
+              Comment marquer
+            </h4>
+            <p>Approche le ballon avec ton joueur pour le récupérer (il se colle automatiquement dès qu'il est assez proche), puis <kbd>Espace</kbd> pour tirer vers le but adverse — la puissance et la précision dépendent de la vitesse et de la distance au but. Utilise <kbd>E</kbd> pour passer à un coéquipier démarqué plutôt que de forcer un tir impossible, et <kbd>Shift</kbd> pour prendre de la vitesse avant de frapper ou de centrer. <kbd>Q</kbd> permet de reprendre le contrôle d'un coéquipier mieux placé sans lâcher le ballon des yeux.</p>
+          </div>
+
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-6 0v4"/><rect x="4" y="9" width="16" height="12" rx="2"/></svg>
+              Défendre
+            </h4>
+            <p><kbd>F</kbd> déclenche un tacle dans la direction du joueur adverse le plus proche s'il est à portée — trop tôt ou de dos, c'est faute (voire carton selon la sévérité). <kbd>Q</kbd> permet de sélectionner rapidement le défenseur le mieux placé pour intercepter une passe ou couvrir un appel.</p>
+          </div>
+
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="4"/></svg>
+              Coups francs, penaltys et tirs au but
+            </h4>
+            <div class="help-controls-grid">
+              <div class="help-control"><kbd>◄ ► ▲ ▼</kbd><span>Viser (gauche/droite/haut/bas dans le but)</span></div>
+              <div class="help-control"><kbd>Espace</kbd><span>Maintenir pour charger la puissance, relâcher pour tirer</span></div>
+              <div class="help-control"><kbd>◄ ►</kbd><span>Gardien : plonger d'un côté (quand l'adversaire tire)</span></div>
+              <div class="help-control"><kbd>▼</kbd><span>Gardien : rester au centre</span></div>
+            </div>
+            <p>Sur un coup franc dangereux, le mur adverse se place automatiquement à 9,15m du ballon. Sur penalty ou séance de tirs au but, le tireur vise et charge sa puissance ; côté gardien, le jeu bascule automatiquement en phase de plongeon quand c'est à l'IA de tirer.</p>
+          </div>
+
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              Menu contextuel (clic droit)
+            </h4>
+            <p>Pause, verrouillage et angle/zoom de caméra (avec préréglages type retransmission), taille des joueurs en direct, auto-play (les deux équipes s'affrontent seules — utile pour observer et apprendre), trajectoire du ballon, noms des joueurs sur le terrain, "terrain seul" (masquer les tribunes), vue d'ensemble du stade (stades premium), remplacements, ralenti pour revoir un but, cette aide, et quitter le match.</p>
+          </div>
+        </ng-container>
+
+        <!-- Onglet Manette -->
+        <ng-container *ngIf="helpTab==='manette'">
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 12h4m-2-2v4M15.5 11.5h.01M18.5 13.5h.01M17 9.5h.01M14 15.5h.01"/><path d="M7.5 6h9a5 5 0 0 1 5 5.5l-.7 4a2.5 2.5 0 0 1-4.4 1.1L15 14H9l-1.4 2.6a2.5 2.5 0 0 1-4.4-1.1l-.7-4A5 5 0 0 1 7.5 6z"/></svg>
+              Déplacement et actions
+            </h4>
+            <p class="help-note">Toute manette standard (Xbox, PlayStation, générique) est reconnue automatiquement dès qu'un bouton est pressé — rien à configurer. Les noms ci-dessous suivent le mapping standard du navigateur (équivalences Xbox / PlayStation).</p>
+            <div class="help-controls-grid">
+              <div class="help-control"><kbd>Stick gauche</kbd><span>Déplacer le joueur</span></div>
+              <div class="help-control"><kbd>A / ✕</kbd><span>Tirer au but</span></div>
+              <div class="help-control"><kbd>X / ◻</kbd><span>Passer au coéquipier le mieux placé</span></div>
+              <div class="help-control"><kbd>B / ◯</kbd><span>Tacler l'adversaire porteur du ballon</span></div>
+              <div class="help-control"><kbd>Y / △</kbd><span>Changer de joueur contrôlé</span></div>
+              <div class="help-control"><kbd>RT / R2</kbd><span>Sprinter (maintenir) — ou clic du stick droit (R3)</span></div>
+              <div class="help-control"><kbd>Start / Options</kbd><span>Mettre en pause / reprendre</span></div>
+            </div>
+          </div>
+
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a15 15 0 0 1 0 20M2 12h20"/></svg>
+              Comment marquer
+            </h4>
+            <p>Approche-toi du ballon avec le stick gauche pour le récupérer, puis <kbd>A / ✕</kbd> pour tirer vers le but adverse. Préfère <kbd>X / ◻</kbd> pour passer si aucun angle de tir n'est ouvert, et maintiens <kbd>RT / R2</kbd> pour prendre de la vitesse avant de frapper ou de centrer.</p>
+          </div>
+
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-6 0v4"/><rect x="4" y="9" width="16" height="12" rx="2"/></svg>
+              À savoir
+            </h4>
+            <p>Les tirs au but/penaltys jouables (viser + charger la puissance, plongeon du gardien) et le menu contextuel (caméra, taille des joueurs, auto-play, trajectoire du ballon, remplacements, ralenti...) ne sont pour l'instant accessibles qu'au clavier/souris ou tactile — pas encore de mapping manette dédié pour ces écrans.</p>
+          </div>
+        </ng-container>
+
+        <!-- Onglet Tactile -->
+        <ng-container *ngIf="helpTab==='tactile'">
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
+              Déplacement et actions
+            </h4>
+            <div class="help-controls-grid">
+              <div class="help-control"><kbd>Joystick</kbd><span>En bas à gauche de l'écran : déplacer le joueur (glisser le pouce)</span></div>
+              <div class="help-control"><kbd>⚽</kbd><span>Tirer au but</span></div>
+              <div class="help-control"><kbd>E</kbd><span>Passer au coéquipier le mieux placé</span></div>
+              <div class="help-control"><kbd>F</kbd><span>Tacler l'adversaire porteur du ballon</span></div>
+              <div class="help-control"><kbd>Q</kbd><span>Changer de joueur contrôlé</span></div>
+              <div class="help-control"><kbd>⚡</kbd><span>Sprinter (maintenir le doigt appuyé)</span></div>
+              <div class="help-control"><kbd>Appui long</kbd><span>Sur la pelouse : ouvrir le menu contextuel</span></div>
+            </div>
+          </div>
+
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a15 15 0 0 1 0 20M2 12h20"/></svg>
+              Comment marquer
+            </h4>
+            <p>Dirige ton joueur vers le ballon avec le joystick virtuel pour le récupérer, puis appuie sur <kbd>⚽</kbd> pour tirer vers le but adverse. Utilise <kbd>E</kbd> pour passer à un coéquipier démarqué et <kbd>⚡</kbd> (maintenu) pour accélérer avant de frapper ou de centrer.</p>
+          </div>
+
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              Menu contextuel (appui long)
+            </h4>
+            <p>Un appui long sur la pelouse ouvre le même menu que le clic droit : pause, verrouillage et angle/zoom de caméra, taille des joueurs en direct, auto-play, trajectoire du ballon, noms des joueurs, remplacements, ralenti pour revoir un but, cette aide, et quitter le match.</p>
+          </div>
+
+          <div class="help-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="4"/></svg>
+              Coups francs, penaltys et tirs au but
+            </h4>
+            <p>Les boutons tactiles restent affichés pendant les coups francs et penaltys : utilise le joystick pour ajuster la visée et <kbd>⚽</kbd> (maintenu puis relâché) pour charger la puissance et tirer. Quand l'IA tire, l'écran bascule automatiquement en phase de plongeon du gardien.</p>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN RÉSULTAT -->
+  <div class="result-screen" *ngIf="showResult">
+    <div class="result-container">
+      <div class="result-header">
+        <h2>Résultat du Match</h2>
+      </div>
+
+      <div class="result-score">
+        <div class="result-team home-result">
+          <span class="result-logo">{{ selectedHomeTeam?.logo }}</span>
+          <span class="result-name">{{ selectedHomeTeam?.name }}</span>
+        </div>
+        <div class="result-numbers">
+          <span class="result-home-score">{{ matchScore.home }}</span>
+          <span class="result-separator">-</span>
+          <span class="result-away-score">{{ matchScore.away }}</span>
+        </div>
+        <div class="result-team away-result">
+          <span class="result-logo">{{ selectedAwayTeam?.logo }}</span>
+          <span class="result-name">{{ selectedAwayTeam?.name }}</span>
+        </div>
+      </div>
+
+      <div class="result-text">{{ resultText }}</div>
+
+      <!-- Statistiques -->
+      <div class="result-stats">
+        <h3>Statistiques</h3>
+        <div class="stat-row">
+          <span class="stat-home">{{ matchStats.home.shots }}</span>
+          <span class="stat-label">Tirs</span>
+          <span class="stat-away">{{ matchStats.away.shots }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-home">{{ matchStats.home.shotsOnTarget }}</span>
+          <span class="stat-label">Tirs cadrés</span>
+          <span class="stat-away">{{ matchStats.away.shotsOnTarget }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-home">{{ possessionHome }}%</span>
+          <span class="stat-label">Possession</span>
+          <span class="stat-away">{{ possessionAway }}%</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-home">{{ matchStats.home.fouls }}</span>
+          <span class="stat-label">Fautes</span>
+          <span class="stat-away">{{ matchStats.away.fouls }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-home">{{ matchStats.home.corners }}</span>
+          <span class="stat-label">Corners</span>
+          <span class="stat-away">{{ matchStats.away.corners }}</span>
+        </div>
+      </div>
+
+      <!-- Événements -->
+      <div class="result-events" *ngIf="matchEvents.length > 0">
+        <h3>Événements</h3>
+        <div class="event-item" *ngFor="let event of matchEvents">
+          {{ event }}
+        </div>
+      </div>
+
+      <button class="menu-btn primary" (click)="backToMenu()">
+        Retour au Menu
+      </button>
+    </div>
+  </div>
+</div>

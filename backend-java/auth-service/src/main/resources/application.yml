@@ -1,0 +1,73 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-service
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/creativeai_auth
+    username: ${DB_USER:creativeai}
+    password: ${DB_PASSWORD:creativeai123}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  mail:
+    host: ${MAIL_HOST:mail.labibpro.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:contact@labibpro.com}
+    password: "L9@T5k_mX3Pq"
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:creativeaistudio-super-secret-key-that-is-long-enough-for-hs256}
+    expiration: 86400000  # 24h
+  otp:
+    expiration-minutes: 10
+  admin:
+    email: dadaahouawe@gmail.com
+    password: ${ADMIN_PASSWORD:Admin@2024!}
+
+  # ── Gmail OAuth2 ─────────────────────────────────────────────────────────
+  gmail:
+    client-id:       ${GMAIL_CLIENT_ID:YOUR_GOOGLE_CLIENT_ID}
+    client-secret:   ${GMAIL_CLIENT_SECRET:YOUR_GOOGLE_CLIENT_SECRET}
+    # URI enregistrée dans Google Cloud Console (doit correspondre exactement)
+    redirect-uri:    ${GMAIL_REDIRECT_URI:http://localhost:8480/api/auth/gmail/callback}
+    # Après callback réussi → rediriger vers cette URL frontend
+    frontend-redirect: ${GMAIL_FRONTEND_REDIRECT:http://localhost:4400/agentique/email}
+
+springdoc:
+  api-docs:
+    path: /auth/v3/api-docs
+
+minio:
+  endpoint: ${MINIO_URL:http://localhost:9400}
+  public-url: ${MINIO_PUBLIC_URL:http://localhost:9400}
+  access-key: ${MINIO_ACCESS_KEY:creativeai}
+  secret-key: ${MINIO_SECRET_KEY:creativeai123}
+  bucket: pub-images
+
+  # ── Agent Email ──────────────────────────────────────────────────────────
+agent:
+  encryption-key: ${ENCRYPTION_KEY:Q3JlYXRpdmVBSVN0dWRpb0tleUNoYW5nZU1lSW5Qcm9k}
+  rag-service-url: ${RAG_SERVICE_URL:http://creativeai-rag:8084}
+  groq-base-url: https://api.groq.com/openai/v1
+  default-model: llama-3.3-70b-versatile
+  max-memory-messages: 20

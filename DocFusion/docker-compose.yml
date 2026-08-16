@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: docfusion-postgres
+    environment:
+      POSTGRES_USER: docfusion
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: docfusion
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: docfusion-redis
+    ports:
+      - "6381:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: docfusion-rabbitmq
+    ports:
+      - "5674:5672"
+      - "15674:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  minio:
+    image: minio/minio
+    container_name: docfusion-minio
+    ports:
+      - "9004:9000"
+      - "9005:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  gateway-service:
+    build: ./gateway-service
+    container_name: docfusion-gateway
+    ports:
+      - "8085:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/docfusion
+      - SPRING_REDIS_HOST=redis
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - MINIO_ENDPOINT=http://minio:9000
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+      - minio
+
+  pdf-service:
+    build: ./pdf-service
+    container_name: docfusion-pdf
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - MINIO_ENDPOINT=minio:9000
+    depends_on:
+      - rabbitmq
+      - minio
+
+  ocr-service:
+    build: ./ocr-service
+    container_name: docfusion-ocr
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - MINIO_ENDPOINT=minio:9000
+    depends_on:
+      - rabbitmq
+      - minio
+
+  frontend:
+    build: ./frontend
+    container_name: docfusion-frontend
+    ports:
+      - "4202:80"
+    depends_on:
+      - gateway-service
+
+volumes:
+  postgres_data:
+  minio_data:

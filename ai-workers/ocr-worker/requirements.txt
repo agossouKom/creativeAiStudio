@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-multipart
+kafka-python
+boto3
+opencv-python-headless
+numpy
+Pillow
+PyMuPDF==1.24.2
+requests
+python-dotenv
+aiofiles
+groq
+pytesseract

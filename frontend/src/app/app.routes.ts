@@ -1,0 +1,99 @@
+import { Routes }              from '@angular/router';
+import { authGuard }           from './guards/auth.guard';
+import { AuthComponent }       from './features/auth/auth.component';
+import { DashboardComponent }  from './features/dashboard/dashboard.component';
+import { SearchComponent }     from './features/search/search.component';
+import { ResultsComponent }    from './features/results/results.component';
+import { ContactComponent }    from './features/contact/contact.component';
+import { HistoryComponent }    from './features/history/history.component';
+import { PricingComponent }    from './features/pricing/pricing.component';
+import { DocFusionComponent }      from './features/docfusion/docfusion.component';
+import { TriageComponent }         from './features/triage/triage.component';
+import { CreativeStudioComponent } from './features/creative-studio/creative-studio.component';
+import { CvBuilderComponent }      from './features/cv-builder/cv-builder.component';
+import { adminGuard }              from './guards/admin.guard';
+import { DashboardLoginComponent } from './features/dashboard/dashboard-login/dashboard-login.component';
+import { RagChatComponent }        from './features/rag-chat/rag-chat.component';
+import { AgentiqueHubComponent }   from './features/agentique/agentique-hub.component';
+import { AgentEmailComponent }     from './features/agentique/agent-email.component';
+import { AgentProspectionComponent } from './features/agentique/agent-prospection.component';
+import { AgentMarketingComponent } from './features/agentique/agent-marketing.component';
+import { AgentResumeComponent }    from './features/agentique/agent-resume.component';
+import { AgentSlidesComponent }    from './features/agentique/agent-slides.component';
+import { AgentCvAnalyzerComponent } from './features/agentique/agent-cv-analyzer.component';
+import { CvWorkspaceComponent }     from './features/agentique/cv-workspace.component';
+import { CardBuilderComponent }     from './features/card-builder/card-builder.component';
+import { AiTeamsComponent }         from './features/agentique/ai-teams.component';
+import { WorkspaceComponent }       from './features/agentique/workspace.component';
+import { GamesHubComponent }        from './features/games/games-hub.component';
+import { Game2048Component }        from './features/games/game-2048.component';
+import { GameTetrisComponent }      from './features/games/game-tetris.component';
+import { GameAsteroidComponent }    from './features/games/game-asteroid.component';
+import { GamePlatformerComponent }  from './features/games/game-platformer.component';
+import { GameWhackComponent }       from './features/games/game-whack.component';
+import { GameDinoComponent }        from './features/games/game-dino.component';
+import { GameBreakoutComponent }    from './features/games/game-breakout.component';
+import { GameCrosswordComponent }   from './features/games/game-crossword.component';
+import { GameRacingComponent }      from './features/games/game-racing.component';
+import { GameCheckersComponent }    from './features/games/game-checkers.component';
+import { GamePuzzleComponent }      from './features/games/game-puzzle.component';
+import { GameLudoComponent }        from './features/games/game-ludo.component';
+import { GameAdventureComponent }   from './features/games/game-adventure.component';
+import { GameWarComponent }         from './features/games/game-war.component';
+import { GameCombatComponent }      from './features/games/game-combat.component';
+import { GameWordsearchComponent }  from './features/games/game-wordsearch.component';
+import { GameWordsearchThemedComponent } from './features/games/game-wordsearch-themed.component';
+import { GameMarbleComponent }      from './features/games/game-marble.component';
+import { FootballPrototypeComponent } from './features/games/football-prototype.component';
+import { PenaltyShootoutComponent } from './features/games/penalty-shootout.component';
+import { FootballComponent } from './features/games/football/football.component';
+
+export const routes: Routes = [
+  { path: '',                component: SearchComponent },
+  { path: 'auth',            component: AuthComponent },
+  { path: 'admin-login',     component: DashboardLoginComponent },
+  { path: 'dashboard',       component: DashboardComponent, canActivate: [adminGuard] },
+  { path: 'results',         component: ResultsComponent },
+  { path: 'contact',         component: ContactComponent },
+  { path: 'pricing',         component: PricingComponent },
+  { path: 'history',         component: HistoryComponent, canActivate: [authGuard] },
+  { path: 'docfusion',       component: DocFusionComponent, canActivate: [authGuard] },
+  { path: 'triage',          component: TriageComponent },
+  { path: 'creative-studio', component: CreativeStudioComponent },
+  { path: 'cv-builder',      component: CvBuilderComponent },
+  { path: 'card-builder',    component: CardBuilderComponent },
+  { path: 'rag-chat',        component: RagChatComponent },
+  { path: 'agentique',              redirectTo: '/agentique/teams', pathMatch: 'full' },
+  { path: 'agentique/email',        component: AgentEmailComponent },
+  { path: 'agentique/prospection',  component: AgentProspectionComponent },
+  { path: 'agentique/marketing',    component: AgentMarketingComponent },
+  { path: 'agentique/resume',       component: AgentResumeComponent },
+  { path: 'agentique/slides',       component: AgentSlidesComponent },
+  { path: 'agentique/cv-analyzer',  component: AgentCvAnalyzerComponent },
+  { path: 'agentique/cv-workspace', component: CvWorkspaceComponent },
+  { path: 'agentique/teams',        component: AiTeamsComponent },
+  { path: 'agentique/workspace',    component: WorkspaceComponent, canActivate: [authGuard] },
+  { path: 'games',            component: GamesHubComponent },
+  { path: 'games/2048',       component: Game2048Component },
+  { path: 'games/tetris',     component: GameTetrisComponent },
+  { path: 'games/asteroid',   component: GameAsteroidComponent },
+  { path: 'games/platformer', component: GamePlatformerComponent },
+  { path: 'games/whack',      component: GameWhackComponent },
+  { path: 'games/dino',       component: GameDinoComponent },
+  { path: 'games/breakout',   component: GameBreakoutComponent },
+  { path: 'games/crossword',  component: GameCrosswordComponent },
+  { path: 'games/racing',     component: GameRacingComponent },
+  { path: 'games/checkers',   component: GameCheckersComponent },
+  { path: 'games/puzzle',     component: GamePuzzleComponent },
+  { path: 'games/ludo',       component: GameLudoComponent },
+  { path: 'games/adventure',  component: GameAdventureComponent },
+  { path: 'games/war',        component: GameWarComponent },
+  { path: 'games/combat',     component: GameCombatComponent },
+  { path: 'games/wordsearch', component: GameWordsearchComponent },
+  { path: 'games/wordsearch-themed', component: GameWordsearchThemedComponent },
+  { path: 'games/marble',     component: GameMarbleComponent },
+  { path: 'games/football-prototype', component: FootballPrototypeComponent },
+  { path: 'games/penalty-shootout', component: PenaltyShootoutComponent },
+  { path: 'games/football',   component: FootballComponent },
+  { path: '**',               redirectTo: '' }
+];

@@ -1,0 +1,72 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: rag-service
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:creativeai-postgres}:${POSTGRES_PORT:5432}/${RAG_DB:creativeai_rag}
+    username: ${POSTGRES_USER:creativeai}
+    password: ${POSTGRES_PASSWORD:creativeai123}
+    driver-class-name: org.postgresql.Driver
+
+  ai:
+    openai:
+      base-url: https://api.groq.com/openai
+      api-key: ${GROQ_API_KEY:no-key}
+      chat:
+        options:
+          model: ${RAG_CHAT_MODEL:llama-3.3-70b-versatile}
+          temperature: 0.7
+      embedding:
+        enabled: false  # Embeddings via ONNX local (transformers)
+
+    # Embeddings ONNX locaux (all-MiniLM-L6-v2 — 384 dims)
+    transformers:
+      onnx:
+        modelUri: https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx
+        tokenizerUri: https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json
+      embedding:
+        enabled: true
+      cache:
+        directory: ${SPRING_AI_TRANSFORMERS_CACHE_DIRECTORY:/tmp/spring-ai-onnx-generative}
+
+    vectorstore:
+      pgvector:
+        initialize-schema: true
+        dimensions: 384
+        distance-type: COSINE_DISTANCE
+        index-type: HNSW
+
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+# Modèle de vision pour RAG multimodal (images → description → embed)
+# Propriété custom lue via @Value("${groq.vision.model}") dans IngestionService
+# Le warning IDE "Unknown property" est inoffensif — Spring Boot lit toute propriété custom
+groq:
+  vision:
+    model: ${GROQ_VISION_MODEL:meta-llama/llama-4-scout-17b-16e-instruct}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    "[com.creativeai.rag]": DEBUG
+    "[org.springframework.ai]": INFO

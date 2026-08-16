@@ -1,0 +1,140 @@
+https://www.mixamo.com/#/?page=2&type=Character
+
+**************telechagement de modele/mesh 3D**********************
+donne moi lien pour avoir  des modeles gratuits sur Mixamo
+Investigated Mixamo's current link for accuracy
+
+Voici comment accéder aux modèles gratuits sur Mixamo :
+Lien direct
+
+https://www.mixamo.com
+Comment ça marche
+
+    Connexion : tu as besoin d'un compte Adobe (gratuit) pour te connecter — Mixamo appartient à Adobe
+    Une fois connecté, tu arrives sur la bibliothèque :
+        Onglet Characters → tous les personnages 3D riggés (humains variés, y compris des styles sportifs)
+        Onglet Animations → course, dribble, tir, tacle, célébration, etc.
+    Tu choisis un personnage, tu lui appliques une animation, tu ajustes les paramètres (vitesse, direction du tour, etc.) dans l'aperçu 3D
+    Bouton Download → choisis le format FBX (pas de .glb natif sur Mixamo, il faudra convertir)
+
+Format de téléchargement
+
+    Choisis FBX Binary
+    Pour le skin/mesh : "With Skin" (inclut le modèle, pas juste le squelette)
+    Pour les animations seules sur un perso déjà téléchargé : "Without Skin" (juste l'animation, plus léger, à réappliquer sur le même squelette)
+
+Conversion FBX → GLB
+
+Mixamo n'exporte pas directement en .glb. Étapes :
+
+    Importe le .fbx dans Blender (gratuit)
+    Fusionne les animations si tu en as plusieurs (course + tir + idle) sur le même personnage
+    Exporte via File > Export > glTF 2.0 (.glb/.gltf)
+
+Tout est 100% gratuit, y compris usage commercial (vérifie quand même les conditions d'utilisation Adobe si projet commercial sérieux).
+
+Tu veux que je détaille les étapes de fusion des animations dans Blender, ou l'export glTF précisément ?
+
+voici la page
+Orchestrated navigation pathway between Adobe and Mixamo platforms
+
+Je vois — tu es connecté sur Adobe Home (le portail général des apps Adobe), mais Mixamo est un site à part, pas visible dans cette liste d'applis.
+Pour y accéder
+
+Comme tu es déjà connecté à ton compte Adobe, va directement sur :
+
+https://www.mixamo.com
+
+Tu devrais être automatiquement reconnu (même session Adobe) et arriver directement sur la bibliothèque de personnages/animations, sans avoir besoin de te reconnecter.
+Une fois sur Mixamo
+
+Tu verras une interface différente de celle-ci, avec :
+
+    Un onglet Characters en haut (pour choisir un personnage)
+    Un onglet Animations (pour lui appliquer une animation)
+    Une prévisualisation 3D au centre avec le personnage qui bouge
+
+Essaie le lien et dis-moi si ça te connecte automatiquement ou si ça te redemande un login.
+
+Parfait, tu es sur Mixamo et tu as trouvé "Shannon", un personnage habillé en joueur de foot — exactement ce qu'il te faut !
+Étapes à suivre maintenant
+
+1. Sélectionne le personnage
+Clique sur la vignette Shannon pour le charger dans l'aperçu 3D à droite.
+
+2. Ajoute une animation
+Clique sur "FIND ANIMATIONS" (en bas à droite) — ça va t'amener sur l'onglet Animations avec Shannon déjà appliqué. Cherche des animations comme :
+
+    idle (position debout)
+    running (course)
+    soccer ou kick (tir/dribble si disponible)
+    walking (marche)
+
+3. Télécharge le personnage avec skin
+Une fois une animation choisie et appliquée, clique sur DOWNLOAD (le bouton orange). Dans la fenêtre qui s'ouvre :
+
+    Format : FBX Binary (.fbx)
+    Pose : garde celle par défaut ou "With Skin" pour avoir le personnage habillé
+    Clique sur Download
+
+⚠️ Important : télécharge plusieurs animations séparément
+
+Pour avoir un joueur qui peut courir, tirer, célébrer, etc., répète l'étape "Find Animations → Download" pour chaque animation différente dont tu as besoin. Chaque téléchargement FBX contiendra le personnage + cette animation précise.
+Prochaine étape
+
+Une fois que tu as téléchargé un ou plusieurs .fbx, il faudra :
+
+    Les importer dans Blender
+    Fusionner les animations sur le même personnage (si plusieurs fichiers séparés)
+    Exporter en .glb pour Babylon.js
+
+Tu veux qu'on fasse cette étape Blender (fusion + export glTF) une fois que tu as tes fichiers téléchargés ?
+*************************conversion**********************
+pas besoin de maîtriser Blender — plusieurs solutions existent pour convertir FBX → glTF/glb sans logiciel 3D.
+Option 1 — Convertisseurs en ligne (le plus simple)
+Tu uploades ton .fbx, tu télécharges le .glb converti :
+
+https://products.aspose.app/3d/conversion/fbx-to-glb — gratuit, simple, glisser-déposer
+https://anyconv.com/fbx-to-glb-converter/ — pareil, rapide
+https://www.creators3d.com/online-viewer — permet de visualiser + exporter dans certains formats
+
+⚠️ Limite : si tu as plusieurs animations dans des fichiers FBX séparés (un par animation, comme recommandé sur Mixamo), ces convertisseurs en ligne ne fusionnent pas plusieurs fichiers ensemble — chaque conversion te donnera un .glb avec une seule animation. Il faudra alors les charger séparément côté Babylon.js et gérer les animations une par une (ce qui est possible mais un peu plus de code).
+Option 2 — Outil en ligne de commande (sans interface à apprendre)
+FBX2glTF (fait par Meta/Facebook) : un outil simple à installer, une seule commande à taper :
+bashFBX2glTF -i player.fbx -o player.glb
+Pas besoin de "maîtriser" un logiciel — c'est juste une commande, mais ça demande d'installer l'outil (disponible sur GitHub : facebookincubator/FBX2glTF).
+Option 3 — Éviter la conversion : utiliser Three.js à la place
+Comme ton projet a aussi Three.js, sache qu'il a un loader natif pour le FBX (FBXLoader), donc tu pourrais charger directement les fichiers Mixamo en .fbx sans aucune conversion :
+typescriptimport { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+C'est probablement la solution la plus simple si tu veux éviter toute conversion — mais ça veut dire utiliser Three.js pour la partie personnages, ce qui casse un peu la cohérence avec Babylon.js + Rapier qu'on avait choisi.
+Mon conseil pratique
+Pour rester simple sans Blender : utilise un convertisseur en ligne (Option 1) pour chaque animation, et on gère le chargement/switch d'animations multiples directement en code Babylon.js — pas besoin de fusion préalable.
+Tu veux que je t'explique comment charger plusieurs .glb (un par animation) et les faire cohabiter sur le même personnage dans Babylon.js ?
+
+
+************************supporters*************************
+ le principe est similaire, mais avec quelques ajustements car les supporters ont des besoins différents des joueurs (bien plus nombreux, mais beaucoup moins détaillés/animés).
+Approche recommandée pour les supporters
+1. Récupérer des personnages variés sur Mixamo
+Cherche des personnages civils basiques (pas besoin de tenue de sport) — des mêmes recherches génériques comme "casual", "business", "idle" fonctionnent bien. Prends 3-4 personnages différents (homme, femme, morphologies variées) pour éviter que tout le stade soit un clone du même bonhomme.
+2. Animations minimalistes
+Pas besoin de dribble ou de tir — juste :
+
+idle (debout)
+cheering / clapping (encouragements, il y en a sur Mixamo)
+Éventuellement sitting idle si tu veux des gens assis dans les tribunes
+
+3. Optimisation cruciale — c'est LA différence avec les joueurs
+Un stade peut avoir des milliers de supporters visibles. Si tu charges des vrais meshes 3D détaillés pour chacun, ton jeu va s'effondrer en performance. Solutions :
+
+Instancing massif : Babylon.js a un système d'instances (Mesh.createInstance()) ou mieux, de thin instances, qui permet d'afficher des milliers de copies du même mesh avec un coût de performance minime
+Impostors/Billboards : pour les supporters loin de la caméra, remplace carrément le modèle 3D par une simple image plate (sprite) qui fait toujours face à la caméra — invisible à l'œil pour du public lointain, énorme gain de performance
+LOD (Level of Detail) : modèles détaillés pour les supporters proches de la caméra, modèles très simplifiés ou sprites pour ceux au loin — Babylon.js gère ça nativement
+
+4. Variation visuelle rapide
+Comme pour les maillots, change juste la couleur des vêtements par groupes (bloc de supporters équipe A en rouge, équipe B en bleu) via le matériau, pour donner l'impression de sections dans le stade.
+Mon conseil concret
+Ne te lance pas dans les supporters tout de suite — c'est un problème de performance/optimisation, pas juste de modèles 3D, et ça vient après que le gameplay des joueurs fonctionne. Pour un stade crédible sans exploser les perfs :
+
+Commence avec des sprites/textures plates en fond de tribune (le plus simple, look "arrière-plan")
+Ajoute quelques vrais modèles 3D animés seulement au premier plan/près de la caméra si tu veux du détail

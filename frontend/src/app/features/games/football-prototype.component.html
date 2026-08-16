@@ -1,0 +1,33 @@
+<div class="prototype-shell">
+  <div class="hud">
+    <div class="hud-top">
+      <div class="match-title">⚽ Match de football</div>
+      <div class="match-clock" [class.period-2]="matchPeriod === '2ème'" [class.finished]="matchPeriod === 'fini'">
+        <span class="period">{{ matchPeriod === 'fini' ? 'FIN' : matchPeriod === 'mi-temps' ? 'MT' : matchPeriod }}</span>
+        <span class="time">{{ formattedTime }}</span>
+      </div>
+    </div>
+
+    <div class="scoreboard">
+      <div class="score-item home" [class.active]="matchPeriod === '1ère' || matchPeriod === '2ème'">
+        <span class="score-label">🔵 Vous</span>
+        <span class="score-value">{{ score.home }}</span>
+      </div>
+      <div class="score-vs">VS</div>
+      <div class="score-item away" [class.active]="matchPeriod === '1ère' || matchPeriod === '2ème'">
+        <span class="score-label">🔴 IA</span>
+        <span class="score-value">{{ score.away }}</span>
+      </div>
+    </div>
+
+    <div class="status-bar">{{ status }}</div>
+
+    <div class="controls-hint">
+      <kbd>WASD</kbd> Déplacement &nbsp;
+      <kbd>␣</kbd> Tirer &nbsp;
+      <kbd>X</kbd> Passer
+    </div>
+  </div>
+
+  <canvas #rendererCanvas class="game-canvas"></canvas>
+</div>

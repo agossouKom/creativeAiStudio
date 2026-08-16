@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-multipart
+shazamio
+librosa
+numpy
+scipy
+pyacoustid
+kafka-python
+minio
+aiofiles
+redis
+pillow
+requests
+python-dotenv
+pydub

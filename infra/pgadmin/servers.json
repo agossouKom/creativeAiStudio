@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "CreativeAI PostgreSQL",
+      "Group": "CreativeAI",
+      "Host": "creativeai-postgres",
+      "Port": 5432,
+      "MaintenanceDB": "creativeai",
+      "Username": "creativeai",
+      "SSLMode": "prefer"
+    }
+  }
+}
