@@ -1,24 +1,25 @@
 package com.creativeai.gateway.filter;
 
 import com.creativeai.gateway.security.JwtUtil;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class AuthenticationFilter extends AbstractGatewayFilterFactory<AuthenticationFilter.Config> {
 
     private final JwtUtil jwtUtil;
 
-    public AuthenticationFilter() {
+    @Autowired
+    public AuthenticationFilter(JwtUtil jwtUtil) {
         super(Config.class);
-        this.jwtUtil = null;
+        this.jwtUtil = jwtUtil;
     }
 
     @Override
@@ -51,11 +52,11 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
             log.info("Authenticated request from user: {}", username);
 
             // Passer l'identité en header pour les services en aval
-            exchange.getRequest().mutate()
-                    .header("X-User-Name", username)
+            ServerWebExchange mutated = exchange.mutate()
+                    .request(builder -> builder.header("X-User-Name", username))
                     .build();
 
-            return chain.filter(exchange);
+            return chain.filter(mutated);
         };
     }
 
