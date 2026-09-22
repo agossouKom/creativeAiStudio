@@ -83,7 +83,13 @@ public final class SearchFileValidator {
             if (startsWithAscii(b, 8, "WEBP")) return new Detected("webp", "image/webp");
             if (startsWithAscii(b, 8, "AIFF")) return new Detected("aiff", "audio/aiff");
         }
-        if (startsWithAscii(b, "ftyp"))                            return new Detected("mp4", "video/mp4"); // mp4/mov/3gp/m4a
+        // MP4/MOV/M4A : boîte ISO BMFF — 'ftyp' en tête (offset 0) ou juste après la taille de boîte (offset 4)
+        if (startsWithAscii(b, "ftyp") || (n >= 8 && startsWithAscii(b, 4, "ftyp"))) {
+            if (n >= 12 && (startsWithAscii(b, 8, "M4A ") || startsWithAscii(b, 8, "M4B "))) {
+                return new Detected("m4a", "audio/mp4");
+            }
+            return new Detected("mp4", "video/mp4");
+        }
         if (startsWith(b, new int[]{0x1A, 0x45, 0xDF, 0xA3}))      return new Detected("webm", "video/webm"); // matroska/webm
         if (startsWith(b, new int[]{0x00, 0x00, 0x01, 0xBA}))      return new Detected("mpg", "video/mpeg");
         if (startsWith(b, new int[]{0x00, 0x00, 0x01, 0xB3}))      return new Detected("mpg", "video/mpeg");
