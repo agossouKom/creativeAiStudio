@@ -31,7 +31,7 @@ interface TaskCard {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const API = 'http://localhost:8480';
+const API = '';
 
 const TYPE_BADGE: Record<string, { label: string; color: string }> = {
   SCRUM_MASTER:      { label: 'Scrum Manager',    color: '#6366f1' },

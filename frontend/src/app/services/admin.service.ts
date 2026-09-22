@@ -67,7 +67,7 @@ export interface SocialLink {
 
 @Injectable({ providedIn: 'root' })
 export class AdminService {
-  private readonly API = 'http://localhost:8480/api/auth/api';
+  private readonly API = '/api/auth/api';
 
   constructor(private http: HttpClient) {}
 

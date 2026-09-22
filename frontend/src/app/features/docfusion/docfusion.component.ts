@@ -36,7 +36,7 @@ interface JobResult {
   resultUrl?: string;   // jobs avec fichier généré
 }
 
-const GW = 'http://localhost:8480/api/docfusion';
+const GW = '/api/docfusion';
 
 const EXT_OPTIONS = [
   { label: '.pdf',  value: '.pdf'  },

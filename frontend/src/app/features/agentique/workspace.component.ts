@@ -7,7 +7,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { DialogService } from '../../shared/ui/dialog.service';
 import * as XLSX from 'xlsx';
 
-const API = 'http://localhost:8480';
+const API = '';
 
 type Tab = 'agents' | 'equipes' | 'taches' | 'inbox' | 'email' | 'prompts' | 'workflow' | 'chat' | 'llm' | 'rag' | 'canaux' | 'profil' | 'social';
 
@@ -4469,7 +4469,7 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
   }
 
   private getApiBase(): string {
-    return (window as any).__API_BASE__ || 'http://localhost:8480';
+    return (window as any).__API_BASE__ || '';
   }
 
   /** Retourne le contexte profil formaté pour l'injection dans les tâches */

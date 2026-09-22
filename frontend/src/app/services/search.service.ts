@@ -5,8 +5,8 @@ import { AuthService } from './auth.service';
 
 @Injectable({ providedIn: 'root' })
 export class SearchService {
-  /** Passe par l'API Gateway Java sur le port 8480 */
-  private readonly GATEWAY = 'http://localhost:8480/api/search';
+  /** Passe par l'API Gateway (même origine en prod, nginx proxifie /api/**) */
+  private readonly GATEWAY = '/api/search';
 
   constructor(private http: HttpClient, private auth: AuthService) {}
 
