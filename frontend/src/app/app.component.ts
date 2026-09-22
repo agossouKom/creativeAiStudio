@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { RouterModule, Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs/operators';
 
-import { SidebarAdComponent } from './shared/components/sidebar-ad/sidebar-ad.component';
 import { AuthService } from './services/auth.service';
 import { GameChromeService } from './services/game-chrome.service';
 import { DialogHostComponent } from './shared/ui/dialog-host.component';
@@ -12,7 +11,7 @@ import { GamepadKeyboardBridgeService } from './features/games/gamepad-keyboard-
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterModule, SidebarAdComponent, DialogHostComponent],
+  imports: [CommonModule, RouterModule, DialogHostComponent],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css']
 })
@@ -24,8 +23,8 @@ export class AppComponent implements OnInit {
   agentiqueOpen = false;
   isDark = false;
 
-  /** Routes sans aucune sidebar (cv-builder, creative-studio, docfusion, rag-chat, agentique, auth) */
-  private noSidebarRoutes = ['/creative-studio', '/cv-builder', '/card-builder', '/docfusion', '/rag-chat', '/agentique', '/games', '/auth'];
+  /** Routes pleine largeur (cv-builder, docfusion, rag-chat, agentique, auth) */
+  private noSidebarRoutes = ['/cv-builder', '/card-builder', '/docfusion', '/rag-chat', '/agentique', '/games', '/auth'];
   currentUrl = '';
 
   /** Vrai quand la page est chargée avec ?embed=1 (iframe dans le workspace) */

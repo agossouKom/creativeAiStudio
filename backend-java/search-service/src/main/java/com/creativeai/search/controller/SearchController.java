@@ -1,6 +1,7 @@
 package com.creativeai.search.controller;
 
 import com.creativeai.search.service.SearchOrchestrator;
+import com.creativeai.search.util.SearchFileValidator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,8 @@ public class SearchController {
             @RequestParam("file") MultipartFile file,
             @RequestHeader("X-User-Name") String userEmail) throws Exception {
 
-        String jobId = orchestrator.dispatchAudioSearch(file, userEmail);
+        SearchFileValidator.Validated meta = SearchFileValidator.validate(file, SearchFileValidator.Kind.AUDIO);
+        String jobId = orchestrator.dispatchAudioSearch(file, meta, userEmail);
         return ResponseEntity.accepted().body(Map.of(
                 "jobId",   jobId,
                 "status",  "PROCESSING",
@@ -40,7 +42,8 @@ public class SearchController {
             @RequestParam("file") MultipartFile file,
             @RequestHeader("X-User-Name") String userEmail) throws Exception {
 
-        String jobId = orchestrator.dispatchVideoSearch(file, userEmail);
+        SearchFileValidator.Validated meta = SearchFileValidator.validate(file, SearchFileValidator.Kind.VIDEO);
+        String jobId = orchestrator.dispatchVideoSearch(file, meta, userEmail);
         return ResponseEntity.accepted().body(Map.of(
                 "jobId", jobId, "status", "PROCESSING",
                 "message", "Analyse vidéo démarrée. Suivez /topic/search/" + jobId
@@ -55,7 +58,11 @@ public class SearchController {
             @RequestParam(value = "phone",  required = false) String phone,
             @RequestHeader("X-User-Name") String userEmail) throws Exception {
 
-        String jobId = orchestrator.dispatchFaceSearch(image, query, phone, userEmail);
+        SearchFileValidator.Validated meta = null;
+        if (image != null && !image.isEmpty()) {
+            meta = SearchFileValidator.validate(image, SearchFileValidator.Kind.IMAGE);
+        }
+        String jobId = orchestrator.dispatchFaceSearch(image, meta, query, phone, userEmail);
         return ResponseEntity.accepted().body(Map.of(
                 "jobId", jobId, "status", "PROCESSING",
                 "message", "Identification démarrée. Suivez /topic/search/" + jobId

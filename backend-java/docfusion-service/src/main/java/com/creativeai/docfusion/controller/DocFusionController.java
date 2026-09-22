@@ -6,6 +6,7 @@ import com.creativeai.docfusion.model.DocJob;
 import com.creativeai.docfusion.repository.DocJobRepository;
 import com.creativeai.docfusion.service.DocAsyncService;
 import com.creativeai.docfusion.service.PdfProcessingService;
+import com.creativeai.docfusion.util.DocUploadGuard;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.StatObjectArgs;
@@ -36,6 +37,7 @@ public class DocFusionController {
     private final StringRedisTemplate  redis;
     private final MinioClient          minio;
     private final PdfProcessingService pdf;
+    private final DocUploadGuard       uploadGuard;
     private final ObjectMapper         mapper = new ObjectMapper();
 
     @Value("${minio.result-bucket:docfusion-results}")
@@ -51,11 +53,21 @@ public class DocFusionController {
         if (files == null || files.size() < 2) {
             return ResponseEntity.badRequest().body(Map.of("error", "Au moins 2 fichiers requis"));
         }
+        if (files.size() > 10) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Maximum 10 fichiers"));
+        }
         List<byte[]> filesData = new java.util.ArrayList<>();
         List<String> fileNames = new java.util.ArrayList<>();
+        long total = 0;
         for (MultipartFile f : files) {
+            String safeName = uploadGuard.check(f);
+            total += f.getSize();
+            if (total > DocUploadGuard.MAX_MERGE_TOTAL) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Taille totale trop importante : maximum " + (DocUploadGuard.MAX_MERGE_TOTAL >> 20) + " Mo"));
+            }
             filesData.add(f.getBytes());
-            fileNames.add(f.getOriginalFilename() != null ? f.getOriginalFilename() : "file");
+            fileNames.add(safeName);
         }
         String jobId = asyncService.createJob(userEmail, "MERGE", fileNames.get(0));
         asyncService.processMerge(filesData, fileNames, jobId);
@@ -69,6 +81,7 @@ public class DocFusionController {
             @RequestParam int end,
             @RequestHeader(value = "X-User-Email", defaultValue = "anonymous") String userEmail) throws Exception {
 
+        uploadGuard.check(file);
         byte[] data  = file.getBytes();
         String jobId = asyncService.createJob(userEmail, "SPLIT", file.getOriginalFilename());
         asyncService.processSplit(data, start, end, jobId);
@@ -81,6 +94,7 @@ public class DocFusionController {
             @RequestParam(defaultValue = "zip") String outputFormat,
             @RequestHeader(value = "X-User-Email", defaultValue = "anonymous") String userEmail) throws Exception {
 
+        uploadGuard.check(file);
         byte[] data     = file.getBytes();
         String origName = file.getOriginalFilename();
         String jobId    = asyncService.createJob(userEmail, "COMPRESS", origName);
@@ -96,6 +110,7 @@ public class DocFusionController {
             @RequestParam(defaultValue = "#808080") String color,
             @RequestHeader(value = "X-User-Email", defaultValue = "anonymous") String userEmail) throws Exception {
 
+        uploadGuard.check(file);
         byte[] data  = file.getBytes();
         String jobId = asyncService.createJob(userEmail, "WATERMARK", file.getOriginalFilename());
         asyncService.processWatermark(data, text, rotation, color, jobId);
@@ -109,6 +124,7 @@ public class DocFusionController {
             @RequestParam MultipartFile file,
             @RequestHeader(value = "X-User-Email", defaultValue = "anonymous") String userEmail) throws Exception {
 
+        uploadGuard.check(file);
         byte[] data  = file.getBytes();
         String jobId = asyncService.createJob(userEmail, "TO_PDF", file.getOriginalFilename());
         asyncService.processToPdf(data, file.getOriginalFilename(), jobId);
@@ -120,6 +136,7 @@ public class DocFusionController {
             @RequestParam MultipartFile file,
             @RequestHeader(value = "X-User-Email", defaultValue = "anonymous") String userEmail) throws Exception {
 
+        uploadGuard.check(file);
         byte[] data  = file.getBytes();
         String jobId = asyncService.createJob(userEmail, "TO_DOCX", file.getOriginalFilename());
         asyncService.processToDocx(data, jobId);
@@ -134,11 +151,21 @@ public class DocFusionController {
         if (files == null || files.size() < 2) {
             return ResponseEntity.badRequest().body(Map.of("error", "Au moins 2 fichiers requis"));
         }
+        if (files.size() > 10) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Maximum 10 fichiers"));
+        }
         List<byte[]> filesData = new java.util.ArrayList<>();
         List<String> fileNames = new java.util.ArrayList<>();
+        long total = 0;
         for (MultipartFile f : files) {
+            String safeName = uploadGuard.check(f);
+            total += f.getSize();
+            if (total > DocUploadGuard.MAX_MERGE_TOTAL) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Taille totale trop importante : maximum " + (DocUploadGuard.MAX_MERGE_TOTAL >> 20) + " Mo"));
+            }
             filesData.add(f.getBytes());
-            fileNames.add(f.getOriginalFilename() != null ? f.getOriginalFilename() : "file");
+            fileNames.add(safeName);
         }
         String jobId = asyncService.createJob(userEmail, "MERGE_DOCX", fileNames.get(0));
         asyncService.processMergeDocx(filesData, fileNames, jobId);
@@ -152,6 +179,11 @@ public class DocFusionController {
     public ResponseEntity<Map<String, Object>> base64Encode(
             @RequestParam MultipartFile file) throws Exception {
 
+        if (file.getSize() > DocUploadGuard.MAX_BASE64_ENCODE) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Fichier trop volumineux pour l'encodage Base64 : maximum "
+                            + (DocUploadGuard.MAX_BASE64_ENCODE >> 20) + " Mo"));
+        }
         byte[] data     = file.getBytes();
         String b64      = pdf.encodeBase64(data);
         String origName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "file";
@@ -181,9 +213,16 @@ public class DocFusionController {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(Map.of("error", "Le decodage a produit un fichier vide — verifiez que la chaine Base64 est complete"));
             }
-            String ct = guessContentType(filename);
+            if (decoded.length > DocUploadGuard.MAX_BASE64_DECODE) {
+                return ResponseEntity.badRequest()
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(Map.of("error", "Contenu decode trop volumineux : maximum "
+                                + (DocUploadGuard.MAX_BASE64_DECODE >> 20) + " Mo"));
+            }
+            String safeName = uploadGuard.sanitizeDisplayName(filename);
+            String ct = guessContentType(safeName);
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeName + "\"")
                     .contentType(MediaType.parseMediaType(ct))
                     .body(decoded);
         } catch (IllegalArgumentException e) {
@@ -207,13 +246,14 @@ public class DocFusionController {
             @RequestParam MultipartFile file,
             @RequestHeader(value = "X-User-Email", defaultValue = "anonymous") String userEmail) throws Exception {
 
-        String jobId = producer.dispatchOcrJob(file, userEmail);
+        String safeName = uploadGuard.checkOcr(file);
+        String jobId = producer.dispatchOcrJob(file, safeName, userEmail);
         DocJob job = DocJob.builder()
                 .jobId(jobId)
                 .userEmail(userEmail)
                 .operation("OCR")
                 .status("PROCESSING")
-                .fileName(file.getOriginalFilename())
+                .fileName(safeName)
                 .createdAt(java.time.LocalDateTime.now())
                 .build();
         jobRepo.save(job);

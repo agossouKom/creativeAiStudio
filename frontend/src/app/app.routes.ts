@@ -8,8 +8,6 @@ import { ContactComponent }    from './features/contact/contact.component';
 import { HistoryComponent }    from './features/history/history.component';
 import { PricingComponent }    from './features/pricing/pricing.component';
 import { DocFusionComponent }      from './features/docfusion/docfusion.component';
-import { TriageComponent }         from './features/triage/triage.component';
-import { CreativeStudioComponent } from './features/creative-studio/creative-studio.component';
 import { CvBuilderComponent }      from './features/cv-builder/cv-builder.component';
 import { adminGuard }              from './guards/admin.guard';
 import { DashboardLoginComponent } from './features/dashboard/dashboard-login/dashboard-login.component';
@@ -58,8 +56,6 @@ export const routes: Routes = [
   { path: 'pricing',         component: PricingComponent },
   { path: 'history',         component: HistoryComponent, canActivate: [authGuard] },
   { path: 'docfusion',       component: DocFusionComponent, canActivate: [authGuard] },
-  { path: 'triage',          component: TriageComponent },
-  { path: 'creative-studio', component: CreativeStudioComponent },
   { path: 'cv-builder',      component: CvBuilderComponent },
   { path: 'card-builder',    component: CardBuilderComponent },
   { path: 'rag-chat',        component: RagChatComponent },

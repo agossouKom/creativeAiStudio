@@ -23,6 +23,7 @@ import java.util.UUID;
 public class MinioService {
 
     private final MinioClient minioClient;
+    private final MediaSecurityService security;
 
     @Value("${minio.bucket}")
     private String bucket;
@@ -31,23 +32,25 @@ public class MinioService {
     private String publicUrl;
 
     public String uploadAgentPhoto(MultipartFile file) {
-        return uploadToFolder(file, "agent-photos");
+        MediaSecurityService.ValidatedUpload v = security.validateUpload(file, false);
+        return uploadToFolder(file, "agent-photos", v);
     }
 
     public String uploadProductMedia(MultipartFile file, String folder) {
-        return uploadToFolder(file, "products/" + folder);
+        MediaSecurityService.ValidatedUpload v = security.validateUpload(file, true);
+        return uploadToFolder(file, "products/" + folder, v);
     }
 
-    private String uploadToFolder(MultipartFile file, String folder) {
-        String ext = getExtension(file.getOriginalFilename());
-        String objectName = folder + "/" + UUID.randomUUID() + ext;
+    private String uploadToFolder(MultipartFile file, String folder,
+                                  MediaSecurityService.ValidatedUpload v) {
+        String objectName = folder + "/" + UUID.randomUUID() + "." + v.extension();
         try {
             minioClient.putObject(
                 PutObjectArgs.builder()
                     .bucket(bucket)
                     .object(objectName)
                     .stream(file.getInputStream(), file.getSize(), -1)
-                    .contentType(file.getContentType())
+                    .contentType(v.contentType())
                     .build()
             );
             return publicUrl + "/" + bucket + "/" + objectName;

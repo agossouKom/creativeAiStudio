@@ -71,9 +71,9 @@ public class DocJobProducer {
         return jobId;
     }
 
-    public String dispatchOcrJob(MultipartFile file, String userEmail) throws Exception {
+    public String dispatchOcrJob(MultipartFile file, String safeFileName, String userEmail) throws Exception {
         String jobId = UUID.randomUUID().toString();
-        String key   = "ocr/" + jobId + "/" + file.getOriginalFilename();
+        String key   = "ocr/" + jobId + "/" + safeFileName;
         String url   = uploadToMinio(file, key);
 
         DocJobEvent event = DocJobEvent.builder()
@@ -81,11 +81,11 @@ public class DocJobProducer {
                 .userEmail(userEmail)
                 .operationType("OCR")
                 .fileUrls(List.of(url))
-                .fileName(file.getOriginalFilename())
+                .fileName(safeFileName)
                 .build();
 
         kafkaTemplate.send(TOPIC_OCR, jobId, event);
-        log.info("[KAFKA] OCR job {} dispatché — fichier: {}", jobId, file.getOriginalFilename());
+        log.info("[KAFKA] OCR job {} dispatché — fichier: {}", jobId, safeFileName);
         return jobId;
     }
 

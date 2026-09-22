@@ -58,12 +58,29 @@ public class UploadController {
         }
     }
 
-    /** POST /api/upload/pub-images — images campagnes pub (ADMIN) */
+    /** POST /api/upload/pub-images — images campagnes pub (ADMIN, vérifiées + re-encodées) */
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping(value = "/api/upload/pub-images", consumes = "multipart/form-data")
     public ResponseEntity<List<String>> uploadPubImages(
             @RequestParam("files") List<MultipartFile> files) {
-        List<String> urls = minioService.uploadAll(files, "pubs");
+        List<String> urls = new java.util.ArrayList<>();
+        for (MultipartFile f : files) {
+            VerificationResult result = verifier.verify(f, "photos");
+            if (!result.safe()) {
+                log.warn("[UPLOAD_PUB] Fichier refusé '{}' : {}", f.getOriginalFilename(), result.reason());
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                        .body(java.util.List.of(result.reason()));
+            }
+            try {
+                String ext = extension(f.getOriginalFilename());
+                byte[] clean = verifier.sanitizeImage(f.getBytes(), ext);
+                String ct = "png".equals(ext) ? "image/png" : "image/jpeg";
+                urls.add(minioService.uploadBytes(clean, f.getOriginalFilename(), ct, "pubs"));
+            } catch (Exception e) {
+                log.error("[UPLOAD_PUB] Erreur stockage MinIO: {}", e.getMessage());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(java.util.List.of());
+            }
+        }
         return ResponseEntity.ok(urls);
     }
 

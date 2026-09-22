@@ -482,6 +482,7 @@ const EXT_OPTIONS = [
                (dragover)="onDragOver($event)" (dragleave)="isDragging=false"
                (drop)="onDrop($event)" (click)="!busy && fi.click()">
             <input #fi type="file" style="display:none"
+                   accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.md,.csv,.xls,.xlsx,.ppt,.pptx,.odp,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff"
                    [multiple]="currentOp.multi"
                    (change)="onFileSel($event)">
             <div class="drop-up-icon">
@@ -899,7 +900,7 @@ export class DocFusionComponent implements OnInit, OnDestroy {
 
   onFileSel(e: any) {
     if (this.busy) return;
-    const inc: File[] = Array.from(e.target.files || []);
+    const inc: File[] = Array.from(e.target.files as FileList || []).filter((f: File) => this.pushFile(f));
     if (this.currentOp.multi) {
       this.files   = [...this.files, ...inc];
       this.checked = [...this.checked, ...inc.map(() => true)];
@@ -916,13 +917,29 @@ export class DocFusionComponent implements OnInit, OnDestroy {
   onDrop(e: DragEvent) {
     if (this.busy) { e.preventDefault(); return; }
     e.preventDefault(); this.isDragging = false;
-    const inc: File[] = Array.from(e.dataTransfer?.files || []);
+    const inc: File[] = Array.from(e.dataTransfer?.files || []).filter((f: File) => this.pushFile(f));
     if (this.currentOp.multi) {
       this.files   = [...this.files, ...inc];
       this.checked = [...this.checked, ...inc.map(() => true)];
     } else {
       this.files = inc.slice(0, 1); this.checked = [true]; this.results = [];
     }
+  }
+
+  /** Validation client des fichiers (mire du garde-fou serveur) : refus immédiat si non conforme */
+  private pushFile(f: File): boolean {
+    const ext   = (f.name.split('.').pop() || '').toLowerCase();
+    const okExt = ['pdf','doc','docx','odt','rtf','txt','md','csv','xls','xlsx','ppt','pptx','odp',
+                   'jpg','jpeg','png','gif','webp','bmp','tif','tiff'];
+    const banned = ['exe','bat','sh','com','cmd','msi','scr','jar','js','html','htm','php','py','pl','rb','ps1','vbs','dll','so','iso','svg'];
+    const mime = f.type || '';
+    if (banned.includes(ext) || mime.includes('text/html') || mime.includes('javascript') || mime.includes('x-msdownload')) {
+      this.showToast(`Fichier interdit : ${f.name} (exécutable ou script).`); return false;
+    }
+    if (f.size <= 0) { this.showToast(`Fichier vide : ${f.name}`); return false; }
+    if (f.size > 30 * 1024 * 1024) { this.showToast(`Fichier trop volumineux (max 30 Mo) : ${f.name}`); return false; }
+    if (!okExt.includes(ext) && !mime.startsWith('image/')) { this.showToast(`Format non supporté : ${f.name}`); return false; }
+    return true;
   }
 
   removeFile(i: number) {

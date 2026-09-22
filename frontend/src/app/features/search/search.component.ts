@@ -72,7 +72,9 @@ type SearchMode = 'audio' | 'video' | 'person';
             </div>
           </div>
         </div>
-        <input #fileInput type="file" class="hidden" (change)="onFileSelected($event)">
+        <input #fileInput type="file" class="hidden"
+           accept="audio/*,video/*,image/*,.mp3,.wav,.ogg,.flac,.m4a,.aac,.mp4,.mov,.mkv,.webm,.avi,.jpg,.jpeg,.png,.gif,.webp"
+           (change)="onFileSelected($event)">
 
         <!-- Drag & Drop Zone -->
         <div class="drop-box"
@@ -546,9 +548,42 @@ export class SearchComponent implements OnDestroy {
   }
 
   private handleFile(file: File) {
+    const err = this.validateFile(file);
+    if (err) {
+      this.showToast(err);
+      return;
+    }
     this.selectedFile = file;
     this.autoDetectMode(file);
     this.onSearch();
+  }
+
+  private MAXS: Record<string, number> = { audio: 100 * 1024 * 1024, video: 150 * 1024 * 1024, person: 20 * 1024 * 1024 };
+
+  private validateFile(file: File): string | null {
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const audioExts = ['mp3','wav','flac','ogg','opus','m4a','aac','aiff','amr','webm'];
+    const videoExts = ['mp4','mov','m4v','avi','mkv','webm','mpg','mpeg','3gp','wmv'];
+    const imageExts = ['jpg','jpeg','png','gif','webp','bmp','tiff','tif'];
+    const bannedExts = ['exe','bat','sh','com','cmd','msi','scr','jar','js','html','htm','php','py','pl','rb','ps1','vbs','dll','so','iso','svg'];
+    const mime = file.type || '';
+
+    if (bannedExts.includes(ext) || mime.includes('text/html') || mime.includes('x-msdownload') || mime.includes('javascript'))
+      return 'Ce type de fichier est interdit (exécutable ou script).';
+
+    if (file.size <= 0) return 'Fichier vide.';
+    if (file.size > 200 * 1024 * 1024) return 'Fichier trop volumineux (max 200 Mo).';
+
+    if (!audioExts.includes(ext) && !videoExts.includes(ext) && !imageExts.includes(ext)) {
+      if (mime.startsWith('audio/')) return null;
+      if (mime.startsWith('video/')) return null;
+      if (mime.startsWith('image/') && mime !== 'image/svg+xml') return null;
+      return 'Format non supporté.';
+    }
+
+    const max = this.MAXS[this.mode];
+    if (max && file.size > max) return `Fichier trop volumineux pour ce mode (max ${max >> 20} Mo).`;
+    return null;
   }
 
   /** Détecte le type via MIME et ajuste le mode si l'utilisateur n'a pas fait de choix */

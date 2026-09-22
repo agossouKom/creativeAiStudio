@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.creativeai.search.messaging.kafka.SearchJobProducer;
 import com.creativeai.search.model.SearchHistory;
 import com.creativeai.search.repository.SearchHistoryRepository;
+import com.creativeai.search.util.SearchFileValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -30,9 +31,9 @@ public class SearchOrchestrator {
     /**
      * Dispatch une recherche audio vers Kafka via MinIO (Claim Check).
      */
-    public String dispatchAudioSearch(MultipartFile file, String userEmail) throws Exception {
+    public String dispatchAudioSearch(MultipartFile file, SearchFileValidator.Validated meta, String userEmail) throws Exception {
         // Le producer s'occupe de l'upload MinIO et de l'envoi Kafka
-        String jobId = jobProducer.dispatchAudio(file, userEmail);
+        String jobId = jobProducer.dispatchAudio(file, meta, userEmail);
 
         // Statut initial dans Redis
         redis.opsForValue().set("job:" + jobId, "PROCESSING", Duration.ofMinutes(15));
@@ -43,7 +44,7 @@ public class SearchOrchestrator {
                     .jobId(jobId)
                     .userEmail(userEmail != null ? userEmail : "anonymous@creativeaistudio.ai")
                     .type(SearchHistory.SearchType.AUDIO)
-                    .fileName(file != null ? file.getOriginalFilename() : "audio_search.mp3")
+                    .fileName(meta.storedName())
                     .status(SearchHistory.SearchStatus.PROCESSING)
                     .createdAt(LocalDateTime.now())
                     .build();
@@ -60,8 +61,8 @@ public class SearchOrchestrator {
         return jobId;
     }
 
-    public String dispatchVideoSearch(MultipartFile file, String userEmail) throws Exception {
-        String jobId = jobProducer.dispatchVideo(file, userEmail);
+    public String dispatchVideoSearch(MultipartFile file, SearchFileValidator.Validated meta, String userEmail) throws Exception {
+        String jobId = jobProducer.dispatchVideo(file, meta, userEmail);
         redis.opsForValue().set("job:" + jobId, "PROCESSING", Duration.ofMinutes(15));
 
         try {
@@ -69,7 +70,7 @@ public class SearchOrchestrator {
                     .jobId(jobId)
                     .userEmail(userEmail != null ? userEmail : "anonymous@creativeaistudio.ai")
                     .type(SearchHistory.SearchType.VIDEO)
-                    .fileName(file != null ? file.getOriginalFilename() : "video_search.mp4")
+                    .fileName(meta.storedName())
                     .status(SearchHistory.SearchStatus.PROCESSING)
                     .createdAt(LocalDateTime.now())
                     .build();
@@ -83,9 +84,9 @@ public class SearchOrchestrator {
         return jobId;
     }
 
-    public String dispatchFaceSearch(MultipartFile image, String query,
+    public String dispatchFaceSearch(MultipartFile image, SearchFileValidator.Validated meta, String query,
                                      String phone, String userEmail) throws Exception {
-        String jobId = jobProducer.dispatchFace(image, query, phone, userEmail);
+        String jobId = jobProducer.dispatchFace(image, meta, query, phone, userEmail);
         redis.opsForValue().set("job:" + jobId, "PROCESSING", Duration.ofMinutes(15));
 
         try {
@@ -93,7 +94,7 @@ public class SearchOrchestrator {
                     .jobId(jobId)
                     .userEmail(userEmail != null ? userEmail : "anonymous@creativeaistudio.ai")
                     .type(SearchHistory.SearchType.PERSON)
-                    .fileName(image != null ? image.getOriginalFilename() : null)
+                    .fileName(meta != null ? meta.storedName() : null)
                     .query(query != null ? query : (phone != null ? "Phone: " + phone : "Face search"))
                     .status(SearchHistory.SearchStatus.PROCESSING)
                     .createdAt(LocalDateTime.now())

@@ -101,13 +101,13 @@ spring:
           filters:
             - AuthenticationFilter
 
-        # DocFusion Service
+        # DocFusion Service (uploads protégés JWT — l'UI requiert déjà la connexion)
         - id: docfusion-service
           uri: http://${DOCFUSION_SERVICE_HOST:localhost}:8083
           predicates:
             - Path=/api/docfusion/**
           filters:
-            # - AuthenticationFilter
+            - AuthenticationFilter
             - RewritePath=/api/docfusion/(?<segment>.*), /docfusion/${segment}
 
         # RAG Service

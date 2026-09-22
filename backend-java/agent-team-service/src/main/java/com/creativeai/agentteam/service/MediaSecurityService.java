@@ -2,8 +2,13 @@ package com.creativeai.agentteam.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Set;
 
 /**
@@ -105,6 +110,55 @@ public class MediaSecurityService {
         };
 
         if (!valid) throw new SecurityException("Contenu du fichier ne correspond pas à l'extension '" + ext + "'");
+    }
+
+    /**
+     * Validation à l'ÉCRITURE d'un fichier uploadé : taille + magic bytes + type.
+     * Détecte l'extension réelle à partir du contenu (jamais du nom client) pour
+     * empêcher le stockage de HTML/exécutables sous une extension image/vidéo.
+     */
+    public record ValidatedUpload(String extension, String contentType) {}
+
+    public ValidatedUpload validateUpload(MultipartFile file, boolean allowVideo) {
+        if (file == null || file.isEmpty()) {
+            throw bad("Fichier vide ou manquant.");
+        }
+        long size = file.getSize();
+        String ext;
+        String mime;
+        try (InputStream in = file.getInputStream()) {
+            byte[] h = new byte[16];
+            int n = in.read(h);
+            if (n < 4) throw bad("Fichier trop petit ou corrompu.");
+            if ((h[0] & 0xFF) == 0xFF && (h[1] & 0xFF) == 0xD8) { ext = "jpg"; mime = "image/jpeg"; }
+            else if ((h[0] & 0xFF) == 0x89 && (h[1] & 0xFF) == 0x50 && (h[2] & 0xFF) == 0x4E && (h[3] & 0xFF) == 0x47) { ext = "png"; mime = "image/png"; }
+            else if (h[0] == 'G' && h[1] == 'I' && h[2] == 'F') { ext = "gif"; mime = "image/gif"; }
+            else if (h[0] == 'R' && h[1] == 'I' && h[2] == 'F' && h[3] == 'F' && n >= 12
+                    && h[8] == 'W' && h[9] == 'E' && h[10] == 'B' && h[11] == 'P') { ext = "webp"; mime = "image/webp"; }
+            else if (n >= 12 && h[4] == 'f' && h[5] == 't' && h[6] == 'y' && h[7] == 'p') { ext = "mp4"; mime = "video/mp4"; }
+            else if (n >= 12 && h[4] == 'q' && h[5] == 't' && h[6] == ' ' && h[7] == ' ') { ext = "mov"; mime = "video/quicktime"; }
+            else if (h[0] == 'R' && h[1] == 'I' && h[2] == 'F' && h[3] == 'F' && n >= 12
+                    && h[8] == 'A' && h[9] == 'V' && h[10] == 'I' && h[11] == ' ') { ext = "avi"; mime = "video/x-msvideo"; }
+            else {
+                throw bad("Format non reconnu (images : jpg/png/gif/webp, vidéos : mp4/mov/avi).");
+            }
+        } catch (IOException e) {
+            throw bad("Impossible de lire le fichier reçu.");
+        }
+
+        boolean video = mime.startsWith("video/");
+        if (video && !allowVideo) {
+            throw bad("Seules les images sont autorisées sur cet endpoint.");
+        }
+        long max = video ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+        if (size > max) {
+            throw bad("Fichier trop volumineux : maximum " + (max >> 20) + " Mo.");
+        }
+        return new ValidatedUpload(ext, mime);
+    }
+
+    private static ResponseStatusException bad(String msg) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, msg);
     }
 
     public boolean isVideo(String objectKey) {

@@ -28,16 +28,15 @@
     <!-- Nav Links -->
     <nav class="nav-links-wrap">
       <a routerLink="/"           routerLinkActive="nav-active" [routerLinkActiveOptions]="{exact:true}" class="nav-lnk">Accueil</a>
-      <a routerLink="/triage"          routerLinkActive="nav-active" class="nav-lnk">Tri Intelligent</a>
       <a routerLink="/docfusion"       routerLinkActive="nav-active" class="nav-lnk">Document</a>
       <a routerLink="/agentique/teams" routerLinkActive="nav-active" class="nav-lnk nav-lnk-agentique">🤖 Agentique IA</a>
 
-      <!-- ✦ Creative Studio — Mega Menu (clic stable) -->
+      <!-- ✦ Méga menu — Outils (clic stable) -->
       <div class="mega-trigger" (click)="$event.stopPropagation()">
         <span class="nav-lnk nav-lnk-studio nav-lnk-studio--trigger"
               [class.nav-active]="megaOpen"
               (click)="toggleMega()">
-          ✦ Creative Studio <span class="mega-chevron" [class.mega-chevron--open]="megaOpen">▾</span>
+          ✦ Outils & Jeux <span class="mega-chevron" [class.mega-chevron--open]="megaOpen">▾</span>
         </span>
 
         <div class="mega-menu" [class.mega-menu--open]="megaOpen">
@@ -60,21 +59,7 @@
               </a>
             </div>
 
-            <!-- ── Col 2 : Suite Office ── -->
-            <div class="mega-col">
-              <div class="mega-col-hdr">Suite Office</div>
-              <a class="mi mi--office" routerLink="/creative-studio" [queryParams]="{tool:'office-word'}" (click)="closeMega()">
-                <span class="mi-ico mi-ico--blue">📝</span><span class="mi-name">Creative Word</span>
-              </a>
-              <a class="mi mi--office" routerLink="/creative-studio" [queryParams]="{tool:'office-excel'}" (click)="closeMega()">
-                <span class="mi-ico mi-ico--green">📊</span><span class="mi-name">Creative Excel</span>
-              </a>
-              <a class="mi mi--office" routerLink="/creative-studio" [queryParams]="{tool:'office-pptx'}" (click)="closeMega()">
-                <span class="mi-ico mi-ico--orange">📽</span><span class="mi-name">Creative PowerPoint</span>
-              </a>
-            </div>
-
-            <!-- ── Col 3 : Jeux & Distractions ── -->
+            <!-- ── Col 2 : Jeux & Distractions ── -->
             <div class="mega-col">
               <div class="mega-col-hdr">🎮 Jeux & Distractions</div>
               <a class="mi mi--games" routerLink="/games" (click)="closeMega()">
@@ -86,7 +71,6 @@
           </div>
           <div class="mega-footer">
             <span class="mega-footer-text">✦ Propulsé par IA — Creative AI Studio</span>
-            <a routerLink="/creative-studio" class="mega-footer-link" (click)="closeMega()">Ouvrir le Studio →</a>
           </div>
         </div>
       </div>
@@ -182,23 +166,13 @@
   </div>
 </header>
 
-<!-- ── Layout 3 colonnes (non-admin) ─────────────────────────────────────── -->
+<!-- ── Layout (non-admin) ─────────────────────────────────────────────────── -->
 <div class="page-layout" *ngIf="!isAdmin">
 
-  <!-- Sidebar gauche — masquée si premium ou sur pages pleine largeur -->
-  <aside class="sidebar sidebar-left" *ngIf="!isPremium && !hideAllSidebars">
-    <app-sidebar-ad side="left"></app-sidebar-ad>
-  </aside>
-
   <!-- Contenu principal -->
-  <main class="main-content" [class.no-ads]="isPremium || hideAllSidebars">
+  <main class="main-content">
     <router-outlet></router-outlet>
   </main>
-
-  <!-- Sidebar droite — masquée si premium ou sur pages pleine largeur -->
-  <aside class="sidebar sidebar-right" *ngIf="!isPremium && !hideAllSidebars">
-    <app-sidebar-ad side="right"></app-sidebar-ad>
-  </aside>
 
 </div>
 

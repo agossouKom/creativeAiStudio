@@ -2,12 +2,14 @@ package com.creativeai.rag.controller;
 
 import com.creativeai.rag.model.IngestResponse;
 import com.creativeai.rag.service.IngestionService;
+import com.creativeai.rag.util.RAGUploadGuard;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,25 +23,28 @@ public class IngestController {
 
     private final IngestionService ingestionService;
 
-    private static final List<String> IMAGE_EXTENSIONS =
-            List.of("jpg","jpeg","png","gif","bmp","webp","tiff","heic","avif");
-
     @PostMapping(value = "/ingest", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<List<IngestResponse>> ingest(
             @RequestParam("files") List<MultipartFile> files) {
 
         log.info("Ingest request: {} file(s)", files.size());
+        if (files.size() > RAGUploadGuard.MAX_FILES) {
+            return ResponseEntity.badRequest().body(java.util.List.of(
+                    new IngestResponse("", 0, "error", "Maximum " + RAGUploadGuard.MAX_FILES + " fichiers par requête")));
+        }
         List<IngestResponse> results = new ArrayList<>();
 
         for (MultipartFile file : files) {
-            if (file.isEmpty()) {
-                results.add(new IngestResponse(file.getOriginalFilename(), 0, "error", "Fichier vide ignoré"));
+            try {
+                RAGUploadGuard.check(file);
+            } catch (ResponseStatusException e) {
+                results.add(new IngestResponse(file.getOriginalFilename(), 0, "error", e.getReason()));
                 continue;
             }
             String name = file.getOriginalFilename() != null ? file.getOriginalFilename().toLowerCase() : "";
             String ext  = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1) : "";
             // Images → pipeline vision LLM (multimodal RAG)
-            if (IMAGE_EXTENSIONS.contains(ext)) {
+            if (RAGUploadGuard.isImage(file)) {
                 results.add(ingestionService.ingestImage(file));
             } else {
                 results.add(ingestionService.ingest(file));

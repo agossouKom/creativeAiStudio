@@ -1,5 +1,6 @@
 package com.creativeai.search.messaging.kafka;
 
+import com.creativeai.search.util.SearchFileValidator;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
@@ -51,16 +52,16 @@ public class SearchJobProducer {
      * 2. Publie seulement l'URL dans Kafka (Claim Check Pattern).
      * Le worker Python récupèrera le fichier depuis MinIO.
      */
-    public String dispatchAudio(MultipartFile file, String userEmail) throws Exception {
+    public String dispatchAudio(MultipartFile file, SearchFileValidator.Validated meta, String userEmail) throws Exception {
         String jobId  = UUID.randomUUID().toString();
-        String fileUrl = uploadToMinio(file, "audio/" + jobId + "/" + file.getOriginalFilename());
+        String fileUrl = uploadToMinio(file, "audio/" + jobId + "/" + meta.storedName(), meta.contentType());
 
         SearchJobEvent event = SearchJobEvent.builder()
                 .jobId(jobId)
                 .userEmail(userEmail)
                 .searchType("AUDIO")
                 .fileUrl(fileUrl)
-                .fileName(file.getOriginalFilename())
+                .fileName(meta.storedName())
                 .build();
 
         kafkaTemplate.send(TOPIC_AUDIO, jobId, event);
@@ -68,16 +69,16 @@ public class SearchJobProducer {
         return jobId;
     }
 
-    public String dispatchVideo(MultipartFile file, String userEmail) throws Exception {
+    public String dispatchVideo(MultipartFile file, SearchFileValidator.Validated meta, String userEmail) throws Exception {
         String jobId  = UUID.randomUUID().toString();
-        String fileUrl = uploadToMinio(file, "video/" + jobId + "/" + file.getOriginalFilename());
+        String fileUrl = uploadToMinio(file, "video/" + jobId + "/" + meta.storedName(), meta.contentType());
 
         SearchJobEvent event = SearchJobEvent.builder()
                 .jobId(jobId)
                 .userEmail(userEmail)
                 .searchType("VIDEO")
                 .fileUrl(fileUrl)
-                .fileName(file.getOriginalFilename())
+                .fileName(meta.storedName())
                 .build();
 
         kafkaTemplate.send(TOPIC_VIDEO, jobId, event);
@@ -85,13 +86,13 @@ public class SearchJobProducer {
         return jobId;
     }
 
-    public String dispatchFace(MultipartFile image, String name,
-                               String phone, String userEmail) throws Exception {
+    public String dispatchFace(MultipartFile image, SearchFileValidator.Validated meta,
+                               String name, String phone, String userEmail) throws Exception {
         String jobId = UUID.randomUUID().toString();
         String fileUrl = null;
 
-        if (image != null && !image.isEmpty()) {
-            fileUrl = uploadToMinio(image, "face/" + jobId + "/" + image.getOriginalFilename());
+        if (image != null && !image.isEmpty() && meta != null) {
+            fileUrl = uploadToMinio(image, "face/" + jobId + "/" + meta.storedName(), meta.contentType());
         }
 
         SearchJobEvent event = SearchJobEvent.builder()
@@ -109,13 +110,13 @@ public class SearchJobProducer {
     }
 
     /** Upload dans MinIO et retourne l'URL d'accès. */
-    private String uploadToMinio(MultipartFile file, String objectName) throws Exception {
+    private String uploadToMinio(MultipartFile file, String objectName, String contentType) throws Exception {
         try (InputStream is = file.getInputStream()) {
             minioClient.putObject(PutObjectArgs.builder()
                     .bucket(bucket)
                     .object(objectName)
                     .stream(is, file.getSize(), -1)
-                    .contentType(file.getContentType())
+                    .contentType(contentType)
                     .build());
         }
         // URL présignée 2h
