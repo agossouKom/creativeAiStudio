@@ -12,7 +12,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Prod (serveur) : .env + docker-compose.prod.yml présents → utiliser l'overlay
+# + les secrets. Sans ça, un `up -d` recrée les conteneurs en config dev
+# (mauvais mots de passe DB → crash loop). En local → fichier compose seul.
 COMPOSE="docker compose -f $ROOT/docker-compose.yml"
+if [[ -f "$ROOT/.env" && -f "$ROOT/docker-compose.prod.yml" ]] \
+  && grep -q '^POSTGRES_PASSWORD=' "$ROOT/.env"; then
+  COMPOSE="docker compose --env-file $ROOT/.env -f $ROOT/docker-compose.yml -f $ROOT/docker-compose.prod.yml"
+fi
 LOG_FILE="$ROOT/healthcheck.log"
 REPORT_ONLY="${1:-}"
 WATCH_MODE=false
