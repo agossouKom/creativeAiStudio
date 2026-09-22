@@ -31,49 +31,6 @@
       <a routerLink="/docfusion"       routerLinkActive="nav-active" class="nav-lnk">Document</a>
       <a routerLink="/agentique/teams" routerLinkActive="nav-active" class="nav-lnk nav-lnk-agentique">🤖 Agentique IA</a>
 
-      <!-- ✦ Méga menu — Outils (clic stable) -->
-      <div class="mega-trigger" (click)="$event.stopPropagation()">
-        <span class="nav-lnk nav-lnk-studio nav-lnk-studio--trigger"
-              [class.nav-active]="megaOpen"
-              (click)="toggleMega()">
-          ✦ Outils & Jeux <span class="mega-chevron" [class.mega-chevron--open]="megaOpen">▾</span>
-        </span>
-
-        <div class="mega-menu" [class.mega-menu--open]="megaOpen">
-          <div class="mega-inner">
-
-            <!-- ── Col 1 : CV & Documents ── -->
-            <div class="mega-col">
-              <div class="mega-col-hdr">CV & Documents</div>
-              <a class="mi mi--star" routerLink="/cv-builder" (click)="closeMega()">
-                <span class="mi-ico mi-ico--grad">📄</span>
-                <span class="mi-name">CV Builder <span class="mega-new-badge">Custom</span></span>
-              </a>
-              <a class="mi mi--ats" routerLink="/agentique/cv-analyzer" (click)="closeMega()">
-                <span class="mi-ico mi-ico--ats">🎯</span>
-                <span class="mi-name">Analyseur ATS <span class="mega-new-badge mega-new-badge--ats">Score IA</span></span>
-              </a>
-              <a class="mi mi--cards" routerLink="/card-builder" (click)="closeMega()">
-                <span class="mi-ico mi-ico--cards">🪪</span>
-                <span class="mi-name">Card Builder <span class="mega-new-badge mega-new-badge--cards">Pro</span></span>
-              </a>
-            </div>
-
-            <!-- ── Col 2 : Jeux & Distractions ── -->
-            <div class="mega-col">
-              <div class="mega-col-hdr">🎮 Jeux & Distractions</div>
-              <a class="mi mi--games" routerLink="/games" (click)="closeMega()">
-                <span class="mi-ico">🕹️</span>
-                <span class="mi-name">Tous les jeux <span class="mega-new-badge mega-new-badge--games">15 jeux</span></span>
-              </a>
-            </div>
-
-          </div>
-          <div class="mega-footer">
-            <span class="mega-footer-text">✦ Propulsé par IA — Creative AI Studio</span>
-          </div>
-        </div>
-      </div>
       <a routerLink="/pricing"         routerLinkActive="nav-active" class="nav-lnk">Plans</a>
       <a routerLink="/contact"    routerLinkActive="nav-active" class="nav-lnk">Contact</a>
       <a *ngIf="isLoggedIn" routerLink="/history" routerLinkActive="nav-active" class="nav-lnk">Historique</a>
