@@ -29,6 +29,10 @@ spring:
               - "http://localhost:4200"
               - "http://localhost:4400"
               - "http://localhost"
+              - "http://ai.labibpro.com"
+              - "https://ai.labibpro.com"
+            allowedOriginPatterns:
+              - "https://*.labibpro.com"
             allowedMethods:
               - GET
               - POST
