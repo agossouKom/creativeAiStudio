@@ -2,7 +2,7 @@
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
 </button>
 
-<header class="main-nav animate-fade" *ngIf="!isAdmin && !isEmbedded && !chromeHeaderHidden">
+<header class="main-nav animate-fade" *ngIf="!isAdmin && !isEmbedded && !chromeHeaderHidden && !isAuthPage">
   <div class="nav-inner">
     <!-- Brand -->
     <a routerLink="/" class="nav-brand">
@@ -208,7 +208,7 @@
 </div>
 
 <!-- Footer -->
-<footer class="site-footer" *ngIf="!isAdmin && !isEmbedded && !isFootballGame">
+<footer class="site-footer" *ngIf="!isAdmin && !isEmbedded && !isFootballGame && !isAuthPage">
   <div class="footer-inner">
     <div class="footer-brand">
       <div class="footer-brand-logo">

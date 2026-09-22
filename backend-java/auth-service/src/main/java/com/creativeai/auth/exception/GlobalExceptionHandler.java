@@ -22,16 +22,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(org.springframework.security.authentication.BadCredentialsException.class)
     public ResponseEntity<Map<String, String>> handleBadCredentialsException(org.springframework.security.authentication.BadCredentialsException e) {
-        return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+        return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage(), "message", e.getMessage()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException e) {
-        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "message", e.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleGeneralException(Exception e) {
-        return ResponseEntity.internalServerError().body(Map.of("error", "Une erreur interne est survenue : " + e.getMessage()));
+        return ResponseEntity.internalServerError().body(Map.of("error", "Une erreur interne est survenue : " + e.getMessage(), "message", "Une erreur interne est survenue : " + e.getMessage()));
     }
 }

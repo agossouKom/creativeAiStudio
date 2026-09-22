@@ -25,7 +25,7 @@ services:
     image: redis:7-alpine
     container_name: creativeai-redis
     ports:
-      - "127.0.0.1:6382:6379" # Libre
+      - "127.0.0.1:6383:6379" # Libre
 
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
@@ -166,6 +166,9 @@ services:
       # Agent Email
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-Q3JlYXRpdmVBSVN0dWRpb0tleUNoYW5nZU1lSW5Qcm9k}
       RAG_SERVICE_URL: http://creativeai-rag:8084
+      # SMTP OTP — secret fourni par .env (jamais en clair dans le dépôt)
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -505,6 +508,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-Q3JlYXRpdmVBSVN0dWRpb0tleUNoYW5nZU1lSW5Qcm9k}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OLLAMA_BASE_URL: http://ollama:11434/v1
       DEFAULT_MODEL: llama-3.1-8b-instant

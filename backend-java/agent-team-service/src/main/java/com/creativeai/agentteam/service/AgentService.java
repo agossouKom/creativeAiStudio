@@ -128,16 +128,16 @@ public class AgentService {
             .build();
         promptRepo.save(systemPrompt);
 
-        // Provider LLM par défaut (Groq llama-3.3-70b-versatile, max_tokens du template)
+        // Provider LLM par défaut (modèle par défaut configuré, max_tokens du template)
         String encryptedKey = (groqApiKey != null && !groqApiKey.isBlank())
             ? encryptionService.encrypt(groqApiKey) : null;
         LlmProvider provider = LlmProvider.builder()
             .agent(agent)
             .type(LlmType.GROQ)
-            .modelId("llama-3.3-70b-versatile")
+            .modelId(defaultModel)
             .baseUrl(groqBaseUrl)
             .encryptedApiKey(encryptedKey)
-            .displayName("Groq — llama-3.3-70b-versatile")
+            .displayName("Groq — " + defaultModel)
             .temperature(tpl.temperature())
             .maxTokens(tpl.maxTokens())
             .streamingEnabled(true)

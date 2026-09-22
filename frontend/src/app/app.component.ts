@@ -24,8 +24,8 @@ export class AppComponent implements OnInit {
   agentiqueOpen = false;
   isDark = false;
 
-  /** Routes sans aucune sidebar (cv-builder, creative-studio, docfusion, rag-chat, agentique) */
-  private noSidebarRoutes = ['/creative-studio', '/cv-builder', '/card-builder', '/docfusion', '/rag-chat', '/agentique', '/games'];
+  /** Routes sans aucune sidebar (cv-builder, creative-studio, docfusion, rag-chat, agentique, auth) */
+  private noSidebarRoutes = ['/creative-studio', '/cv-builder', '/card-builder', '/docfusion', '/rag-chat', '/agentique', '/games', '/auth'];
   currentUrl = '';
 
   /** Vrai quand la page est chargée avec ?embed=1 (iframe dans le workspace) */
@@ -35,6 +35,11 @@ export class AppComponent implements OnInit {
 
   get hideAllSidebars(): boolean {
     return this.noSidebarRoutes.some(r => this.currentUrl.startsWith(r));
+  }
+
+  /** Page d'authentification plein écran : pas de header, pas de footer, pas de sidebars */
+  get isAuthPage(): boolean {
+    return this.currentUrl.startsWith('/auth');
   }
 
   /** Alias conservé pour compatibilité */

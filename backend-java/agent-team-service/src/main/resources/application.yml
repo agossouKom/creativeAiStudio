@@ -25,7 +25,7 @@ spring:
     host:     ${MAIL_HOST:mail.labibpro.com}
     port:     ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:contact@labibpro.com}
-    password: ${MAIL_PASSWORD:L9@T5k_mX3Pq}
+    password: ${MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
@@ -104,7 +104,7 @@ agent:
   anthropic-base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com/v1}
   ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
   # Default model
-  default-model: ${DEFAULT_MODEL:llama-3.3-70b-versatile}
+  default-model: ${DEFAULT_MODEL:openai/gpt-oss-20b}
   # Memory
   max-memory-messages: ${MAX_MEMORY_MESSAGES:30}
   memory-ttl-hours: ${MEMORY_TTL_HOURS:24}

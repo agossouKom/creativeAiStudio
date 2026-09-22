@@ -130,6 +130,12 @@ public class TaskSchedulerService {
             sb.append("⚠ Cette tâche est CONFIDENTIELLE — ne pas divulguer son contenu.\n");
         }
 
+        if (isSemiAutomatic(task)) {
+            sb.append("\nMODE SEMI-AUTOMATIQUE : c'est TOI qui décides qui exécute réellement cette tâche. Utilise select_agent pour choisir le meilleur agent disponible (n'importe quel agent de l'équipe est autorisé), justifie brièvement ton choix, puis délègue avec delegate_to_agent.\n");
+        } else {
+            sb.append("\nMODE MANUEL : ne prends AUCUNE initiative sur l'exécutant. N'utilise PAS select_agent. Réalise la tâche par l'agent dont la compétence correspond au type, ou exécute toi-même si cela relève de ton rôle de coordinateur.\n");
+        }
+
         // Injection du snapshot produit avec URLs d'images
         if (task.getProductSnapshot() != null && !task.getProductSnapshot().isBlank()) {
             try {
@@ -185,5 +191,15 @@ public class TaskSchedulerService {
             t.setStatus(status);
             taskRepo.save(t);
         });
+    }
+
+    private boolean isSemiAutomatic(AgentTask task) {
+        if (task.getPayload() == null || task.getPayload().isBlank()) return false;
+        try {
+            return objectMapper.readTree(task.getPayload()).path("semiAutomatic").asBoolean(false);
+        } catch (Exception e) {
+            log.warn("[TASK-SCHEDULER] Impossible de lire semiAutomatic pour tâche {}: {}", task.getId(), e.getMessage());
+            return false;
+        }
     }
 }

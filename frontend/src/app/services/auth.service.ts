@@ -13,7 +13,7 @@ export interface AuthUser {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly API = 'http://localhost:8480/api/auth';
+  private readonly API = '/api/auth';
   private readonly KEY = 'ms_auth';
 
   /** Signal réactif — partagé dans toute l'app */
@@ -43,6 +43,14 @@ export class AuthService {
   verifyRegistration(email: string, code: string) {
     return this.http.post<any>(`${this.API}/register/verify?email=${email}&code=${code}`, {})
       .pipe(tap(res => this.handleAuthResponse(res)));
+  }
+
+  requestPasswordReset(email: string) {
+    return this.http.post<any>(`${this.API}/otp/forgot?email=${email}`, {});
+  }
+
+  resetPassword(email: string, otpCode: string, newPassword: string) {
+    return this.http.post<any>(`${this.API}/otp/reset`, { email, otpCode, newPassword, confirmPassword: newPassword });
   }
 
   loginWithGoogle(token: string) {

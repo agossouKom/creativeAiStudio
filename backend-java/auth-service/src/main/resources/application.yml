@@ -25,7 +25,7 @@ spring:
     host: ${MAIL_HOST:mail.labibpro.com}
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:contact@labibpro.com}
-    password: "L9@T5k_mX3Pq"
+    password: ${MAIL_PASSWORD:}
     properties:
       mail:
         smtp:

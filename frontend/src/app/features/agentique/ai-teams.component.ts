@@ -725,6 +725,15 @@ function makeCompetencies(type: string, desc: string): string[] {
               <input class="at-input" type="datetime-local" [(ngModel)]="patronRequestForm.scheduledAt" [min]="todayIso"/>
               <div class="at-lbl-hint">La tâche sera déclenchée automatiquement à cette date.</div>
             </div>
+            <div style="margin-top:.6rem">
+              <label class="at-vip-toggle" style="cursor:pointer;gap:.5rem">
+                <input type="checkbox" [(ngModel)]="patronRequestForm.semiAutomatic"/>
+                <span>
+                  <span class="at-lbl" style="margin:0">🤖 Mode semi-automatique</span>
+                  <span class="at-lbl-hint" style="display:block">Cocher pour laisser l'agent décider lui-même qui exécute réellement la tâche (sélection + délégation libres). Sans la case, l'agent suit l'exécution prévue par le type sans re-sélectionner l'exécutant.</span>
+                </span>
+              </label>
+            </div>
           </div>
 
           <!-- Contacts / Destinataires -->
@@ -927,6 +936,9 @@ function makeCompetencies(type: string, desc: string): string[] {
               <div class="at-recap-card-body">
                 <div class="at-recap-k">Exécution</div>
                 <div class="at-recap-v">{{ patronRequestForm.schedulingMode === 'immediate' ? '⚡ Immédiate' : '⏰ Planifiée — ' + patronRequestForm.scheduledAt }}</div>
+                <div class="at-recap-v" style="font-size:.72rem;margin-top:.2rem;color:#22d3ee">
+                  {{ patronRequestForm.semiAutomatic ? '🤖 Semi-automatique : l\'agent décide qui exécute' : '👤 Manuel : exécution prévue selon le type' }}
+                </div>
               </div>
               <button class="at-recap-edit" (click)="goToFormStep(2)">✏️</button>
             </div>
@@ -1094,6 +1106,26 @@ function makeCompetencies(type: string, desc: string): string[] {
             <div *ngIf="!scrumResponseText && !scrumStreaming" class="at-scrum-waiting at-scrum-waiting--muted">En attente…</div>
             <pre *ngIf="scrumResponseText" class="at-scrum-text">{{ scrumResponseText }}<span *ngIf="scrumStreaming" class="at-cursor">█</span></pre>
           </div>
+        </div>
+
+        <!-- Propositions de création d'agent du Scrum -->
+        <div class="at-proposals" *ngIf="pendingProposals.length">
+          <div class="at-proposals-hdr">🤖 Propositions du Scrum Manager — création d'agents</div>
+          <div class="at-proposal" *ngFor="let p of pendingProposals">
+            <div class="at-proposal-t">
+              🧩 {{ p.name || p.agentType }}
+              <span class="at-proposal-type">{{ p.agentType }}</span>
+            </div>
+            <div class="at-proposal-d" *ngIf="p.description">{{ p.description }}</div>
+            <div class="at-proposal-meta" *ngIf="p.teamName">Team : {{ p.teamName }}</div>
+            <div class="at-proposal-meta" *ngIf="p.requesterAgentName">Proposé par : {{ p.requesterAgentName }}</div>
+            <div class="at-proposal-actions">
+              <button class="at-proposal-ok" (click)="approveProposal(p)" [disabled]="proposalBusy">✅ Approuver la création</button>
+              <button class="at-proposal-no" (click)="refuseProposal(p)" [disabled]="proposalBusy">✕ Refuser</button>
+            </div>
+            <div class="at-proposal-hint">L'agent sera créé tout configuré (outils, modèle IA, prompt) et apparaîtra dans la liste des agents existants.</div>
+          </div>
+          <div class="at-proposal-msg" *ngIf="proposalMsg">{{ proposalMsg }}</div>
         </div>
 
       </div>
@@ -1626,6 +1658,22 @@ input[type="range"].at-input { padding:.3rem 0; cursor:pointer; -webkit-appearan
 .at-scrum-waiting--muted { color:rgba(148,163,184,.3); }
 .at-scrum-text { font-size:.78rem; color:#c7d2fe; white-space:pre-wrap; word-break:break-word; margin:0; font-family:inherit; line-height:1.5; }
 .at-cursor { display:inline-block; animation:blink .7s step-end infinite; color:#6366f1; }
+
+.at-proposals { margin-top:.8rem; display:flex; flex-direction:column; gap:.6rem; }
+.at-proposals-hdr { font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; color:#22d3ee; font-weight:700; }
+.at-proposal { background:linear-gradient(135deg,rgba(16,185,129,.09),rgba(34,211,238,.06)); border:1px solid rgba(16,185,129,.35); border-radius:12px; padding:.75rem .9rem; animation:fade .3s ease; }
+.at-proposal-t { font-size:.82rem; font-weight:700; color:#e2e8f0; display:flex; align-items:center; gap:.45rem; }
+.at-proposal-type { background:rgba(34,211,238,.15); color:#22d3ee; font-size:.62rem; font-weight:700; padding:.15rem .45rem; border-radius:999px; letter-spacing:.04em; }
+.at-proposal-d { font-size:.75rem; color:#94a3b8; margin-top:.35rem; line-height:1.45; }
+.at-proposal-meta { font-size:.68rem; color:#64748b; margin-top:.2rem; }
+.at-proposal-actions { display:flex; gap:.5rem; margin-top:.6rem; }
+.at-proposal-ok { background:linear-gradient(135deg,#059669,#10b981); color:#fff; border:none; border-radius:8px; font-size:.72rem; font-weight:700; padding:.45rem .85rem; cursor:pointer; }
+.at-proposal-ok:hover:not(:disabled) { filter:brightness(1.15); }
+.at-proposal-no { background:rgba(239,68,68,.12); color:#f87171; border:1px solid rgba(239,68,68,.4); border-radius:8px; font-size:.72rem; font-weight:600; padding:.45rem .85rem; cursor:pointer; }
+.at-proposal-no:hover:not(:disabled) { background:rgba(239,68,68,.22); }
+.at-proposal-ok:disabled, .at-proposal-no:disabled { opacity:.5; cursor:not-allowed; }
+.at-proposal-hint { font-size:.63rem; color:#64748b; margin-top:.45rem; line-height:1.4; }
+.at-proposal-msg { font-size:.75rem; color:#fbbf24; margin-top:.3rem; }
 @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0; } }
 .at-status-pending { color:#f59e0b; font-weight:600; }
 `]
@@ -1681,6 +1729,9 @@ export class AiTeamsComponent implements OnInit {
   taskPollingActive = false;
   scrumStreaming     = false;
   scrumResponseText = '';
+  pendingProposals  = [] as any[];
+  proposalBusy      = false;
+  proposalMsg       = '';
   private pollingTimer: any = null;
   private streamAbort: AbortController | null = null;
   readonly resultExamples = [
@@ -1958,6 +2009,7 @@ export class AiTeamsComponent implements OnInit {
       attachments: [] as { name: string; size: number; type: string; file: File }[],
       schedulingMode: 'immediate' as 'immediate' | 'scheduled',
       scheduledAt: '',
+      semiAutomatic: false,
       platforms: [] as string[],
       hashtags: '',
       tone: 'dynamique',
@@ -2081,6 +2133,7 @@ export class AiTeamsComponent implements OnInit {
     if (!this.activeTaskId) return;
     this.http.get<any>(`${API}/api/tasks/${this.activeTaskId}`).subscribe({
       next: (task) => {
+        this.loadPendingProposals();
         const prev = this.activeTaskStatus;
         this.activeTaskStatus      = task.status;
         this.activeTaskStatusLabel = this.taskStatusLabel(task.status);
@@ -2207,12 +2260,58 @@ export class AiTeamsComponent implements OnInit {
       clearTimeout(timeoutId);
     }
     this.scrumStreaming = false;
+    this.loadPendingProposals();
     this.cd.markForCheck();
     // Avancer le step si toujours en cours
     if (this.workflowStep < 3) {
       this.workflowStep = 3; // Scrum a analysé
       this.cd.markForCheck();
     }
+  }
+
+  // ── Approbation des créations d'agent proposées par le SCRUM ─────────────
+  loadPendingProposals(): void {
+    this.http.get<any[]>(`${API}/api/agent-proposals?status=PENDING`).subscribe({
+      next: (list) => {
+        this.pendingProposals = list || [];
+        this.cd.markForCheck();
+      },
+      error: () => {}
+    });
+  }
+
+  approveProposal(p: any): void {
+    if (this.proposalBusy) return;
+    this.proposalBusy = true; this.proposalMsg = '';
+    this.http.post<any>(`${API}/api/agent-proposals/${p.id}/approve`, {}).subscribe({
+      next: (res) => {
+        this.proposalMsg = `✅ Agent « ${res.name || res.agentType} » créé (${res.agentType}) et ajouté à l'équipe.`;
+        this.pendingProposals = this.pendingProposals.filter(q => q.id !== p.id);
+        this.loadAgents();
+        this.proposalBusy = false;
+        this.cd.markForCheck();
+      },
+      error: (e) => {
+        this.proposalMsg = `❌ ${e?.error?.message || e?.message || 'Erreur lors de l\'approbation'}`;
+        this.proposalBusy = false; this.cd.markForCheck();
+      }
+    });
+  }
+
+  refuseProposal(p: any): void {
+    if (this.proposalBusy) return;
+    this.proposalBusy = true; this.proposalMsg = '';
+    this.http.post<any>(`${API}/api/agent-proposals/${p.id}/refuse`, {}).subscribe({
+      next: () => {
+        this.proposalMsg = `✕ Proposition refusée. Aucun agent n'a été créé.`;
+        this.pendingProposals = this.pendingProposals.filter(q => q.id !== p.id);
+        this.proposalBusy = false; this.cd.markForCheck();
+      },
+      error: (e) => {
+        this.proposalMsg = `❌ ${e?.error?.message || e?.message || 'Erreur lors du refus'}`;
+        this.proposalBusy = false; this.cd.markForCheck();
+      }
+    });
   }
 
   // ── Handlers synchronisation type/priorité ────────────────────────────────
@@ -2659,6 +2758,7 @@ export class AiTeamsComponent implements OnInit {
       priority: this.patronRequestForm.priority,
       source: isScheduled ? 'SCHEDULED' : 'MANUAL',
       assignedAgentId: this.scrumCard.id,
+      payload: JSON.stringify({ semiAutomatic: this.patronRequestForm.semiAutomatic }),
     };
     if (teamId) payload.teamId = teamId;
     if (this.patronRequestForm.dueDate) payload.dueDate = this.patronRequestForm.dueDate;
@@ -2710,6 +2810,11 @@ export class AiTeamsComponent implements OnInit {
           const contactsBlock = contacts.length
             ? `DESTINATAIRES (${contacts.length}) : ${contacts.join(', ')}\n→ Transmettre CES adresses exactes à l'agent, une par une. Ne pas en inventer d'autres.`
             : `AUCUN destinataire fourni → si la tâche nécessite un envoi email, NE PAS envoyer et répondre au patron qu'aucune adresse n'a été fournie.`;
+          const modeInstruction = this.patronRequestForm.semiAutomatic
+            ? `2. MODE SEMI-AUTOMATIQUE : c'est TOI qui décides qui exécute réellement cette tâche. Utilise select_agent pour identifier le meilleur agent disponible (n'importe quel agent de l'équipe est autorisé), justifie brièvement ton choix, puis passe à l'étape 3.
+`
+            : `2. MODE MANUEL : ne prends AUCUNE initiative sur l'exécutant. N'utilise PAS select_agent. Réalise la tâche par l'agent de ton équipe dont la compétence correspond au type ${task.type}, ou exécute toi-même si la demande relève de ton rôle de coordinateur.
+`;
           const scrumMsg = `Nouvelle demande du patron.
 Titre : "${task.title}"
 Type : ${task.type}
@@ -2724,8 +2829,7 @@ ${fullDesc}
 
 Instructions (à exécuter dans l'ordre) :
 1. Utilise update_task_status pour passer la tâche ${task.id} en IN_PROGRESS
-2. Utilise select_agent pour identifier le meilleur agent disponible selon le type ${task.type}
-3. Utilise delegate_to_agent en transmettant dans le champ "message" :
+${modeInstruction}3. Utilise delegate_to_agent en transmettant dans le champ "message" :
    - L'instruction complète de la tâche
    - ${contacts.length ? `Les ${contacts.length} adresse(s) email EXACTES : ${contacts.join(', ')}` : 'Aucun destinataire fourni — signaler l\'absence au patron sans envoyer'}
    - Le ton souhaité, les contraintes, le contenu attendu

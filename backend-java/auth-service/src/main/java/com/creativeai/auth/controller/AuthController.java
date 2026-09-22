@@ -57,6 +57,18 @@ public class AuthController {
         return ResponseEntity.ok(authResponse);
     }
 
+    @PostMapping("/otp/forgot")
+    public ResponseEntity<Map<String, String>> forgotPassword(@RequestParam String email) {
+        authService.requestPasswordReset(email);
+        return ResponseEntity.ok(Map.of("message", "Code de réinitialisation envoyé à " + email));
+    }
+
+    @PostMapping("/otp/reset")
+    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody com.creativeai.auth.dto.ResetPasswordRequest req) {
+        authService.resetPassword(req);
+        return ResponseEntity.ok(Map.of("message", "Mot de passe réinitialisé avec succès."));
+    }
+
     @PostMapping("/google")
     public ResponseEntity<AuthResponse> googleLogin(@Valid @RequestBody GoogleLoginRequest req, HttpServletResponse response) {
         AuthResponse authResponse = authService.loginWithGoogle(req.token());

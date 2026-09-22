@@ -11,7 +11,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -29,7 +29,7 @@ public class InboxService {
     private final InboxMessageRepository inboxRepo;
     private final AuditService           auditService;
     private final ObjectMapper           objectMapper;
-    @Lazy private final ChannelSenderService channelSenderService;
+    private final ObjectProvider<ChannelSenderService> channelSenderService;
 
     // ── Recherche / Lecture ───────────────────────────────────────────────────
 
@@ -160,7 +160,7 @@ public class InboxService {
         String subject = StringUtils.hasText(replySubject)
             ? replySubject
             : (StringUtils.hasText(msg.getSubject()) ? "Re: " + msg.getSubject() : "Réponse");
-        var result = channelSenderService.sendEmail(
+        var result = channelSenderService.getObject().sendEmail(
             userId,
             msg.getAgentId(),
             msg.getFromAddress(),
@@ -186,7 +186,7 @@ public class InboxService {
         String pendingReplyBody = readReplyBody(msg.getMetadata());
         String pendingReplySubject = readReplySubject(msg.getMetadata());
         if (msg.getStatus() == InboxStatus.PENDING_APPROVAL && StringUtils.hasText(pendingReplyBody)) {
-            var result = channelSenderService.sendEmail(
+            var result = channelSenderService.getObject().sendEmail(
                 userId,
                 msg.getAgentId(),
                 msg.getFromAddress(),

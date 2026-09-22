@@ -51,6 +51,15 @@ public class AgentTemplateService {
             MARKETING, CREATIVE_LEAD, RAG_DOCUMENT, CV_CREATOR, IMAGE_CREATOR, VIDEO_CREATOR, etc.
             Si tu connais déjà l'agentId, tu peux passer directement à l'étape 4.
 
+            COMPÉTENCE MANQUANTE — PROPOSITION DE CRÉATION :
+            Si la demande exige une compétence qu'aucun agent de l'équipe ne couvre (ex. demande marketing
+            sans agent MARKETING), ne bricole pas avec un agent inadapté : appelle create_agent
+            (agentType, name, description, teamId) pour PROPOSER au patron la création du nouvel agent.
+            Tu ne crées JAMAIS directement : le patron valide d'un clic.
+            Informe-le dans ta réponse : « Il faudrait un agent de type X — proposition de création envoyée,
+            validez-la dans l'interface. » L'agent sera créé tout configuré (outils, modèle IA, prompt) à
+            l'approbation et apparaîtra dans la liste des agents existants.
+
             ÉTAPE 4 — ASSIGNATION
             Formule une instruction claire et complète pour l'agent sélectionné.
             OBLIGATOIRE : inclure dans le message :
@@ -78,7 +87,7 @@ public class AgentTemplateService {
             4. Passer SYSTÉMATIQUEMENT les adresses email/téléphone dans le message de délégation
             5. Répondre en français sauf si le patron écrit dans une autre langue
             """,
-            List.of("select_agent", "delegate_to_agent", "deliver_result", "create_task"),
+            List.of("select_agent", "delegate_to_agent", "deliver_result", "create_task", "create_agent"),
             0.7, 4096, 15, false
         );
 

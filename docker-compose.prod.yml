@@ -1,0 +1,144 @@
+# =============================================================================
+#  docker-compose.prod.yml — Overlay de production Creative AI Studio
+# =============================================================================
+#  Utilisation (sur le serveur) :
+#    cd /opt/creativeaistudio
+#    docker compose --env-file .env \
+#      -f docker-compose.yml -f docker-compose.prod.yml \
+#      up -d <services...>
+#
+#  Ce fichier ne contient AUCUN secret en clair : toutes les valeurs sensibles
+#  sont injectées depuis le fichier .env (non versionné) via ${VAR:?}.
+#  En cas d'oubli d'une variable → docker compose refuse de démarrer
+#  (mode "fail-fast") au lieu de démarrer avec une valeur vide.
+#
+#  Le fichier docker-compose.yml de base reste le fichier "développement"
+#  avec des valeurs par défaut locales ; cet overlay ne sert QUE à la prod.
+# =============================================================================
+
+services:
+
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  minio:
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+      MINIO_SERVER_URL: ${MINIO_PUBLIC_URL:-https://ai.labibpro.com/minio}
+
+  # ── API Gateway ────────────────────────────────────────────────────────────
+
+  api-gateway:
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
+
+  # ── Auth Service (OTP / JWT / Gmail) ────────────────────────────────────────
+
+  auth-service:
+    environment:
+      DB_USER: creativeai
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD requis dans .env}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:?SPRING_MAIL_PASSWORD requis dans .env}
+      GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
+      GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
+      GMAIL_REDIRECT_URI: ${GMAIL_REDIRECT_URI:-https://ai.labibpro.com/api/auth/gmail/callback}
+      GMAIL_FRONTEND_REDIRECT: ${GMAIL_FRONTEND_REDIRECT:-https://ai.labibpro.com/agentique/email}
+
+  # ── Search Service ─────────────────────────────────────────────────────────
+
+  search-service:
+    environment:
+      DB_USER: creativeai
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+
+  # ── DocFusion Service ──────────────────────────────────────────────────────
+
+  docfusion-service:
+    environment:
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://ai.labibpro.com/minio}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+
+  # ── RAG Service ────────────────────────────────────────────────────────────
+
+  rag-service:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
+
+  # ── Agent Team Service ─────────────────────────────────────────────────────
+  # !override : on REMPLACE la liste des dépendances de base (qui incluait
+  # ollama) pour que le service démarre SANS le LLM local en production.
+
+  agent-team-service:
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      redpanda:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-https://ai.labibpro.com}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://ai.labibpro.com/minio}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:?SPRING_MAIL_PASSWORD requis dans .env}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+
+  # ── Telegram MCP ───────────────────────────────────────────────────────────
+
+  telegram-mcp-service:
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_NAME: ${TELEGRAM_BOT_NAME:-creativeai_bot}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+
+  # ── Workers IA ─────────────────────────────────────────────────────────────
+
+  audio-worker:
+    environment:
+      ACOUSTID_API_KEY: ${ACOUSTID_API_KEY:-}
+
+  face-worker:
+    environment:
+      SERP_API_KEY: ${SERP_API_KEY:-}
+      NUMVERIFY_KEY: ${NUMVERIFY_KEY:-}
+      BING_SEARCH_KEY: ${BING_SEARCH_KEY:-}
+
+  video-worker:
+    environment:
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+
+  pdf-worker:
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+
+  ocr-worker:
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}

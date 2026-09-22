@@ -109,6 +109,25 @@ public class AuthService {
         return buildAuthResponse(user);
     }
 
+    public void requestPasswordReset(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BadCredentialsException("Utilisateur introuvable."));
+        otpService.sendOtp(user.getEmail(), "PASSWORD_RESET");
+    }
+
+    public void resetPassword(com.creativeai.auth.dto.ResetPasswordRequest req) {
+        if (!req.newPassword().equals(req.confirmPassword())) {
+            throw new IllegalArgumentException("Les mots de passe ne correspondent pas.");
+        }
+        User user = userRepository.findByEmail(req.email())
+                .orElseThrow(() -> new BadCredentialsException("Utilisateur introuvable."));
+        if (!otpService.verifyOtp(req.email(), req.otpCode())) {
+            throw new IllegalArgumentException("Code OTP invalide ou expiré.");
+        }
+        user.setPassword(passwordEncoder.encode(req.newPassword()));
+        userRepository.save(user);
+    }
+
     public AuthResponse loginWithGoogle(String idTokenString) {
         try {
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())

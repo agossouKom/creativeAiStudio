@@ -38,6 +38,7 @@ import reactor.core.scheduler.Schedulers;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -79,6 +80,23 @@ public class AgentOrchestrator {
     // Outils interdits aux sous-agents pour prévenir les boucles de délégation infinie
     private static final Set<String> ORCHESTRATION_ONLY_TOOLS =
         Set.of("select_agent", "delegate_to_agent", "create_agent", "create_team");
+
+    /**
+     * Convertit un nom d'outil Spring AI (camelCase, nom de méthode @Tool)
+     * en alias snake_case utilisé dans les configs (ex : delegateToAgent → delegate_to_agent).
+     */
+    private static String toSnakeCase(String camelCase) {
+        if (camelCase == null || camelCase.isBlank()) return "";
+        return camelCase.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Accepte un outil Spring AI s'il figure dans la liste autorisée, sous son nom
+     * natif (camelCase) ou son alias snake_case (configs existantes).
+     */
+    private static boolean matchesEnabled(String toolName, Set<String> allowed) {
+        return allowed.contains(toolName) || allowed.contains(toSnakeCase(toolName));
+    }
 
     @Value("${minio.public-url:http://localhost:9400}")
     private String minioPublicUrl;
@@ -172,7 +190,7 @@ public class AgentOrchestrator {
                     if (!enabledTools.isEmpty()) {
                         Set<String> allowed = new java.util.HashSet<>(enabledTools);
                         toolCallbacks = java.util.Arrays.stream(allCallbacks)
-                            .filter(cb -> allowed.contains(cb.getToolDefinition().name()))
+                            .filter(cb -> matchesEnabled(cb.getToolDefinition().name(), allowed))
                             .toArray(ToolCallback[]::new);
                         log.info("[ORCHESTRATOR] agent={} tools filtrés={}/{} allowed={}", agentId,
                             toolCallbacks.length, allCallbacks.length, allowed);

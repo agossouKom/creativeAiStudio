@@ -1,9 +1,10 @@
 package com.creativeai.agentteam.tool.impl;
 
-import com.creativeai.agentteam.dto.request.CreateFromTemplateRequest;
-import com.creativeai.agentteam.dto.response.AgentDetailResponse;
+import com.creativeai.agentteam.model.Agent;
+import com.creativeai.agentteam.model.AgentProposal;
 import com.creativeai.agentteam.model.enums.AgentType;
-import com.creativeai.agentteam.service.AgentService;
+import com.creativeai.agentteam.repository.AgentRepository;
+import com.creativeai.agentteam.service.AgentProposalService;
 import com.creativeai.agentteam.tool.AgentTool;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -12,19 +13,23 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Option B : permet à un SCRUM_MASTER de créer dynamiquement un agent spécialisé.
- * Utilise l'Option C en interne (createFromTemplate) pour un agent pré-configuré.
+ * Le SCRUM_MASTER PROPOSE la création d'un agent spécialisé au patron de l'équipe.
+ * Aucun agent n'est créé directement : une proposition PENDING est enregistrée et
+ * l'utilisateur la valide (ou refuse) d'un clic dans l'interface. L'agent n'est créé,
+ * tout configuré depuis son template, qu'après approbation.
  */
 @Slf4j
 @Component
 public class CreateAgentTool implements AgentTool {
 
-    private final AgentService agentService;
-    private final ObjectMapper objectMapper;
+    private final AgentProposalService proposalService;
+    private final AgentRepository      agentRepo;
+    private final ObjectMapper         objectMapper;
 
-    public CreateAgentTool(AgentService agentService, ObjectMapper objectMapper) {
-        this.agentService = agentService;
-        this.objectMapper  = objectMapper;
+    public CreateAgentTool(AgentProposalService proposalService, AgentRepository agentRepo, ObjectMapper objectMapper) {
+        this.proposalService = proposalService;
+        this.agentRepo       = agentRepo;
+        this.objectMapper    = objectMapper;
     }
 
     @Override
@@ -32,9 +37,9 @@ public class CreateAgentTool implements AgentTool {
 
     @Override
     public String getDescription() {
-        return "Crée un nouvel agent IA spécialisé à partir d'un type prédéfini. "
-             + "L'agent est immédiatement opérationnel avec son system prompt et sa configuration. "
-             + "Retourne l'ID et les informations du nouvel agent.";
+        return "Propose au patron (utilisateur de l'équipe) la création d'un nouvel agent IA spécialisé à partir d'un type prédéfini. "
+             + "Ne crée PAS directement : enregistre une proposition PENDING que le patron validera d'un clic. "
+             + "L'agent sera créé tout configuré (outils, modèle IA, prompt) après approbation.";
     }
 
     @Override
@@ -42,9 +47,9 @@ public class CreateAgentTool implements AgentTool {
         return """
             {
               "type": "string (obligatoire) — type d'agent parmi : SCRUM_MASTER, EMAIL_MANAGER, COMMUNITY_MANAGER, CUSTOMER_SUPPORT, PROSPECTION, MARKETING, CV_CREATOR, CV_EDITOR, IMAGE_CREATOR, VIDEO_CREATOR, RAG_DOCUMENT, SECURITY_AUDIT, CREATIVE_LEAD, ONLY_OFFICE, ANIMATION, AD_SPOT",
-              "name": "string (optionnel) — nom personnalisé, sinon nom par défaut du template",
-              "description": "string (optionnel) — description personnalisée",
-              "teamId": "string (optionnel) — UUID de l'équipe à laquelle attacher l'agent"
+              "name": "string (optionnel) — nom personnalisé suggéré, sinon nom par défaut du template",
+              "description": "string (optionnel) — description personnalisée suggérée",
+              "teamId": "string (optionnel) — UUID de l'équipe à laquelle attacher l'agent (déduit de l'agent appelant si absent)"
             }
             """;
     }
@@ -67,23 +72,29 @@ public class CreateAgentTool implements AgentTool {
         String description = (String) params.get("description");
         String teamId      = (String) params.get("teamId");
 
-        log.info("[CREATE_AGENT] Agent {} creating new agent type={} name={}", callerAgentId, type, name);
+        // Déduire l'équipe de l'agent appelant si non fournie
+        if ((teamId == null || teamId.isBlank()) && callerAgentId != null) {
+            teamId = agentRepo.findByIdAndDeletedFalse(callerAgentId)
+                .map(Agent::getTeamId)
+                .orElse(null);
+        }
+
+        log.info("[CREATE_AGENT] Agent {} proposing new agent type={} name={} for user {}", callerAgentId, type, name, userId);
 
         try {
-            CreateFromTemplateRequest req = new CreateFromTemplateRequest(name, description, teamId);
-            AgentDetailResponse created = agentService.createFromTemplate(userId, type, req);
-
+            AgentProposal proposal = proposalService.create(userId, type, name, description, teamId, callerAgentId);
             return objectMapper.writeValueAsString(Map.of(
-                "agentId",     created.id(),
-                "name",        created.name(),
-                "type",        created.type(),
-                "status",      created.status(),
-                "description", created.description() != null ? created.description() : "",
-                "message",     "Agent créé avec succès. Pensez à lui attacher un LLM provider via POST /api/agents/{id}/llm-providers"
-            ));
+                "proposalId", proposal.getId(),
+                "status",     "PENDING_VALIDATION",
+                "agentType",  type.name(),
+                "name",       proposal.getName() != null ? proposal.getName() : type.name(),
+                "message",    "Proposition de création d'agent envoyée au patron pour validation. "
+                            + "Le patron validera d'un clic dans l'interface. L'agent n'est pas encore disponible : "
+                            + "informe le patron dans ta réponse finale que la proposition est en attente de son approbation.")
+            );
         } catch (Exception e) {
-            log.error("[CREATE_AGENT] Error: {}", e.getMessage(), e);
-            return "{\"error\":\"Erreur lors de la création de l'agent: " + e.getMessage() + "\"}";
+            log.error("[CREATE_AGENT] Error proposing agent: {}", e.getMessage(), e);
+            return "{\"error\":\"Erreur lors de la proposition de création d'agent: " + e.getMessage() + "\"}";
         }
     }
 }

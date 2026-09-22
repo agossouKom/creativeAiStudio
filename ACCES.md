@@ -30,7 +30,7 @@
 |---|---|---|---|
 | **pgAdmin** | http://localhost:8085 | `admin@mediacore.com` | `admin` |
 | **PostgreSQL** | `localhost:5436` | `creativeai` | `creativeai123` |
-| **Redis** | `localhost:6382` | — | — |
+| **Redis** | `localhost:6383` | — | — |
 | **Kafka (Redpanda)** | `localhost:19095` | — | — |
 
 ---
