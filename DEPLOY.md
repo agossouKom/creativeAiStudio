@@ -51,6 +51,26 @@ Retour au dépôt local (machine de dev) :
 git remote add prod root@157.173.114.181:/opt/creativeaistudio.git
 ```
 
+## ⚠️ Pièges critiques rencontrés
+
+1. **Toujours** les 3 flags sur le serveur :
+   `--env-file .env -f docker-compose.yml -f docker-compose.prod.yml`.
+   Un `docker compose build|up -d <svc>` *sans* flags recrée le graphe de
+   dépendances (postgres, auth, search, rag, gateway) en config **développement**
+   → les services java passent au mot de passe `creativeai123` alors que le rôle
+   réel de la base (volume persisté) est `POSTGRES_PASSWORD` du `.env` →
+   crash loop `password authentication failed`. Correctif : relancer la même
+   commande **avec** les flags (recrée juste les conteneurs à la bonne config,
+   le volume postgres n'est pas touché).
+2. **CORS gateway** : tout nouveau domaine d'origine doit être ajouté à
+   `allowedOrigins` de `api-gateway/application.yml`. Les navigateurs envoient
+   l'en-tête `Origin` sur tout POST *même same-origin* ; origine non listée →
+   **403 vide** et l'UI affiche « Erreur d'analyse » alors que le curl sans
+   `Origin` passe (piege de test).
+3. `scp` peut échouer (`subsystem request failed on channel 0`) sur ce serveur :
+   reconstruire les JARs sur le serveur (`mvn -pl <mod> package -DskipTests`)
+   plutôt que de transférer les binaires.
+
 ## Premier déploiement (builds, à refaire à chaque changement de code Java/FS)
 
 Les images Java ne compilent **pas** dans Docker (elles copient les JARs de
