@@ -213,6 +213,12 @@ spring:
           filters:
             - RewritePath=/api/facebook/(?<segment>.*), /api/facebook/${segment}
 
+        # LLM providers du compte courant (CRUD rattaché à l'utilisateur)
+        - id: agent-team-my-llm-providers
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/users/me/llm-providers/**
+
         # ── Email Agent (auth-service) — DOIT être AVANT la route agent générale ──
         - id: email-agent
           uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081

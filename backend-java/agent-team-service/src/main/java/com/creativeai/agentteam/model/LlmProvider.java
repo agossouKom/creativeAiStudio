@@ -16,8 +16,12 @@ import lombok.*;
 public class LlmProvider extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "agent_id", nullable = false)
+    @JoinColumn(name = "agent_id")
     private Agent agent;
+
+    /** Provider rattaché au compte utilisateur (userId = email JWT). agentId est alors null. */
+    @Column(name = "user_id", length = 100)
+    private String userId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

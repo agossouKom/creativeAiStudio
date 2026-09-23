@@ -1,7 +1,9 @@
 package com.creativeai.agentteam.llm;
 
+import com.creativeai.agentteam.model.Agent;
 import com.creativeai.agentteam.model.LlmProvider;
 import com.creativeai.agentteam.model.enums.LlmType;
+import com.creativeai.agentteam.repository.AgentRepository;
 import com.creativeai.agentteam.repository.LlmProviderRepository;
 import com.creativeai.agentteam.service.EncryptionService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,6 +29,7 @@ import java.util.regex.Pattern;
 public class LlmGateway {
 
     private final LlmProviderRepository llmRepo;
+    private final AgentRepository       agentRepo;
     private final EncryptionService     encryptionService;
     private final WebClient.Builder     webClientBuilder;
     private final ObjectMapper          objectMapper;
@@ -36,6 +39,7 @@ public class LlmGateway {
     @Value("${agent.openai-base-url}") private String openAiBaseUrl;
     @Value("${agent.ollama-base-url}") private String ollamaBaseUrl;
     @Value("${agent.default-model}")   private String defaultModel;
+    @Value("${agent.admin-user-id:}")  private String adminUserId;
     @Value("${GROQ_API_KEY:}")         private String groqApiKey;
 
     private static final Pattern RETRY_AFTER_PATTERN =
@@ -428,12 +432,51 @@ public class LlmGateway {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /**
+     * Résout le provider LLM utilisé pour un agent.
+     * Ordre de résolution :
+     *   1. Providers rattachés à l'agent (primary puis backups)
+     *   2. Providers du compte de l'agent (ownerId = email JWT)
+     *   3. Providers du compte admin → provider par défaut pour tous les comptes
+     *   4. Fallback : GROQ_API_KEY de l'environnement
+     */
     public LlmProvider resolveProvider(String agentId) {
-        return llmRepo.findByAgentIdAndPrimaryTrueAndDeletedFalse(agentId)
+        String ownerId = agentRepo.findByIdAndDeletedFalse(agentId)
+            .map(Agent::getOwnerId).orElse(null);
+        return resolveProvider(agentId, ownerId);
+    }
+
+    public LlmProvider resolveProvider(String agentId, String ownerId) {
+        // 1. Providers de l'agent
+        LlmProvider p = llmRepo.findByAgentIdAndPrimaryTrueAndDeletedFalse(agentId)
             .stream().findFirst()
             .orElseGet(() -> llmRepo.findByAgentIdAndDeletedFalseOrderByPrimaryDesc(agentId)
+                .stream().findFirst().orElse(null));
+        if (p != null) return p;
+
+        // 2. Providers du compte utilisateur (agent.ownerId)
+        if (ownerId != null && !ownerId.isBlank()) {
+            p = llmRepo.findByUserIdAndPrimaryTrueAndDeletedFalse(ownerId)
                 .stream().findFirst()
-                .orElseGet(() -> buildGroqFallback(agentId)));
+                .orElseGet(() -> llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(ownerId)
+                    .stream().findFirst().orElse(null));
+            if (p != null) return p;
+        }
+
+        // 3. Providers du compte admin → provider par défaut pour tous les comptes
+        if (adminUserId != null && !adminUserId.isBlank() && !adminUserId.equals(ownerId)) {
+            p = llmRepo.findByUserIdAndPrimaryTrueAndDeletedFalse(adminUserId)
+                .stream().findFirst()
+                .orElseGet(() -> llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(adminUserId)
+                    .stream().findFirst().orElse(null));
+            if (p != null) {
+                log.info("[LLM] Utilisation du provider par défaut (admin) pour agentId={}", agentId);
+                return p;
+            }
+        }
+
+        // 4. Fallback GROQ env
+        return buildGroqFallback(agentId);
     }
 
     private LlmProvider buildGroqFallback(String agentId) {

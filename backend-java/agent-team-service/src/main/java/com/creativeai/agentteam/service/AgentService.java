@@ -385,6 +385,110 @@ public class AgentService {
         return LlmProviderResponse.from(llmRepo.save(llm));
     }
 
+    // ── LLM Providers (compte utilisateur) ───────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<LlmProviderResponse> listUserLlmProviders(String userId, boolean includeDeleted) {
+        List<LlmProvider> providers = includeDeleted
+            ? llmRepo.findByUserIdOrderByPrimaryDescCreatedAtDesc(userId)
+            : llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(userId);
+        return providers.stream().map(LlmProviderResponse::from).toList();
+    }
+
+    @Transactional
+    public LlmProviderResponse addUserLlmProvider(String userId, LlmProviderRequest req) {
+        boolean makePrimary = req.primary() != null && req.primary();
+        if (makePrimary) {
+            llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(userId)
+                .forEach(p -> { p.setPrimary(false); llmRepo.save(p); });
+        }
+        LlmProvider llm = buildUserLlmProvider(userId, req, makePrimary);
+        LlmProvider saved = llmRepo.save(llm);
+        auditService.log(userId, "ADD_LLM_PROVIDER", "user", userId, true,
+            AuditService.details("provider", req.type(), "model", req.modelId()));
+        return LlmProviderResponse.from(saved);
+    }
+
+    @Transactional
+    public LlmProviderResponse updateUserLlmProvider(String userId, String llmId, LlmProviderRequest req) {
+        LlmProvider llm = findByUserActive(userId, llmId);
+        if (req.type() != null)  llm.setType(req.type());
+        if (req.modelId() != null) llm.setModelId(req.modelId());
+        if (req.baseUrl() != null) llm.setBaseUrl(req.baseUrl());
+        if (req.displayName() != null) llm.setDisplayName(req.displayName());
+        if (req.apiKey() != null && !req.apiKey().isBlank()) {
+            llm.setEncryptedApiKey(encryptionService.encrypt(req.apiKey()));
+        }
+        if (req.temperature() != null) llm.setTemperature(req.temperature());
+        if (req.maxTokens() != null) llm.setMaxTokens(req.maxTokens());
+        if (req.streamingEnabled() != null) llm.setStreamingEnabled(req.streamingEnabled());
+        if (req.requestTimeoutSeconds() != null) llm.setRequestTimeoutSeconds(req.requestTimeoutSeconds());
+        if (req.rateLimitRpm() != null) llm.setRateLimitRpm(req.rateLimitRpm());
+        if (req.extraParams() != null) llm.setExtraParams(req.extraParams());
+        if (req.primary() != null && req.primary()) {
+            llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(userId)
+                .forEach(p -> { if (!p.getId().equals(llmId)) p.setPrimary(false); llmRepo.save(p); });
+            llm.setPrimary(true);
+        }
+        LlmProvider saved = llmRepo.save(llm);
+        auditService.log(userId, "UPDATE_LLM_PROVIDER", "user", userId, true,
+            AuditService.details("provider", llm.getType(), "model", llm.getModelId()));
+        return LlmProviderResponse.from(saved);
+    }
+
+    public String revealUserLlmApiKey(String userId, String llmId) {
+        LlmProvider llm = findByUserActive(userId, llmId);
+        if (llm.getEncryptedApiKey() == null || llm.getEncryptedApiKey().isBlank()) return "";
+        return encryptionService.decrypt(llm.getEncryptedApiKey());
+    }
+
+    @Transactional
+    public void deleteUserLlmProvider(String userId, String llmId) {
+        LlmProvider llm = findByUserActive(userId, llmId);
+        llm.setDeleted(true);
+        llm.setPrimary(false);
+        llmRepo.save(llm);
+        auditService.log(userId, "REMOVE_LLM_PROVIDER", "user", userId, true,
+            AuditService.details("provider", llm.getType(), "model", llm.getModelId()));
+    }
+
+    @Transactional
+    public LlmProviderResponse restoreUserLlmProvider(String userId, String llmId) {
+        LlmProvider llm = llmRepo.findByUserIdAndIdAndDeletedTrue(userId, llmId).stream().findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("LLM provider non trouvé: " + llmId));
+        llm.setDeleted(false);
+        return LlmProviderResponse.from(llmRepo.save(llm));
+    }
+
+    @Transactional
+    public LlmProviderResponse setPrimaryUserLlmProvider(String userId, String llmId) {
+        LlmProvider llm = findByUserActive(userId, llmId);
+        llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(userId)
+            .forEach(p -> { if (!p.getId().equals(llmId)) p.setPrimary(false); llmRepo.save(p); });
+        llm.setPrimary(true);
+        llm.setDeleted(false);
+        return LlmProviderResponse.from(llmRepo.save(llm));
+    }
+
+    private LlmProvider findByUserActive(String userId, String llmId) {
+        return llmRepo.findByUserIdAndIdAndDeletedFalse(userId, llmId).stream().findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("LLM provider non trouvé: " + llmId));
+    }
+
+    private LlmProvider buildUserLlmProvider(String userId, LlmProviderRequest req, boolean primary) {
+        String encryptedKey = req.apiKey() != null ? encryptionService.encrypt(req.apiKey()) : null;
+        return LlmProvider.builder()
+            .userId(userId).type(req.type()).modelId(req.modelId()).baseUrl(req.baseUrl())
+            .encryptedApiKey(encryptedKey).displayName(req.displayName())
+            .temperature(req.temperature()           != null ? req.temperature()           : 0.7)
+            .maxTokens(req.maxTokens()               != null ? req.maxTokens()             : 2048)
+            .streamingEnabled(req.streamingEnabled() != null ? req.streamingEnabled()      : true)
+            .requestTimeoutSeconds(req.requestTimeoutSeconds() != null ? req.requestTimeoutSeconds() : 60)
+            .rateLimitRpm(req.rateLimitRpm()         != null ? req.rateLimitRpm()          : 30)
+            .primary(primary).extraParams(req.extraParams())
+            .build();
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private String generateUniqueAgentCode() {

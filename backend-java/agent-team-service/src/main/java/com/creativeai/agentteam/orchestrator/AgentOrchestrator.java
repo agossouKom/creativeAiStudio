@@ -169,7 +169,7 @@ public class AgentOrchestrator {
                     AgentContext.set(agentId, userId, sid, patronTaskId, subAgent);
                     if (patronTaskId != null) historyService.logTaskStarted(patronTaskId, agentId, userId);
 
-                    LlmProvider provider = llmGateway.resolveProvider(agentId);
+                    LlmProvider provider = llmGateway.resolveProvider(agentId, userId);
                     String apiKey = encryptionService.decrypt(provider.getEncryptedApiKey());
                     ChatModel chatModel = chatModelFactory.buildFor(provider, apiKey);
 

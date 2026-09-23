@@ -12,4 +12,10 @@ public interface LlmProviderRepository extends JpaRepository<LlmProvider, String
     Optional<LlmProvider> findByAgentIdAndTypeAndDeletedFalse(String agentId, LlmType type);
     List<LlmProvider>     findByAgentIdOrderByPrimaryDescCreatedAtDesc(String agentId);
     void deleteByAgentId(String agentId);
+
+    List<LlmProvider>     findByUserIdAndDeletedFalseOrderByPrimaryDesc(String userId);
+    List<LlmProvider>     findByUserIdAndPrimaryTrueAndDeletedFalse(String userId);
+    List<LlmProvider>     findByUserIdOrderByPrimaryDescCreatedAtDesc(String userId);
+    List<LlmProvider>     findByUserIdAndIdAndDeletedFalse(String userId, String id);
+    List<LlmProvider>     findByUserIdAndIdAndDeletedTrue(String userId, String id);
 }

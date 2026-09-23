@@ -105,6 +105,8 @@ agent:
   ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
   # Default model
   default-model: ${DEFAULT_MODEL:openai/gpt-oss-20b}
+  # Compte admin = provider LLM par défaut pour tous les comptes
+  admin-user-id: ${ADMIN_USER_ID:dadaahouawe@gmail.com}
   # Memory
   max-memory-messages: ${MAX_MEMORY_MESSAGES:30}
   memory-ttl-hours: ${MEMORY_TTL_HOURS:24}
