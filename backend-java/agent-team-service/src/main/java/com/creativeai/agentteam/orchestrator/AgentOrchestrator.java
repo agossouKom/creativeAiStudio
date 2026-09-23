@@ -169,9 +169,10 @@ public class AgentOrchestrator {
                     AgentContext.set(agentId, userId, sid, patronTaskId, subAgent);
                     if (patronTaskId != null) historyService.logTaskStarted(patronTaskId, agentId, userId);
 
-                    LlmProvider provider = llmGateway.resolveProvider(agentId, userId);
-                    String apiKey = encryptionService.decrypt(provider.getEncryptedApiKey());
-                    ChatModel chatModel = chatModelFactory.buildFor(provider, apiKey);
+                    // Candidates ordonnés pour le failover : primary puis backups
+                    // (ex : DeepSeek primary → Groq backup). Si le provider appelé échoue
+                    // (clé invalide, quota, réseau…), on rejoue le loop avec le suivant.
+                    List<LlmProvider> providers = llmGateway.resolveProviderCandidates(agentId, userId);
 
                     // Spring AI ChatClient avec function calling natif
                     // Le LLM appelle les @Tool via JSON structuré — plus de parsing regex
@@ -198,12 +199,32 @@ public class AgentOrchestrator {
                         toolCallbacks = allCallbacks;
                     }
 
-                    String response = ChatClient.create(chatModel)
-                        .prompt()
-                        .messages(messages)
-                        .toolCallbacks(toolCallbacks)
-                        .call()
-                        .content();
+                    String response = null;
+                    for (int pi = 0; pi < providers.size(); pi++) {
+                        LlmProvider provider = providers.get(pi);
+                        try {
+                            String apiKey = encryptionService.decrypt(provider.getEncryptedApiKey());
+                            ChatModel chatModel = chatModelFactory.buildFor(provider, apiKey);
+                            log.info("[ORCHESTRATOR] agent={} → LLM {} {} ({})",
+                                agentId, provider.getType(), provider.getModelId(),
+                                pi == 0 ? "primary" : "failover");
+                            response = ChatClient.create(chatModel)
+                                .prompt()
+                                .messages(messages)
+                                .toolCallbacks(toolCallbacks)
+                                .call()
+                                .content();
+                            break;
+                        } catch (Exception e) {
+                            if (pi < providers.size() - 1) {
+                                log.warn("[ORCHESTRATOR] Échec provider {} {} ({}) — bascule automatique vers {}",
+                                    provider.getType(), provider.getModelId(), e.getMessage(),
+                                    providerLabel(providers.get(pi + 1)));
+                            } else {
+                                throw e;
+                            }
+                        }
+                    }
 
                     if (response == null || response.isBlank()) {
                         response = "J'ai terminé l'exécution.";
@@ -446,4 +467,8 @@ public class AgentOrchestrator {
     }
 
     private static String nvl(String v) { return v != null ? v : ""; }
+
+    private static String providerLabel(LlmProvider p) {
+        return p.getType().name() + " " + (p.getModelId() != null ? p.getModelId() : "");
+    }
 }

@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -64,41 +66,55 @@ public class LlmGateway {
     // ── Non-streaming (agentic loop — détection de tool call textuel) ─────────
 
     public String chat(String agentId, List<ChatMessage> messages) {
-        LlmProvider provider    = resolveProvider(agentId);
-        boolean     isAnthropic = provider.getType() == LlmType.ANTHROPIC;
+        List<LlmProvider>   candidates  = resolveProviderCandidates(agentId);
+        List<String>        lastErrors  = new ArrayList<>();
 
-        for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-            try {
-                return isAnthropic
-                    ? chatAnthropic(provider, messages, agentId)
-                    : chatOpenAiCompat(provider, messages, agentId);
-            } catch (Exception e) {
-                String msg = e.getMessage() != null ? e.getMessage() : "";
-                if (msg.contains("429") && attempt < MAX_RETRIES
-                        && !DAILY_QUOTA_PATTERN.matcher(msg).find()) {
-                    long waitMs = parseRetryAfterMs(msg) + 1000;
-                    log.warn("[LLM] Rate limit 429 (RPM) — attente {}ms avant retry {}/{}", waitMs, attempt + 1, MAX_RETRIES);
-                    try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                    provider = resolveProvider(agentId);
-                } else if (isTransientNetworkError(msg) && attempt < MAX_RETRIES) {
-                    log.warn("[LLM] Erreur réseau transitoire ({}) — retry {}/{}", msg, attempt + 1, MAX_RETRIES);
-                    try { Thread.sleep(3000L * (attempt + 1)); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                    provider = resolveProvider(agentId);
-                } else {
-                    if (msg.contains("429")) {
-                        log.warn("[LLM] Quota épuisé (journalier ou définitif) pour agentId={}", agentId);
-                        if (DAILY_QUOTA_PATTERN.matcher(msg).find()) {
-                            quotaTracker.tryRecord(agentId, provider.getId(),
-                                provider.getType().name(), provider.getModelId(), msg);
-                        }
+        for (int pi = 0; pi < candidates.size(); pi++) {
+            LlmProvider provider    = candidates.get(pi);
+            boolean     isAnthropic = provider.getType() == LlmType.ANTHROPIC;
+
+            for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    return isAnthropic
+                        ? chatAnthropic(provider, messages, agentId)
+                        : chatOpenAiCompat(provider, messages, agentId);
+                } catch (Exception e) {
+                    String msg = e.getMessage() != null ? e.getMessage() : "";
+                    if (msg.contains("429") && attempt < MAX_RETRIES
+                            && !DAILY_QUOTA_PATTERN.matcher(msg).find()) {
+                        long waitMs = parseRetryAfterMs(msg) + 1000;
+                        log.warn("[LLM] Rate limit 429 (RPM) — attente {}ms avant retry {}/{}", waitMs, attempt + 1, MAX_RETRIES);
+                        try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    } else if (isTransientNetworkError(msg) && attempt < MAX_RETRIES) {
+                        log.warn("[LLM] Erreur réseau transitoire ({}) — retry {}/{}", msg, attempt + 1, MAX_RETRIES);
+                        try { Thread.sleep(3000L * (attempt + 1)); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     } else {
-                        log.error("LLM chat error for agentId={}: {}", agentId, msg);
+                        // Échec définitif de CE provider → failover vers le candidat suivant
+                        recordProviderFailure(provider, agentId, msg);
+                        lastErrors.add(providerLabel(provider) + ": " + msg);
+                        if (pi < candidates.size() - 1) {
+                            log.warn("[LLM] Provider {} en échec — bascule automatique vers {}",
+                                providerLabel(provider), providerLabel(candidates.get(pi + 1)));
+                        }
+                        break;
                     }
-                    return friendlyError(msg);
                 }
             }
         }
-        return friendlyError("429");
+        String lastMsg = lastErrors.isEmpty() ? "429" : lastErrors.get(lastErrors.size() - 1);
+        return friendlyError(lastMsg);
+    }
+
+    private void recordProviderFailure(LlmProvider provider, String agentId, String msg) {
+        if (msg.contains("429")) {
+            log.warn("[LLM] Quota épuisé pour agentId={} provider={}", agentId, provider.getType().name());
+            if (DAILY_QUOTA_PATTERN.matcher(msg).find()) {
+                quotaTracker.tryRecord(agentId, provider.getId(),
+                    provider.getType().name(), provider.getModelId(), msg);
+            }
+        } else {
+            log.error("LLM chat error for agentId={}: {}", agentId, msg);
+        }
     }
 
     // ── Streaming (réponse finale temps-réel) ─────────────────────────────────
@@ -210,8 +226,7 @@ public class LlmGateway {
                     log.warn("[LLM] Stream rate limit 429 (RPM) — attente {}ms avant retry ({} left)", waitMs, retriesLeft);
                     try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                     LlmProvider fresh = resolveProvider(agentId);
-                    LlmProvider fresh1 = resolveProvider(agentId);
-                    return streamChatOpenAiCompatWithRetry(fresh1, messages, agentId, retriesLeft - 1);
+                    return streamChatOpenAiCompatWithRetry(fresh, messages, agentId, retriesLeft - 1);
                 }
                 if (isTransientNetworkError(msg) && retriesLeft > 0) {
                     long waitMs = 3000L * (MAX_RETRIES - retriesLeft + 1);
@@ -441,42 +456,58 @@ public class LlmGateway {
      *   4. Fallback : GROQ_API_KEY de l'environnement
      */
     public LlmProvider resolveProvider(String agentId) {
+        return resolveProviderCandidates(agentId).get(0);
+    }
+
+    public List<LlmProvider> resolveProviderCandidates(String agentId) {
         String ownerId = agentRepo.findByIdAndDeletedFalse(agentId)
             .map(Agent::getOwnerId).orElse(null);
-        return resolveProvider(agentId, ownerId);
+        return resolveProviderCandidates(agentId, ownerId);
     }
 
     public LlmProvider resolveProvider(String agentId, String ownerId) {
-        // 1. Providers de l'agent
-        LlmProvider p = llmRepo.findByAgentIdAndPrimaryTrueAndDeletedFalse(agentId)
-            .stream().findFirst()
-            .orElseGet(() -> llmRepo.findByAgentIdAndDeletedFalseOrderByPrimaryDesc(agentId)
-                .stream().findFirst().orElse(null));
-        if (p != null) return p;
+        return resolveProviderCandidates(agentId, ownerId).get(0);
+    }
+
+    /**
+     * Résout la liste ordonnée des providers LLM utilisables pour un agent (failover).
+     * Ordre de résolution :
+     *   1. Providers rattachés à l'agent (primary puis backups)
+     *   2. Providers du compte de l'agent (ownerId = email JWT)
+     *   3. Providers du compte admin → provider par défaut pour tous les comptes
+     *   4. Fallback : GROQ_API_KEY de l'environnement
+     * Le premier élément est le provider primaire ; les suivants servent de secours
+     * automatique si le précédent échoue au runtime (clé invalide, quota, réseau…).
+     */
+    public List<LlmProvider> resolveProviderCandidates(String agentId, String ownerId) {
+        LinkedHashSet<LlmProvider> candidates = new LinkedHashSet<>();
+
+        // 1. Providers de l'agent (primary puis backups)
+        candidates.addAll(llmRepo.findByAgentIdAndDeletedFalseOrderByPrimaryDesc(agentId));
 
         // 2. Providers du compte utilisateur (agent.ownerId)
         if (ownerId != null && !ownerId.isBlank()) {
-            p = llmRepo.findByUserIdAndPrimaryTrueAndDeletedFalse(ownerId)
-                .stream().findFirst()
-                .orElseGet(() -> llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(ownerId)
-                    .stream().findFirst().orElse(null));
-            if (p != null) return p;
+            candidates.addAll(llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(ownerId));
         }
 
         // 3. Providers du compte admin → provider par défaut pour tous les comptes
-        if (adminUserId != null && !adminUserId.isBlank() && !adminUserId.equals(ownerId)) {
-            p = llmRepo.findByUserIdAndPrimaryTrueAndDeletedFalse(adminUserId)
-                .stream().findFirst()
-                .orElseGet(() -> llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(adminUserId)
-                    .stream().findFirst().orElse(null));
-            if (p != null) {
+        if (adminUserId != null && !adminUserId.isBlank() && !adminUserId.equals(ownerId) && candidates.isEmpty()) {
+            List<LlmProvider> adminProviders = llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(adminUserId);
+            if (!adminProviders.isEmpty()) {
                 log.info("[LLM] Utilisation du provider par défaut (admin) pour agentId={}", agentId);
-                return p;
+                candidates.addAll(adminProviders);
             }
         }
 
         // 4. Fallback GROQ env
-        return buildGroqFallback(agentId);
+        if (candidates.isEmpty()) {
+            candidates.add(buildGroqFallback(agentId));
+        }
+        return new ArrayList<>(candidates);
+    }
+
+    private String providerLabel(LlmProvider p) {
+        return p.getType().name() + " " + (p.getModelId() != null ? p.getModelId() : "");
     }
 
     private LlmProvider buildGroqFallback(String agentId) {
