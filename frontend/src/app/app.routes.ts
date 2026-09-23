@@ -9,6 +9,7 @@ import { HistoryComponent }    from './features/history/history.component';
 import { PricingComponent }    from './features/pricing/pricing.component';
 import { DocFusionComponent }      from './features/docfusion/docfusion.component';
 import { CvBuilderComponent }      from './features/cv-builder/cv-builder.component';
+import { adminGuard }              from './guards/admin.guard';
 import { DashboardLoginComponent } from './features/dashboard/dashboard-login/dashboard-login.component';
 import { RagChatComponent }        from './features/rag-chat/rag-chat.component';
 import { AgentiqueHubComponent }   from './features/agentique/agentique-hub.component';
@@ -49,7 +50,7 @@ export const routes: Routes = [
   { path: '',                component: SearchComponent },
   { path: 'auth',            component: AuthComponent },
   { path: 'admin-login',     component: DashboardLoginComponent },
-  { path: 'dashboard',       component: DashboardComponent },
+  { path: 'dashboard',       component: DashboardComponent, canActivate: [adminGuard] },
   { path: 'results',         component: ResultsComponent },
   { path: 'contact',         component: ContactComponent },
   { path: 'pricing',         component: PricingComponent },

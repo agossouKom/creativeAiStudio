@@ -187,7 +187,6 @@ function makeCompetencies(type: string, desc: string): string[] {
     <div class="at-teaser-discover">
       <span class="at-teaser-discover-label">Ou testez librement :</span>
       <a routerLink="/docfusion" class="at-teaser-chip">📄 Fusion de documents</a>
-      <a routerLink="/dashboard" class="at-teaser-chip">📊 Tableau de bord</a>
     </div>
   </div>
 
