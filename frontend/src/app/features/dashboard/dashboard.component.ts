@@ -53,7 +53,7 @@ import { Router } from '@angular/router';
           <a class="sb-item" [class.active]="tab==='contacts'" (click)="tab='contacts'">📧 <span>Messages</span></a>
 
           <p class="sb-section-label">Système</p>
-          <a class="sb-item" [class.active]="tab==='llm'" (click)="tab='llm'; loadLlmProviders()">🔑 <span>Providers LLM</span></a>
+          <a class="sb-item" [class.active]="tab==='llm'" (click)="tab='llm'; loadLlmProviders(); loadMyLlmProviders()">🔑 <span>Providers LLM</span></a>
           <a class="sb-item" [class.active]="tab==='api'" (click)="tab='api'">📖 <span>Swagger</span></a>
           <a class="sb-item" href="http://localhost:3002" target="_blank">📈 <span>Grafana</span></a>
         </nav>
@@ -461,7 +461,72 @@ import { Router } from '@angular/router';
           <div class="page-header">
             <div>
               <h1 class="page-title">Providers LLM</h1>
-              <p class="page-sub">Clés API et modèles configurés par agent. Chiffrés AES-256.</p>
+              <p class="page-sub">Clés API et modèles. Chiffrés AES-256. Le provider de votre compte sert de fallback pour vos agents.</p>
+            </div>
+          </div>
+
+          <!-- Mes providers (compte utilisateur) -->
+          <div class="card mb-4" style="padding:1.25rem;">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap;">
+              <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#0ea5e9,#6366f1);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.95rem;flex-shrink:0;">👤</div>
+              <div>
+                <span style="font-weight:700;font-size:1rem;">Mes providers LLM (mon compte)</span>
+                <span *ngIf="myLlmIsAdmin" style="margin-left:.5rem;font-size:.65rem;font-weight:700;text-transform:uppercase;padding:.15rem .45rem;border-radius:5px;background:rgba(234,179,8,.12);color:#f59e0b;">Défaut pour tous les comptes</span>
+              </div>
+              <span style="margin-left:auto;display:flex;gap:.5rem;">
+                <button class="btn-sm btn-block" title="Actualiser" (click)="loadMyLlmProviders()">🔄</button>
+                <button class="btn-sm btn-primary" (click)="llmOpenAdd()">＋ Nouveau provider</button>
+              </span>
+            </div>
+
+            <div style="font-size:.72rem;color:var(--subtext);background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.18);border-radius:8px;padding:.5rem .7rem;margin-bottom:1rem;">
+              💡 Chaque compte configure ses propres providers, utilisés pour tous ses agents.
+              <ng-container *ngIf="myLlmIsAdmin">En tant qu'admin, vos providers servent de <b>provider par défaut</b> pour tous les comptes qui n'en ont pas configuré.</ng-container>
+              <ng-container *ngIf="!myLlmIsAdmin">Sans provider configuré, le <b>provider par défaut (admin)</b> sera utilisé automatiquement.</ng-container>
+            </div>
+
+            <div *ngIf="myLlmLoading" class="text-slate-400 text-sm p-2">Chargement…</div>
+
+            <div *ngIf="!myLlmLoading" style="display:flex;flex-direction:column;gap:.5rem;">
+              <div *ngFor="let p of myLlm"
+                style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;border-radius:10px;padding:.65rem .9rem;border:1.5px solid;"
+                [style.border-color]="p.primary && !p.deleted ? 'rgba(234,179,8,.35)' : p.deleted ? 'rgba(239,68,68,.2)' : 'var(--border)'"
+                [style.background]="p.primary && !p.deleted ? 'rgba(234,179,8,.04)' : p.deleted ? 'rgba(239,68,68,.03)' : 'var(--surface)'"
+                [style.opacity]="p.deleted ? '0.55' : '1'">
+
+                <!-- Type badge -->
+                <span style="font-size:.7rem;font-weight:800;padding:.2rem .55rem;border-radius:7px;border:1px solid;"
+                  [style.background]="llmTypeMeta(p.type).color+'18'"
+                  [style.color]="llmTypeMeta(p.type).color"
+                  [style.border-color]="llmTypeMeta(p.type).color+'44'">
+                  {{llmTypeMeta(p.type).icon}} {{llmTypeMeta(p.type).label}}
+                </span>
+                <!-- Model -->
+                <span style="font-family:monospace;font-size:.8rem;font-weight:600;flex:1;">{{p.modelId || '—'}}</span>
+                <!-- Meta -->
+                <span style="font-size:.7rem;color:var(--subtext);">{{p.baseUrl ? ('base: ' + p.baseUrl) : ''}} T={{p.temperature}} · max={{p.maxTokens}}</span>
+
+                <!-- Status badges -->
+                <span *ngIf="p.primary && !p.deleted" style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:6px;background:rgba(234,179,8,.15);color:#ca8a04;border:1px solid rgba(234,179,8,.3);">⭐ Principal</span>
+                <span *ngIf="p.deleted"               style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:6px;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.2);">🗑 Supprimé</span>
+                <span *ngIf="!p.primary && !p.deleted" style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:6px;background:rgba(148,163,184,.08);color:#64748b;border:1px solid rgba(148,163,184,.15);">Backup</span>
+
+                <!-- Clé révélée -->
+                <span *ngIf="myLlmRevealed[p.id]" style="font-size:.68rem;font-family:monospace;padding:.15rem .5rem;border-radius:6px;background:rgba(14,165,233,.1);color:#38bdf8;border:1px solid rgba(14,165,233,.25);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{myLlmRevealed[p.id]}}">{{myLlmRevealed[p.id]}}</span>
+
+                <!-- Actions -->
+                <div style="display:flex;gap:.35rem;margin-left:auto;">
+                  <button *ngIf="p.hasApiKey"  class="btn-sm btn-block" [title]="myLlmRevealed[p.id] ? 'Masquer' : 'Révéler la clé'" (click)="llmToggleRevealMine(p, $event)">{{myLlmRevealed[p.id] ? '🙈' : '👁'}}</button>
+                  <button *ngIf="!p.deleted"  class="btn-sm btn-block" title="Modifier"          (click)="llmOpenEdit(p)">✏️</button>
+                  <button *ngIf="!p.primary && !p.deleted" class="btn-sm btn-block" title="Définir comme principal" (click)="llmSetPrimaryMine(p)">⭐</button>
+                  <button *ngIf="p.deleted"    class="btn-sm btn-block" title="Restaurer"        (click)="llmRestoreMine(p)">♻️</button>
+                  <button *ngIf="!p.deleted"   class="btn-sm btn-revoke" title="Supprimer"       (click)="llmAskDeleteMine(p)">🗑</button>
+                </div>
+              </div>
+
+              <div *ngIf="myLlmEmpty()" class="text-slate-400 text-sm text-center p-4">
+                Aucun provider sur votre compte. <ng-container *ngIf="!myLlmIsAdmin">Le provider par défaut (admin) sera utilisé automatiquement.</ng-container>
+              </div>
             </div>
           </div>
 
@@ -542,6 +607,63 @@ import { Router } from '@angular/router';
 
             <div *ngIf="llmGroups.length===0 || llmAllEmpty()" class="text-slate-400 text-sm text-center p-8">
               Aucun provider LLM trouvé pour cette sélection.
+            </div>
+          </div>
+
+          <!-- ══ MODAL MES PROVIDERS LLM ══════════════════════════════════ -->
+          <div *ngIf="myLlmFormOpen" class="modal-overlay" (click)="myLlmFormOpen=false">
+            <div class="modal-card animate-slide-up" (click)="$event.stopPropagation()">
+              <h2 class="text-xl font-bold mb-1">{{ myLlmEditingId ? 'Modifier le provider' : 'Ajouter un provider LLM' }}</h2>
+              <p class="text-xs text-slate-400 mb-5">Rattaché à votre compte. Utilisé automatiquement par tous vos agents (fallback).</p>
+              <form (submit)="llmSaveMyProvider()" class="space-y-4">
+                <div class="form-group">
+                  <label>Fournisseur</label>
+                  <select name="type" [(ngModel)]="myLlmForm.type" class="filter-select w-full" style="width:100%; border:1px solid #334155;">
+                    <option value="OPENAI">OpenAI</option>
+                    <option value="ANTHROPIC">Anthropic</option>
+                    <option value="GROQ">Groq</option>
+                    <option value="GEMINI">Gemini</option>
+                    <option value="MISTRAL">Mistral</option>
+                    <option value="DEEPSEEK">DeepSeek</option>
+                    <option value="COHERE">Cohere</option>
+                    <option value="TOGETHER_AI">Together AI</option>
+                    <option value="OLLAMA">Ollama (local)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Modèle</label>
+                  <input name="modelId" type="text" required [(ngModel)]="myLlmForm.modelId" placeholder="gpt-4o-mini, claude-3-haiku, llama3-8b-8192…">
+                </div>
+                <div class="form-group">
+                  <label>URL de base <span class="text-slate-500">(requis pour Ollama, optionnel sinon)</span></label>
+                  <input name="baseUrl" type="text" [(ngModel)]="myLlmForm.baseUrl" placeholder="http://localhost:11434">
+                </div>
+                <div class="form-group">
+                  <label>Nom d'affichage <span class="text-slate-500">(optionnel)</span></label>
+                  <input name="displayName" type="text" [(ngModel)]="myLlmForm.displayName" placeholder="GPT-4o production">
+                </div>
+                <div class="form-group">
+                  <label>Clé API <span class="text-slate-500">(laisser vide pour conserver)</span></label>
+                  <input name="apiKey" type="password" [(ngModel)]="myLlmForm.apiKey" placeholder="sk-…">
+                </div>
+                <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+                  <div class="form-group" style="flex:1;min-width:130px;">
+                    <label>Température</label>
+                    <input name="temperature" type="number" min="0" max="2" step="0.1" [(ngModel)]="myLlmForm.temperature">
+                  </div>
+                  <div class="form-group" style="flex:1;min-width:130px;">
+                    <label>Max tokens</label>
+                    <input name="maxTokens" type="number" min="1" [(ngModel)]="myLlmForm.maxTokens">
+                  </div>
+                </div>
+                <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;">
+                  <input type="checkbox" [(ngModel)]="myLlmForm.primary" name="primary"> Définir comme provider principal du compte
+                </label>
+                <div class="flex gap-4 pt-4">
+                  <button type="button" class="btn-secondary flex-1" (click)="myLlmFormOpen=false">Annuler</button>
+                  <button type="submit" class="btn-primary flex-1" [disabled]="myLlmSaving">{{ myLlmSaving ? 'Enregistrement…' : (myLlmEditingId ? 'Enregistrer' : 'Ajouter') }}</button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
@@ -2559,8 +2681,118 @@ export class DashboardComponent implements OnInit, AfterViewInit {
       GEMINI:    { label: 'Gemini',    color: '#3b82f6', icon: '♊' },
       MISTRAL:   { label: 'Mistral',   color: '#8b5cf6', icon: '🌊' },
       OLLAMA:    { label: 'Ollama',    color: '#6b7280', icon: '🦙' },
+      DEEPSEEK:  { label: 'DeepSeek',  color: '#22d3ee', icon: '🧊' },
     };
     return m[type] ?? { label: type, color: '#6b7280', icon: '🔧' };
+  }
+
+  // ── LLM Providers (mon compte) ────────────────────────────────────────────
+
+  myLlm:          any[] = [];
+  myLlmLoading    = false;
+  myLlmFormOpen   = false;
+  myLlmEditingId: string | null = null;
+  myLlmSaving     = false;
+  myLlmRevealed: Record<string, string> = {};
+  myLlmForm = {
+    type: 'OPENAI', modelId: '', baseUrl: '', displayName: '', apiKey: '',
+    temperature: 0.7, maxTokens: 2048, streamingEnabled: true, primary: true
+  };
+
+  get myLlmIsAdmin(): boolean {
+    return this.authService.currentUser()?.role === 'ADMIN';
+  }
+
+  async loadMyLlmProviders() {
+    this.myLlmLoading = true;
+    const r = await fetch('/api/users/me/llm-providers?includeDeleted=true', { headers: this.llmHeaders });
+    this.myLlm = r.ok ? await r.json() : [];
+    this.myLlm.sort((a: any, b: any) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0));
+    this.myLlmLoading = false;
+  }
+
+  myLlmEmpty()          { return this.myLlm.length === 0; }
+  myLlmActiveCount()    { return this.myLlm.filter((p: any) => !p.deleted).length; }
+
+  llmOpenAdd() {
+    this.myLlmEditingId = null;
+    this.myLlmForm = {
+      type: 'OPENAI', modelId: '', baseUrl: '', displayName: '', apiKey: '',
+      temperature: 0.7, maxTokens: 2048, streamingEnabled: true,
+      primary: this.myLlm.filter((p: any) => !p.deleted).length === 0
+    };
+    this.myLlmFormOpen = true;
+  }
+
+  llmOpenEdit(p: any) {
+    this.myLlmEditingId = p.id;
+    this.myLlmForm = {
+      type: p.type, modelId: p.modelId || '', baseUrl: p.baseUrl || '', displayName: p.displayName || '',
+      apiKey: '', temperature: p.temperature ?? 0.7, maxTokens: p.maxTokens ?? 2048,
+      streamingEnabled: p.streamingEnabled ?? true, primary: p.primary
+    };
+    this.myLlmFormOpen = true;
+  }
+
+  async llmSaveMyProvider() {
+    const f = this.myLlmForm;
+    const body = {
+      type: f.type, modelId: f.modelId, baseUrl: f.baseUrl || undefined,
+      displayName: f.displayName || undefined, apiKey: f.apiKey || undefined,
+      temperature: f.temperature, maxTokens: f.maxTokens,
+      streamingEnabled: f.streamingEnabled, primary: f.primary
+    };
+    this.myLlmSaving = true;
+    const url = this.myLlmEditingId
+      ? `/api/users/me/llm-providers/${this.myLlmEditingId}`
+      : '/api/users/me/llm-providers';
+    const r = await fetch(url, {
+      method: this.myLlmEditingId ? 'PUT' : 'POST',
+      headers: { ...this.llmHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    this.myLlmSaving = false;
+    if (!r.ok) {
+      const text = await r.text();
+      this.showToast((this.myLlmEditingId ? 'Erreur de mise à jour' : 'Erreur de création') + (text ? (' : ' + text.slice(0, 200)) : ''), 'error');
+      return;
+    }
+    this.myLlmFormOpen = false;
+    this.showToast(this.myLlmEditingId ? 'Provider mis à jour' : 'Provider ajouté', 'success');
+    await this.loadMyLlmProviders();
+  }
+
+  async llmSetPrimaryMine(p: any) {
+    const r = await fetch(`/api/users/me/llm-providers/${p.id}/primary`, { method: 'PATCH', headers: this.llmHeaders });
+    if (!r.ok) { this.showToast('Erreur de définition du provider principal', 'error'); return; }
+    await this.loadMyLlmProviders();
+  }
+
+  llmAskDeleteMine(p: any) {
+    this.openConfirm('Supprimer ce provider LLM de votre compte ?', () => this.llmDeleteMine(p));
+  }
+
+  async llmDeleteMine(p: any) {
+    const r = await fetch(`/api/users/me/llm-providers/${p.id}`, { method: 'DELETE', headers: this.llmHeaders });
+    if (!r.ok) { this.showToast('Erreur de suppression', 'error'); return; }
+    this.showToast('Provider supprimé', 'success');
+    await this.loadMyLlmProviders();
+    this.myLlmRevealed = {};
+  }
+
+  async llmRestoreMine(p: any) {
+    const r = await fetch(`/api/users/me/llm-providers/${p.id}/restore`, { method: 'POST', headers: this.llmHeaders });
+    if (!r.ok) { this.showToast('Erreur de restauration', 'error'); return; }
+    await this.loadMyLlmProviders();
+  }
+
+  async llmToggleRevealMine(p: any, ev: Event) {
+    ev.stopPropagation();
+    if (this.myLlmRevealed[p.id]) { delete this.myLlmRevealed[p.id]; return; }
+    const r = await fetch(`/api/users/me/llm-providers/${p.id}/reveal`, { headers: this.llmHeaders });
+    if (!r.ok) { this.showToast('Erreur de récupération de la clé', 'error'); return; }
+    const j = await r.json();
+    this.myLlmRevealed[p.id] = j.apiKey || '';
   }
 }
 
