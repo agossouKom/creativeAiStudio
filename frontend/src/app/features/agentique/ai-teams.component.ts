@@ -1940,7 +1940,7 @@ export class AiTeamsComponent implements OnInit {
     };
     this.http.post<any>(`${API}/api/agents/from-template/${type}`, body).subscribe({
       next: () => { this.saving = false; this.closeCreateAgentModal(); this.loadAgents(this.selectedTeamId || undefined); this.cd.markForCheck(); },
-      error: (e) => { this.createAgentError = `Erreur ${e?.status || 0} : ${e?.error?.message || e?.message || ''}`; this.saving = false; this.cd.markForCheck(); }
+      error: (e) => { this.createAgentError = this.friendlyHttpError(e, 'Impossible de créer l\'agent.'); this.saving = false; this.cd.markForCheck(); }
     });
   }
 
@@ -1989,13 +1989,19 @@ export class AiTeamsComponent implements OnInit {
   openCreateTeamModal(): void { this.createTeamModal.open = true; this.createTeamError = ''; this.createTeamForm = { name: '', description: '', teamType: 'BUSINESS' }; }
   closeCreateTeamModal(): void { this.createTeamModal.open = false; this.createTeamError = ''; }
 
+  private friendlyHttpError(e: any, fallback = 'Une erreur est survenue. Réessayez.') {
+    if (!e) return fallback;
+    if (e.status === 0) return 'Connexion au serveur impossible. Vérifiez votre connexion Internet puis réessayez.';
+    return `Erreur ${e.status || ''} : ${e.error?.message || e.message || fallback}`.replace('Erreur  :', 'Erreur :');
+  }
+
   createTeam(): void {
     if (this.saving) return;
     if (!this.createTeamForm.name.trim()) { this.createTeamError = 'Le nom est obligatoire.'; return; }
     this.saving = true; this.createTeamError = '';
     this.http.post<any>(`${API}/api/teams`, { name: this.createTeamForm.name.trim(), description: this.createTeamForm.description.trim() || null, type: this.createTeamForm.teamType }).subscribe({
       next: (t) => { this.teams.push({ id: t.id, name: t.name, description: t.description || '', status: t.status, teamType: t.type }); this.saving = false; this.closeCreateTeamModal(); this.selectedTeamId = t.id; this.loadAgents(t.id); this.cd.markForCheck(); },
-      error: (e) => { this.createTeamError = `Erreur ${e?.status || 0} : ${e?.error?.message || ''}`; this.saving = false; this.cd.markForCheck(); }
+      error: (e) => { this.createTeamError = this.friendlyHttpError(e, 'Impossible de créer l\'équipe.'); this.saving = false; this.cd.markForCheck(); }
     });
   }
 
@@ -2844,7 +2850,7 @@ ${modeInstruction}3. Utilise delegate_to_agent en transmettant dans le champ "me
         }
       },
       error: (e) => {
-        this.patronRequestError = `Erreur ${e?.status || 0} : ${e?.error?.message || e?.message || 'Impossible de créer la tâche.'}`;
+        this.patronRequestError = this.friendlyHttpError(e, 'Impossible de créer la tâche.');
         this.saving = false; this.cd.markForCheck();
       }
     });
@@ -2886,7 +2892,7 @@ ${modeInstruction}3. Utilise delegate_to_agent en transmettant dans le champ "me
         this.cd.markForCheck();
       },
       error: (e) => {
-        this.quickTeamError  = `Erreur : ${e?.error?.message || e?.message || ''}`;
+        this.quickTeamError  = this.friendlyHttpError(e, 'Création d\'équipe rapide impossible.');
         this.quickTeamSaving = false;
         this.cd.markForCheck();
       }
