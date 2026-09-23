@@ -5,6 +5,7 @@ import { Router, RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import * as XLSX from 'xlsx';
 import { DialogService } from '../../shared/ui/dialog.service';
+import { AuthService } from '../../services/auth.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -157,7 +158,40 @@ function makeCompetencies(type: string, desc: string): string[] {
   <div class="at-orb at-orb2"></div>
   <div class="at-orb at-orb3"></div>
 
-  <div class="at-wrap">
+  <!-- ── Teaser (visiteur non connecté) ──────────────────────────────────── -->
+  <div *ngIf="!isLoggedIn" class="at-teaser">
+    <div class="at-teaser-badge">🤖 Agents IA · Entreprise · Réseaux sociaux</div>
+    <h1 class="at-teaser-title">Une équipe d'agents IA<br/>sur mesure pour votre entreprise</h1>
+    <p class="at-teaser-sub">
+      Capable de vous assister dans la gestion de votre entreprise, vos réseaux sociaux
+      et vos événements divers — votre collaborateur intelligent disponible 24&nbsp;/&nbsp;7.
+    </p>
+
+    <div class="at-teaser-features">
+      <div class="at-teaser-feat"><span class="at-teaser-ico">🧠</span><span>Une équipe d'agents IA sur mesure</span></div>
+      <div class="at-teaser-feat"><span class="at-teaser-ico">⚙️</span><span>Agents variés : email, community manager, prospection, marketing, support…</span></div>
+      <div class="at-teaser-feat"><span class="at-teaser-ico">📦</span><span>Créer des équipes, des produits et des listes de contacts</span></div>
+      <div class="at-teaser-feat"><span class="at-teaser-ico">🔑</span><span>Gérer vos clés API et vos providers LLM</span></div>
+      <div class="at-teaser-feat"><span class="at-teaser-ico">📚</span><span>Base de connaissance, chat et bien plus</span></div>
+    </div>
+
+    <div class="at-teaser-cta">
+      <a routerLink="/auth" [queryParams]="{ mode: 'register' }" class="at-teaser-btn at-teaser-btn--primary">Créer un compte</a>
+      <a routerLink="/auth" class="at-teaser-btn at-teaser-btn--ghost">Se connecter</a>
+    </div>
+
+    <p class="at-teaser-note">
+      Déjà inscrit ? <a routerLink="/auth" class="at-teaser-link">Connectez-vous</a> et découvrez votre espace de travail.
+    </p>
+
+    <div class="at-teaser-discover">
+      <span class="at-teaser-discover-label">Ou testez librement :</span>
+      <a routerLink="/docfusion" class="at-teaser-chip">📄 Fusion de documents</a>
+      <a routerLink="/dashboard" class="at-teaser-chip">📊 Tableau de bord</a>
+    </div>
+  </div>
+
+  <div *ngIf="isLoggedIn" class="at-wrap">
 
     <!-- ── Header ────────────────────────────────────────────────────────── -->
     <div class="at-header">
@@ -1256,6 +1290,30 @@ function makeCompetencies(type: string, desc: string): string[] {
 .at-orb3 { width:400px; height:400px; background:#10b981; top:50%; left:40%; }
 .at-wrap { position:relative; z-index:1; max-width:1400px; margin:0 auto; padding:1.5rem; }
 
+/* ── Teaser (visiteur non connecté) ──────────────────────────────────────── */
+.at-teaser { position:relative; z-index:1; max-width:860px; margin:0 auto; padding:4.5rem 1.5rem 3rem; text-align:center; }
+.at-teaser-badge { display:inline-flex; align-items:center; gap:.5rem; padding:.4rem .9rem; border-radius:999px; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.3); color:#a5b4fc; font-size:.78rem; font-weight:700; letter-spacing:.03em; margin-bottom:1.5rem; }
+.at-teaser-title { font-size:2.4rem; line-height:1.15; font-weight:800; color:#f1f5f9; margin:0 0 1rem; }
+.at-teaser-title br { display:block; }
+.at-teaser-sub { font-size:1.05rem; line-height:1.7; color:#94a3b8; max-width:640px; margin:0 auto 2rem; }
+.at-teaser-features { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:.75rem; max-width:720px; margin:0 auto 2rem; text-align:left; }
+.at-teaser-feat { display:flex; align-items:flex-start; gap:.6rem; padding:.85rem 1rem; background:rgba(255,255,255,.03); border:1px solid rgba(148,163,184,.14); border-radius:12px; color:#cbd5e1; font-size:.86rem; font-weight:600; line-height:1.4; }
+.at-teaser-ico { font-size:1.05rem; line-height:1.3; }
+.at-teaser-cta { display:flex; justify-content:center; gap:.9rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+.at-teaser-btn { display:inline-flex; align-items:center; justify-content:center; text-decoration:none; padding:.85rem 1.9rem; border-radius:12px; font-size:.95rem; font-weight:700; transition:transform .15s, box-shadow .15s, opacity .15s; }
+.at-teaser-btn:hover { transform:translateY(-2px); }
+.at-teaser-btn--primary { background:linear-gradient(135deg,#6366f1,#0ea5e9); color:#fff; box-shadow:0 8px 24px rgba(99,102,241,.35); }
+.at-teaser-btn--primary:hover { box-shadow:0 12px 32px rgba(99,102,241,.5); }
+.at-teaser-btn--ghost { background:rgba(148,163,184,.08); border:1px solid rgba(148,163,184,.3); color:#e2e8f0; }
+.at-teaser-btn--ghost:hover { background:rgba(148,163,184,.16); }
+.at-teaser-note { font-size:.85rem; color:#64748b; margin:0 0 2rem; }
+.at-teaser-link { color:#a5b4fc; font-weight:700; text-decoration:none; }
+.at-teaser-link:hover { text-decoration:underline; }
+.at-teaser-discover { display:flex; align-items:center; justify-content:center; gap:.6rem; flex-wrap:wrap; padding-top:1.5rem; border-top:1px solid rgba(148,163,184,.12); }
+.at-teaser-discover-label { font-size:.78rem; color:#64748b; font-weight:600; }
+.at-teaser-chip { padding:.4rem .85rem; border-radius:999px; background:rgba(148,163,184,.07); border:1px solid rgba(148,163,184,.18); color:#94a3b8; font-size:.78rem; font-weight:600; text-decoration:none; transition:all .2s; }
+.at-teaser-chip:hover { color:#e2e8f0; border-color:rgba(99,102,241,.45); background:rgba(99,102,241,.1); }
+
 /* ── Header ──────────────────────────────────────────────────────────────── */
 .at-header { margin-bottom:1rem; padding-top:.75rem; }
 .at-header-top-row { display:flex; align-items:center; justify-content:space-between; }
@@ -1790,9 +1848,21 @@ export class AiTeamsComponent implements OnInit {
 
   private jwtToken = '';
 
-  constructor(private http: HttpClient, protected cd: ChangeDetectorRef, private dialog: DialogService, private router: Router) {}
+  constructor(
+    private http: HttpClient,
+    protected cd: ChangeDetectorRef,
+    private dialog: DialogService,
+    private router: Router,
+    public authService: AuthService,
+  ) {}
+
+  /** Visiteur non connecté : on affiche la page de présentation, pas l'espace de travail. */
+  get isLoggedIn(): boolean {
+    return this.authService.isLoggedIn();
+  }
 
   ngOnInit(): void {
+    if (!this.isLoggedIn) { this.loading = false; return; }
     this.jwtToken = this.readToken();
     const user = this.parseJwt();
     this.patronName     = user?.fullName || user?.sub || 'Utilisateur';

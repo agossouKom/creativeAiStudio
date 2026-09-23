@@ -93,17 +93,32 @@ export class AppComponent implements OnInit {
   }
 
   get userRoleLabel(): string {
-    const role = this.currentUser?.role;
-    if (role === 'ROLE_ADMIN')    return 'Administrateur';
-    if (role === 'ROLE_PREMIUM')  return 'Premium';
+    if (this.isAdminUser) return 'Administrateur';
     return 'Membre';
   }
 
   get userRoleBadgeClass(): string {
-    const role = this.currentUser?.role;
-    if (role === 'ROLE_ADMIN')   return 'badge-admin';
-    if (role === 'ROLE_PREMIUM') return 'badge-premium';
+    if (this.isAdminUser) return 'badge-admin';
     return 'badge-member';
+  }
+
+  /** L'utilisateur connecté est-il administrateur ? */
+  get isAdminUser(): boolean {
+    if (this.isAdminRole(this.currentUser?.role)) return true;
+    const token = this.currentUser?.token;
+    if (!token) return false;
+    try {
+      const claim = JSON.parse(atob(token.split('.')[1]));
+      const r = claim?.role ?? (Array.isArray(claim?.roles) ? (claim.roles[0] ?? '') : Array.isArray(claim?.authorities) ? (claim.authorities[0] ?? '') : '');
+      return this.isAdminRole(r);
+    } catch { return false; }
+  }
+
+  /** Accepte 'ADMIN', 'ROLE_ADMIN' (respecte la casse et l'ancien format stocké). */
+  private isAdminRole(role: string | undefined): boolean {
+    if (!role) return false;
+    const r = role.toUpperCase();
+    return r === 'ADMIN' || r === 'ROLE_ADMIN';
   }
 
   get userCredits(): number {

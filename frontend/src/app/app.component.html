@@ -88,6 +88,10 @@
           <div class="dropdown-divider"></div>
 
           <div class="dropdown-links">
+            <a routerLink="/agentique/workspace" (click)="closeDropdown()" class="dropdown-lnk-item">
+              <span class="link-icon">👤</span>
+              <span class="link-text">Mon Compte</span>
+            </a>
             <a routerLink="/history" (click)="closeDropdown()" class="dropdown-lnk-item">
               <span class="link-icon">&#9203;</span>
               <span class="link-text">Mon Historique</span>
@@ -96,7 +100,7 @@
               <span class="link-icon">⚙️</span>
               <span class="link-text">Espace de travail</span>
             </a>
-            <a *ngIf="currentUser?.role === 'ROLE_ADMIN'" routerLink="/dashboard" (click)="closeDropdown()" class="dropdown-lnk-item">
+            <a *ngIf="isAdminUser" routerLink="/dashboard" (click)="closeDropdown()" class="dropdown-lnk-item">
               <span class="link-icon">&#9881;</span>
               <span class="link-text">Tableau de Bord Admin</span>
             </a>

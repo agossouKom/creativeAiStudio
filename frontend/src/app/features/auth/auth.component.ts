@@ -345,7 +345,12 @@ export class AuthComponent implements OnInit {
 
   constructor(private authService: AuthService, private router: Router, private dialog: DialogService) {}
 
-  ngOnInit() {}
+  ngOnInit() {
+    const mode = new URLSearchParams(window.location.search).get('mode');
+    if (mode === 'register' || mode === 'forgot' || mode === 'otp' || mode === 'reset') {
+      this.mode.set(mode);
+    }
+  }
 
   getSubtitle() {
     switch(this.mode()) {
