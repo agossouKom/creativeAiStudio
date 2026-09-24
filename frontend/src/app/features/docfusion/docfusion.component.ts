@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnDestroy, OnInit, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpClientModule, HttpHeaders } from '@angular/common/http';
@@ -54,61 +54,125 @@ const EXT_OPTIONS = [
   standalone: true,
   imports: [CommonModule, FormsModule, HttpClientModule],
   styles: [`
-    :host { display: block; }
+    :host { display: block; --rail-w: 244px; }
 
     /* ── Page ─── */
     .df-page { min-height: calc(100vh - 64px); background: #f8fafc;
-               padding: .75rem 1.5rem 3rem; position: relative; overflow: hidden; }
+               padding: .75rem 0 3rem; position: relative; overflow: hidden; overflow: clip; }
     .bg-blob { position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; opacity: .28; }
     .bg-blob.b1 { width: 500px; height: 500px; background: radial-gradient(circle, #6366f1 0%, transparent 70%); top: -180px; right: -150px; }
     .bg-blob.b2 { width: 350px; height: 350px; background: radial-gradient(circle, #a855f7 0%, transparent 70%); bottom: -80px; left: -80px; }
-    .df-inner { max-width: 1160px; margin: 0 auto; position: relative; }
+    .df-inner { position: relative; }
 
     /* ── Hero ─── */
-    .hero { padding: .5rem 0 1rem; display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+    .hero { padding: 0 1.5rem 1.25rem; display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
     .hero-h1  { font-family: 'Outfit', sans-serif; font-size: clamp(1.15rem, 2.5vw, 1.5rem);
                 font-weight: 900; color: #0f172a; letter-spacing: -.5px; margin: 0; }
     .hero-h1 span { background: linear-gradient(135deg, #6366f1, #a855f7);
                     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .hero-sub { color: #94a3b8; font-size: .78rem; margin: 0; }
+    .hero-sub { color: #94a3b8; font-size: .78rem; margin: 0; flex-basis: 100%; }
 
-    /* ── Grid ─── */
-    .df-grid { display: grid; gap: 1.25rem; transition: grid-template-columns .25s ease;
-               align-items: start; }
-    .df-grid.expanded  { grid-template-columns: 220px 1fr; }
-    .df-grid.collapsed { grid-template-columns: 48px  1fr; }
-    @media (max-width: 768px) { .df-grid.expanded, .df-grid.collapsed { grid-template-columns: 1fr; } }
+    /* Bouton d'ouverture du menu (mobile/tablette uniquement) */
+    .df-menu-btn { display: none; align-items: center; justify-content: center;
+                   width: 38px; height: 38px; border-radius: 10px;
+                   border: 1.5px solid #e2e8f0; background: white; color: #475569;
+                   cursor: pointer; transition: all .18s; flex-shrink: 0; box-shadow: 0 2px 8px rgba(15,23,42,.06); }
+    .df-menu-btn:hover { border-color: #6366f1; color: #6366f1; }
 
-    /* ── Sidebar (mode sombre) ─── */
-    .sidebar-wrap { display: flex; flex-direction: column; }
-    .sidebar-toggle { display: flex; align-items: center; justify-content: center;
-                      width: 32px; height: 32px; border-radius: 8px; border: 1.5px solid #334155;
-                      background: #1e293b; cursor: pointer; color: #94a3b8; transition: all .18s;
-                      margin-bottom: .5rem; flex-shrink: 0; }
-    .sidebar-toggle:hover { border-color: #6366f1; color: #a5b4fc; background: #1e293b; }
-    .ops-sidebar { display: flex; flex-direction: column; gap: .1rem; overflow: hidden;
-                   background: #0f172a; border-radius: 14px; padding: .5rem .35rem; }
+    /* ── Grid : rail collé à gauche + contenu ─── */
+    .df-grid { display: grid; grid-template-columns: var(--rail-w, 244px) minmax(0, 1fr);
+               column-gap: 1.5rem; align-items: start; transition: grid-template-columns .25s ease; }
+    .df-grid.expanded  { --rail-w: 244px; }
+    .df-grid.collapsed { --rail-w: 58px; }
+
+    /* ── Sidebar (rail sombre premium, collé à gauche, sticky) ─── */
+    .sidebar-wrap { position: sticky; top: 64px; height: calc(100dvh - 64px); box-sizing: border-box;
+                    padding: 1rem 0; display: flex; flex-direction: column; min-width: 0; }
+    .df-drawer-head { display: none; }
+    .sidebar-toggle { display: flex; align-items: center; justify-content: center; gap: .4rem;
+                      width: 100%; padding: .5rem; border: 1px solid #e2e8f0; background: white;
+                      cursor: pointer; color: #475569; font-size: .72rem; font-weight: 700;
+                      border-radius: 10px; margin-bottom: .5rem; flex-shrink: 0; transition: all .18s; box-sizing: border-box; }
+    .sidebar-toggle:hover { border-color: #6366f1; color: #6366f1; background: #f5f3ff; }
+    .sidebar-toggle span { color: #94a3b8; margin-left: auto; }
+    .ops-sidebar { display: flex; flex-direction: column; gap: .15rem; overflow-y: auto; flex: 1;
+                   background: linear-gradient(180deg, #111a33 0%, #0f172a 55%, #0c1226 100%);
+                   border: 1px solid rgba(99,102,241,.16); border-radius: 16px; padding: .6rem .5rem;
+                   box-shadow: 0 16px 40px rgba(15,23,42,.16), 0 0 0 1px rgba(255,255,255,.02) inset;
+                   scrollbar-width: thin; }
+    .ops-sidebar::-webkit-scrollbar { width: 4px; }
+    .ops-sidebar::-webkit-scrollbar-thumb { background: rgba(148,163,184,.25); border-radius: 4px; }
     .ops-group-label { font-size: .6rem; font-weight: 800; text-transform: uppercase;
-                       letter-spacing: .08em; color: #475569; padding: .6rem .5rem .2rem;
+                       letter-spacing: .08em; color: #64748b; padding: .6rem .5rem .25rem;
                        white-space: nowrap; overflow: hidden; }
     .ops-group-label.hidden { display: none; }
-    .op-btn { display: flex; align-items: center; gap: .5rem; padding: .48rem .6rem;
-              border-radius: 8px; border: none; background: transparent; cursor: pointer;
+    .op-btn { display: flex; align-items: center; gap: .55rem; padding: .5rem .65rem;
+              border-radius: 9px; border: none; background: transparent; cursor: pointer;
               text-align: left; transition: all .15s; width: 100%; }
-    .op-btn:hover { background: #1e293b; }
-    .op-btn.active { background: #1e293b; border-left: 3px solid #6366f1; padding-left: calc(.6rem - 1px); }
-    .op-ico   { font-size: 1rem; flex-shrink: 0; }
+    .op-btn:hover { background: rgba(99,102,241,.12); }
+    .op-btn.active { background: rgba(99,102,241,.16); box-shadow: inset 3px 0 0 #6366f1; }
+    .op-ico   { font-size: 1.05rem; flex-shrink: 0; width: 22px; text-align: center; }
     .op-texts { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
     .op-name  { font-size: .76rem; font-weight: 700; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .op-desc  { font-size: .6rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .op-check { margin-left: auto; color: #6366f1; flex-shrink: 0; }
-    .sidebar-divider { height: 1px; background: #1e293b; margin: .4rem 0; }
-    .hist-nav-btn { display: flex; align-items: center; gap: .5rem; padding: .48rem .6rem;
-                    border-radius: 8px; border: none; cursor: pointer; width: 100%;
+    .op-check { margin-left: auto; color: #818cf8; flex-shrink: 0; }
+    .sidebar-divider { height: 1px; background: rgba(148,163,184,.12); margin: .45rem 0; }
+    .hist-nav-btn { display: flex; align-items: center; gap: .55rem; padding: .5rem .65rem;
+                    border-radius: 9px; border: none; cursor: pointer; width: 100%;
                     font-size: .76rem; font-weight: 700; transition: all .15s;
                     background: transparent; color: #94a3b8; }
-    .hist-nav-btn:hover { background: #1e293b; color: #e2e8f0; }
-    .hist-nav-btn.active { background: #1e293b; color: #a5b4fc; border-left: 3px solid #6366f1; }
+    .hist-nav-btn:hover { background: rgba(99,102,241,.12); color: #e2e8f0; }
+    .hist-nav-btn.active { background: rgba(99,102,241,.16); color: #a5b4fc; box-shadow: inset 3px 0 0 #6366f1; }
+
+    /* Rail replié (bureau) : icônes seules, centrées */
+    @media (min-width: 1025px) {
+      .df-grid.collapsed .op-btn, .df-grid.collapsed .hist-nav-btn { justify-content: center; padding: .5rem; gap: 0; }
+      .df-grid.collapsed .op-ico { width: auto; }
+      .df-grid.collapsed .sidebar-toggle span { display: none; }
+      .df-grid.collapsed .sidebar-toggle { font-size: 0; }
+    }
+
+    /* Contenu du panneau aligné sur le rail */
+    .panel, .hist-panel { max-width: 1280px; margin-inline: auto; }
+
+    /* ── Drawer backdrop ─── */
+    .df-drawer-backdrop { display: none; }
+
+    /* ── Responsive : mobile & tablette → drawer latéral ─── */
+    @media (max-width: 1024px) {
+      .df-page { padding: .75rem 1rem 3rem; }
+      .hero { padding: 0 0 1.1rem; align-items: center; }
+      .df-menu-btn { display: flex; }
+      .df-grid, .df-grid.expanded, .df-grid.collapsed { display: block; }
+      .sidebar-wrap {
+        position: fixed; top: 0; left: 0; height: 100dvh; width: 300px; max-width: 86vw;
+        z-index: 1200; padding: 1rem 1rem 1.5rem; background: #0f172a;
+        transform: translateX(-110%); transition: transform .28s cubic-bezier(.4,0,.2,1);
+        box-shadow: 18px 0 50px rgba(2,6,23,.4); border-radius: 0 20px 20px 0;
+        display: flex; flex-direction: column;
+      }
+      .df-page.menu-open .sidebar-wrap { transform: none; }
+      .df-drawer-head { display: flex; align-items: center; justify-content: space-between;
+                        padding: .4rem .35rem .8rem; }
+      .df-drawer-title { font-family: 'Outfit', sans-serif; font-weight: 900; color: #e2e8f0; font-size: .95rem; }
+      .df-drawer-title em { font-style: normal; background: linear-gradient(135deg,#818cf8,#c084fc); -webkit-background-clip:text; -webkit-text-fill-color: transparent; }
+      .df-drawer-close { width: 32px; height: 32px; border-radius: 9px; border: 1px solid rgba(148,163,184,.2);
+                         background: rgba(148,163,184,.08); color: #cbd5e1; cursor: pointer; font-size: .85rem;
+                         display: flex; align-items: center; justify-content: center; }
+      .df-drawer-close:hover { background: rgba(239,68,68,.15); color: #fca5a5; border-color: rgba(239,68,68,.4); }
+      .sidebar-toggle { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); color: #cbd5e1; }
+      .sidebar-toggle span { color: #64748b; }
+      .ops-sidebar { background: transparent; border: none; box-shadow: none; }
+      .ops-group-label { color: #475569; }
+      .df-drawer-backdrop { display: block; position: fixed; inset: 0; z-index: 1100;
+                            background: rgba(15,23,42,.45); backdrop-filter: blur(3px);
+                            animation: fadeIn .2s ease-out; }
+      .panel, .hist-panel { max-width: none; }
+    }
+    @media (max-width: 640px) {
+      .hero-h1 { font-size: 1.15rem; }
+      .panel { padding: 1.15rem; }
+    }
 
     /* ── Panel ─── */
     .panel { background: white; border-radius: 18px; border: 1.5px solid #f1f5f9;
@@ -387,14 +451,30 @@ const EXT_OPTIONS = [
   {{ toastMsg }}
 </div>
 
-<div class="df-page">
+<div class="df-page" [class.menu-open]="drawerOpen">
   <div class="bg-blob b1"></div>
   <div class="bg-blob b2"></div>
+
+  <div class="df-drawer-backdrop" *ngIf="drawerOpen" (click)="drawerOpen = false"></div>
 
   <div class="df-inner">
 
     <!-- Hero -->
     <div class="hero animate-fade">
+      <button class="df-menu-btn" (click)="drawerOpen = !drawerOpen"
+              [attr.aria-label]="drawerOpen ? 'Fermer le menu' : 'Ouvrir le menu'">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <ng-container *ngIf="!drawerOpen">
+            <line x1="3" y1="6"  x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </ng-container>
+          <ng-container *ngIf="drawerOpen">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </ng-container>
+        </svg>
+      </button>
       <h1 class="hero-h1">Vos fichiers,&nbsp;<span>transformes en quelques secondes.</span></h1>
       <span class="hero-sub">Fusionnez, convertissez, compressez, filigranez, encodez.</span>
     </div>
@@ -404,6 +484,10 @@ const EXT_OPTIONS = [
 
       <!-- Sidebar -->
       <div class="sidebar-wrap">
+        <div class="df-drawer-head">
+          <span class="df-drawer-title">Doc<em>Fusion</em></span>
+          <button class="df-drawer-close" (click)="drawerOpen = false" aria-label="Fermer">✕</button>
+        </div>
         <button class="sidebar-toggle" (click)="sidebarCollapsed = !sidebarCollapsed"
                 [title]="sidebarCollapsed ? 'Deployer' : 'Replier'">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -412,6 +496,7 @@ const EXT_OPTIONS = [
             </ng-container>
             <ng-container *ngIf="sidebarCollapsed"><polyline points="9 18 15 12 9 6"/></ng-container>
           </svg>
+          <span>{{ sidebarCollapsed ? 'Deployer' : 'Replier' }}</span>
         </button>
         <nav class="ops-sidebar">
           <ng-container *ngFor="let grp of opGroups">
@@ -752,6 +837,7 @@ export class DocFusionComponent implements OnInit, OnDestroy {
   view: View     = 'workspace';
   selectedOp: Op = 'merge';
   sidebarCollapsed = false;
+  drawerOpen     = false;
 
   files: File[]      = [];
   checked: boolean[] = [];
@@ -839,10 +925,17 @@ export class DocFusionComponent implements OnInit, OnDestroy {
   ngOnInit()    { this.loadJobs(); }
   ngOnDestroy() { this.pollTimers.forEach(t => clearInterval(t)); }
 
-  switchView(v: View) { this.view = v; if (v === 'history') this.loadJobs(); }
+  /** Referme le drawer quand on repasse sur écran large */
+  @HostListener('window:resize')
+  onResize() {
+    if (window.innerWidth >= 1025 && this.drawerOpen) this.drawerOpen = false;
+  }
+
+  switchView(v: View) { this.view = v; this.drawerOpen = false; if (v === 'history') this.loadJobs(); }
 
   select(op: Op) {
     this.view = 'workspace';
+    this.drawerOpen = false;
     // Sauvegarder l'état de l'opération courante avant de changer
     this.saveOpState(this.selectedOp);
     this.selectedOp = op;

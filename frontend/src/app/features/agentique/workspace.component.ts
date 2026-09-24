@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule, Router } from '@angular/router';
@@ -191,7 +191,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
     </div>
 
     <!-- Tabs -->
-    <div class="ws-tabs">
+    <div #wsTabs class="ws-tabs">
       <button *ngFor="let t of tabs" class="ws-tab" [class.ws-tab--active]="activeTab === t.id"
               (click)="switchTab(t.id)">
         <span class="ws-tab-icon">{{ t.icon }}</span>{{ t.label }}
@@ -2464,7 +2464,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 </div><!-- /ws-page -->
 `,
   styles: [`
-.ws-page { min-height:100vh; background:#0b0f1e; padding:1.5rem; position:relative; overflow:hidden; }
+.ws-page { min-height:100vh; background:#0b0f1e; padding:1.5rem; position:relative; overflow:hidden; overflow:clip; }
 .ws-orb { position:fixed; border-radius:50%; filter:blur(80px); pointer-events:none; }
 .ws-orb1 { width:500px; height:500px; background:rgba(99,102,241,.12); top:-100px; right:-100px; }
 .ws-orb2 { width:400px; height:400px; background:rgba(14,165,233,.08); bottom:-80px; left:-80px; }
@@ -3178,9 +3178,75 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 .llm-adv { display:flex; align-items:flex-end; gap:1.5rem; flex-wrap:wrap; }
 .llm-primary-chk { display:flex; align-items:center; gap:.4rem; color:#94a3b8; font-size:.8rem; cursor:pointer; padding-bottom:.4rem; }
 .llm-primary-chk input { accent-color:#6366f1; }
+
+/* ═══ Responsive & premium (ne modifie aucune logique) ═══ */
+.ws-page { padding: 1rem; }
+.ws-wrap { scroll-behavior: smooth; }
+
+/* Rail d'onglets sticky + scrollable, design premium */
+.ws-tabs { position: sticky; top: 64px; z-index: 500;
+           background: linear-gradient(180deg, rgba(11,15,30,.94), rgba(11,15,30,.82));
+           backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+           margin: 0 -1.25rem 1.25rem; padding: .5rem 1.25rem .65rem;
+           border-bottom: 1px solid rgba(99,102,241,.18);
+           scrollbar-width: none; }
+.ws-tabs::-webkit-scrollbar { display: none; }
+.ws-tab { position: relative; }
+.ws-panel { box-shadow: 0 18px 50px rgba(2,6,23,.35), 0 0 0 1px rgba(99,102,241,.06) inset; }
+
+@media (max-width: 1024px) {
+  .ws-page { padding: .75rem; }
+  .ws-header { margin-bottom: 1rem; }
+  .ws-title { font-size: 1.5rem; }
+  .ws-sub { font-size: .8rem; }
+  .ws-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+             margin: 0 -.75rem 1rem; padding: .5rem .75rem .6rem;
+             scroll-snap-type: x proximity; }
+  .ws-tab { flex: 0 0 auto; scroll-snap-align: start; }
+  .ws-table { min-width: 760px; }
+  .ws-qf-grid, .ws-qf-grid--2col, .ws-pf-grid { grid-template-columns: 1fr; }
+  .fb-renew-fields { grid-template-columns: 1fr; }
+  .ws-profil-card { padding: 1.35rem; }
+  .ws-overlay { padding: 1rem; }
+}
+
+@media (max-width: 640px) {
+  .ws-page { padding: .5rem; }
+  .ws-header { flex-direction: column; align-items: stretch; }
+  .ws-header-row { flex-wrap: wrap; gap: .5rem; }
+  .ws-user-label { display: none; }
+  .ws-title { font-size: 1.2rem; letter-spacing: .03em; }
+  .ws-tabs { margin: 0 -.5rem .875rem; padding: .45rem .5rem .55rem; top: 64px; }
+  .ws-tab { font-size: .74rem; padding: .32rem .65rem; }
+  .ws-panel-hdr { flex-direction: column; align-items: stretch; padding: .85rem 1rem; }
+  .ws-panel-hdr-actions { width: 100%; flex-wrap: wrap; }
+  .ws-panel-hdr-actions .ws-btn-primary,
+  .ws-panel-hdr-actions .ws-btn-secondary { flex: 1; text-align: center; white-space: nowrap; }
+  .ws-search-row { flex-direction: column; align-items: stretch; }
+  .ws-search { min-width: 0; }
+  .ws-qf-actions { flex-wrap: wrap; }
+  .ws-qf-actions .ws-btn-primary, .ws-qf-actions .ws-btn-cancel { flex: 1; text-align: center; }
+  .ws-overlay { padding: .75rem .5rem; align-items: stretch; }
+  .ws-modal .ws-modal-body { padding: 1rem; }
+  .ws-agent-types-grid { grid-template-columns: 1fr; }
+  .ws-pdmodal-grid, .ws-pf-grid { grid-template-columns: 1fr; }
+  .ws-picker-search-row { flex-direction: column; align-items: stretch; gap: .4rem; }
+  .ws-pcard-hdr { flex-direction: column; align-items: flex-start; gap: .4rem; }
+  .ws-pcard-hdr-right { width: 100%; justify-content: space-between; }
+  .ws-scheduling-row, .ws-llm-adv { flex-direction: column; gap: .6rem; align-items: flex-start; }
+  .ws-modal-tabs, .ws-social-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .ws-modal-tabs::-webkit-scrollbar, .ws-social-tabs::-webkit-scrollbar { display: none; }
+  .ws-modal-tab, .ws-social-tab { flex: 0 0 auto; white-space: nowrap; }
+  .ws-pstep-track { left: 20px; right: 20px; }
+  .ws-pstep-num { width: 30px; height: 30px; font-size: .7rem; }
+  .ws-pstep-dot:nth-last-child(-n+1) .ws-pstep-label,
+  .ws-pstep-dot .ws-pstep-label { font-size: .6rem; }
+}
 `]
 })
 export class WorkspaceComponent implements OnInit, OnDestroy {
+
+  @ViewChild('wsTabs', { static: false }) wsTabs?: ElementRef<HTMLElement>;
 
   activeTab: Tab = 'agents';
   tabs = [
@@ -3845,6 +3911,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     if (tab === 'canaux'   && this.agents.length === 0)     this.loadAgents();
     if (tab === 'social'   && this.agents.length === 0)     this.loadAgents();
     if (tab === 'rag') this.ragLoaded = true;
+    // Amène l'onglet actif dans la zone visible (rail scrollable mobile/tablette)
+    setTimeout(() => {
+      const el = this.wsTabs?.nativeElement;
+      if (el) {
+        const node = el.querySelector('.ws-tab--active');
+        if (node) el.scrollTo({ left: (node as HTMLElement).offsetLeft - 12, behavior: 'smooth' });
+      }
+    }, 40);
   }
 
   toggleQuickAdd(type: string): void {
