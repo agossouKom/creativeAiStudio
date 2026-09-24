@@ -181,11 +181,15 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 
     <!-- Header -->
     <div class="ws-header">
-      <div class="ws-header-row">
-        <a routerLink="/agentique/teams" class="ws-back-btn">← Équipes</a>
-        <div class="ws-badge"><span class="ws-dot"></span>Espace de travail</div>
-        <span class="ws-user-label">{{ userName }}</span>
-      </div>
+<div class="ws-header-row">
+      <button class="ws-tabs-btn" (click)="toggleTabsMenu()" [attr.aria-expanded]="tabsMenuOpen" [attr.aria-label]="tabsMenuOpen ? 'Fermer le menu de navigation' : 'Ouvrir le menu de navigation'">
+        <svg *ngIf="!tabsMenuOpen" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg *ngIf="tabsMenuOpen" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <a routerLink="/agentique/teams" class="ws-back-btn">← Équipes</a>
+      <div class="ws-badge"><span class="ws-dot"></span>Espace de travail</div>
+      <span class="ws-user-label">{{ userName }}</span>
+    </div>
       <h1 class="ws-title">TABLEAU DE BORD</h1>
       <p class="ws-sub">Gérez vos agents, équipes, tâches, canaux et workflows</p>
     </div>
@@ -198,6 +202,22 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
         <span *ngIf="t.count && t.count > 0" class="ws-tab-badge">{{ t.count }}</span>
       </button>
     </div>
+
+    <!-- Drawer menu onglets (mobile / petite tablette) -->
+    <div class="ws-tab-backdrop" [class.open]="tabsMenuOpen" (click)="tabsMenuOpen = false"></div>
+    <aside class="ws-tab-drawer" [class.open]="tabsMenuOpen" [attr.aria-hidden]="!tabsMenuOpen">
+      <div class="ws-tab-drawer-head">
+        <span class="ws-tab-drawer-ttl">⚡ Espace de travail</span>
+        <button class="ws-tab-drawer-close" (click)="tabsMenuOpen = false" aria-label="Fermer le menu">✕</button>
+      </div>
+      <nav class="ws-tab-drawer-list">
+        <button *ngFor="let t of tabs" class="ws-tab ws-tab--drawer" [class.ws-tab--active]="activeTab === t.id"
+                (click)="switchTab(t.id)">
+          <span class="ws-tab-icon">{{ t.icon }}</span>{{ t.label }}
+          <span *ngIf="t.count && t.count > 0" class="ws-tab-badge">{{ t.count }}</span>
+        </button>
+      </nav>
+    </aside>
 
     <!-- ── Agents Tab ─────────────────────────────────────────────────────── -->
     <div *ngIf="activeTab === 'agents'" class="ws-panel">
@@ -273,7 +293,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           </tr></thead>
           <tbody>
             <tr *ngFor="let a of filteredAgents">
-              <td>
+              <td data-label="Agent">
                 <div class="ws-agent-cell">
                   <img *ngIf="a.avatarUrl || a.photoUrl" [src]="a.avatarUrl || a.photoUrl" class="ws-agent-avatar"/>
                   <div *ngIf="!a.avatarUrl && !a.photoUrl" class="ws-agent-initials">{{ a.name[0] }}</div>
@@ -283,11 +303,11 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
                   </div>
                 </div>
               </td>
-              <td><span class="ws-code-badge">{{ a.code || '—' }}</span></td>
-              <td><span class="ws-type-badge">{{ agentTypeLabel(a.type || a.agentType) }}</span></td>
-              <td>{{ getTeamName(a.teamId) || '—' }}</td>
-              <td><span class="ws-status-dot" [class.ws-status-dot--active]="a.status==='ACTIVE'" [class.ws-status-dot--paused]="a.status==='PAUSED'">{{ a.status === 'ACTIVE' ? 'Actif' : a.status === 'PAUSED' ? 'Pausé' : a.status }}</span></td>
-              <td>
+              <td data-label="Code"><span class="ws-code-badge">{{ a.code || '—' }}</span></td>
+              <td data-label="Type"><span class="ws-type-badge">{{ agentTypeLabel(a.type || a.agentType) }}</span></td>
+              <td data-label="Équipe">{{ getTeamName(a.teamId) || '—' }}</td>
+              <td data-label="Statut"><span class="ws-status-dot" [class.ws-status-dot--active]="a.status==='ACTIVE'" [class.ws-status-dot--paused]="a.status==='PAUSED'">{{ a.status === 'ACTIVE' ? 'Actif' : a.status === 'PAUSED' ? 'Pausé' : a.status }}</span></td>
+              <td data-label="Actions">
                 <div class="ws-row-actions">
                   <button class="ws-act-btn ws-act-edit" (click)="editAgent(a)" title="Modifier">✏</button>
                   <button class="ws-act-btn ws-act-del" (click)="deleteAgent(a)" title="Supprimer">🗑</button>
@@ -337,13 +357,13 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           <thead><tr><th>Équipe</th><th>Agents</th><th>Créée le</th><th>Actions</th></tr></thead>
           <tbody>
             <tr *ngFor="let t of filteredTeams">
-              <td>
+              <td data-label="Équipe">
                 <div class="ws-cell-name">{{ t.name }}</div>
                 <div class="ws-cell-sub">{{ t.description }}</div>
               </td>
-              <td><span class="ws-count-badge">{{ t.agentCount ?? 0 }} agents</span></td>
-              <td>{{ t.createdAt ? (t.createdAt | date:'dd/MM/yy') : '—' }}</td>
-              <td>
+              <td data-label="Agents"><span class="ws-count-badge">{{ t.agentCount ?? 0 }} agents</span></td>
+              <td data-label="Créée le">{{ t.createdAt ? (t.createdAt | date:'dd/MM/yy') : '—' }}</td>
+              <td data-label="Actions">
                 <div class="ws-row-actions">
                   <button class="ws-act-btn ws-act-edit" (click)="editTeam(t)">✏</button>
                   <button class="ws-act-btn ws-act-del" (click)="deleteTeam(t)">🗑</button>
@@ -394,22 +414,22 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
               <thead><tr><th>Titre</th><th>Code</th><th>Priorité</th><th>Statut</th><th>Créée</th><th>Actions</th></tr></thead>
               <tbody>
                 <tr *ngFor="let t of group.tasks; trackBy: trackByTaskId">
-                  <td>
+                  <td data-label="Titre">
                     <div class="ws-cell-name">{{ t.title }}</div>
                     <div *ngIf="t.platforms" class="ws-promo-platforms-row">
                       <span *ngFor="let pl of parsePlatforms(t.platforms)" class="ws-promo-platform-tag">{{ pl }}</span>
                     </div>
                     <div *ngIf="!t.platforms" class="ws-cell-sub">{{ t.description | slice:0:60 }}</div>
                   </td>
-                  <td><span class="ws-code-badge">{{ t.code || '—' }}</span></td>
-                  <td><span class="ws-priority" [attr.data-p]="t.priority">{{ t.priority }}</span></td>
-                  <td>
+                  <td data-label="Code"><span class="ws-code-badge">{{ t.code || '—' }}</span></td>
+                  <td data-label="Priorité"><span class="ws-priority" [attr.data-p]="t.priority">{{ t.priority }}</span></td>
+                  <td data-label="Statut">
                     <select class="ws-status-sel" [(ngModel)]="t.status" (ngModelChange)="updateTaskStatus(t, $event)">
                       <option *ngFor="let s of taskStatuses" [value]="s">{{ s }}</option>
                     </select>
                   </td>
-                  <td>{{ t.createdAt ? (t.createdAt | date:'dd/MM/yy HH:mm') : '—' }}</td>
-                  <td>
+                  <td data-label="Créée">{{ t.createdAt ? (t.createdAt | date:'dd/MM/yy HH:mm') : '—' }}</td>
+                  <td data-label="Actions">
                     <div class="ws-row-actions">
                       <button class="ws-act-btn ws-act-del" (click)="deleteTask(t)" title="Supprimer">🗑</button>
                     </div>
@@ -434,21 +454,21 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           <thead><tr><th>Objet</th><th>De</th><th>Agent</th><th>Statut</th><th>Reçu</th><th>Actions</th></tr></thead>
           <tbody>
             <tr *ngFor="let item of inboxItems">
-              <td>
+              <td data-label="Objet">
                 <div class="ws-cell-name">{{ item.subject || '(sans objet)' }}</div>
                 <div class="ws-cell-sub">{{ item.body | slice:0:80 }}</div>
               </td>
-              <td>{{ item.fromAddress || '—' }}</td>
-              <td>
+              <td data-label="De">{{ item.fromAddress || '—' }}</td>
+              <td data-label="Agent">
                 <ng-container *ngIf="getAgentById(item.agentId) as ag; else agentFallback">
                   <div class="ws-cell-name" style="font-size:.85rem">{{ ag.name }}</div>
                   <span class="ws-type-badge">{{ agentTypeLabel(ag.type || ag.agentType) }}</span>
                 </ng-container>
                 <ng-template #agentFallback>{{ item.agentId || '—' }}</ng-template>
               </td>
-              <td><span class="ws-inbox-status">{{ item.status }}</span></td>
-              <td>{{ item.createdAt ? (item.createdAt | date:'dd/MM HH:mm') : '—' }}</td>
-              <td>
+              <td data-label="Statut"><span class="ws-inbox-status">{{ item.status }}</span></td>
+              <td data-label="Reçu">{{ item.createdAt ? (item.createdAt | date:'dd/MM HH:mm') : '—' }}</td>
+              <td data-label="Actions">
                 <div class="ws-row-actions">
                   <button class="ws-act-btn ws-act-edit" (click)="selectInboxItem(item)" title="Rédiger">✉</button>
                   <button class="ws-act-btn ws-act-approve" (click)="approveInbox(item)" title="Approuver">✓</button>
@@ -541,11 +561,11 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           <thead><tr><th>Nom</th><th>Agent</th><th>Actif</th><th>Extrait</th><th>Actions</th></tr></thead>
           <tbody>
             <tr *ngFor="let p of prompts">
-              <td class="ws-cell-name">{{ p.name }}</td>
-              <td>{{ p.agentName || '—' }}</td>
-              <td><span class="ws-bool" [class.ws-bool--on]="p.active">{{ p.active ? 'Oui' : 'Non' }}</span></td>
-              <td class="ws-cell-sub">{{ p.content | slice:0:80 }}…</td>
-              <td>
+              <td data-label="Nom" class="ws-cell-name">{{ p.name }}</td>
+              <td data-label="Agent">{{ p.agentName || '—' }}</td>
+              <td data-label="Actif"><span class="ws-bool" [class.ws-bool--on]="p.active">{{ p.active ? 'Oui' : 'Non' }}</span></td>
+              <td data-label="Extrait" class="ws-cell-sub">{{ p.content | slice:0:80 }}…</td>
+              <td data-label="Actions">
                 <div class="ws-row-actions">
                   <button class="ws-act-btn ws-act-edit" (click)="editPrompt(p)">✏</button>
                   <button class="ws-act-btn ws-act-del" (click)="deletePrompt(p)">🗑</button>
@@ -570,23 +590,23 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           <thead><tr><th>Tâche</th><th>Agent</th><th>Source</th><th>Priorité</th><th>Statut</th><th>Durée</th></tr></thead>
           <tbody>
             <tr *ngFor="let w of workflows">
-              <td>
+              <td data-label="Tâche">
                 <div class="ws-cell-name">{{ w.title }}</div>
                 <div class="ws-cell-sub">{{ w.description | slice:0:60 }}</div>
               </td>
-              <td>
+              <td data-label="Agent">
                 <ng-container *ngIf="getAgentById(w.assignedAgentId) as ag; else wfAgentFallback">
                   <div class="ws-cell-name" style="font-size:.85rem">{{ ag.name }}</div>
                   <span class="ws-type-badge">{{ agentTypeLabel(ag.type || ag.agentType) }}</span>
                 </ng-container>
                 <ng-template #wfAgentFallback>{{ w.assignedAgentId || '—' }}</ng-template>
               </td>
-              <td><span class="ws-type-badge ws-type-badge--sm">{{ w.source }}</span></td>
-              <td><span class="ws-priority" [attr.data-p]="w.priority">{{ w.priority }}</span></td>
-              <td>
+              <td data-label="Source"><span class="ws-type-badge ws-type-badge--sm">{{ w.source }}</span></td>
+              <td data-label="Priorité"><span class="ws-priority" [attr.data-p]="w.priority">{{ w.priority }}</span></td>
+              <td data-label="Statut">
                 <span class="ws-wf-status" [attr.data-s]="w.status">{{ w.status }}</span>
               </td>
-              <td>{{ w.duration || '—' }}</td>
+              <td data-label="Durée">{{ w.duration || '—' }}</td>
             </tr>
           </tbody>
         </table>
@@ -917,14 +937,14 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
             <thead><tr><th>Type</th><th>Modèle</th><th>Base URL</th><th>Max Tokens</th><th>Clé API</th><th>Principal</th><th>Actif</th><th>Actions</th></tr></thead>
             <tbody>
               <tr *ngFor="let p of llmDisplayedProviders" [class.ws-row--deleted]="p.deleted">
-                <td><span class="ws-type-badge" [class.ws-type-badge--faded]="p.deleted">{{ p.type }}</span></td>
-                <td class="ws-cell-name">
+                <td data-label="Type"><span class="ws-type-badge" [class.ws-type-badge--faded]="p.deleted">{{ p.type }}</span></td>
+                <td data-label="Modèle" class="ws-cell-name">
                   {{ p.modelId }}
                   <span *ngIf="p.deleted" class="ws-deleted-tag">supprimé</span>
                 </td>
-                <td><span class="ws-cell-sub">{{ p.baseUrl || '(défaut)' }}</span></td>
-                <td>{{ p.maxTokens }}</td>
-                <td class="ws-key-cell">
+                <td data-label="Base URL"><span class="ws-cell-sub">{{ p.baseUrl || '(défaut)' }}</span></td>
+                <td data-label="Max Tokens">{{ p.maxTokens }}</td>
+                <td data-label="Clé API" class="ws-key-cell">
                   <ng-container *ngIf="p.hasApiKey; else noKey">
                     <span class="ws-key-mask" [title]="revealedKeys[p.id] || 'Cliquez pour révéler'">
                       {{ revealedKeys[p.id] ? maskDisplay(revealedKeys[p.id]) : '••••••••••••' }}
@@ -936,9 +956,9 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
                   </ng-container>
                   <ng-template #noKey><span class="ws-cell-sub">—</span></ng-template>
                 </td>
-                <td><span [class.ws-bool--on]="p.primary && !p.deleted" class="ws-bool">{{ p.primary && !p.deleted ? '★ Oui' : '—' }}</span></td>
-                <td><span [class.ws-bool--on]="p.active && !p.deleted" class="ws-bool">{{ p.active && !p.deleted ? '✓' : '✗' }}</span></td>
-                <td class="ws-act-cell">
+                <td data-label="Principal"><span [class.ws-bool--on]="p.primary && !p.deleted" class="ws-bool">{{ p.primary && !p.deleted ? '★ Oui' : '—' }}</span></td>
+                <td data-label="Actif"><span [class.ws-bool--on]="p.active && !p.deleted" class="ws-bool">{{ p.active && !p.deleted ? '✓' : '✗' }}</span></td>
+                <td data-label="Actions" class="ws-act-cell">
                   <button *ngIf="!p.primary && !p.deleted" class="ws-act-btn ws-act-star" title="Définir comme principal" (click)="llmSetPrimary(p)">⭐</button>
                   <button *ngIf="p.deleted" class="ws-act-btn ws-act-restore" title="Restaurer" (click)="llmRestore(p)">♻️</button>
                   <button *ngIf="!p.deleted" class="ws-act-btn ws-act-del" title="Supprimer" (click)="llmAskDelete(p)">🗑</button>
@@ -1621,18 +1641,18 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           <thead><tr><th>Type</th><th>Plateforme</th><th>Nom</th><th>Page ID / Compte</th><th>Token</th><th>Statut</th><th>Actions</th></tr></thead>
           <tbody>
             <tr *ngFor="let ch of channels">
-              <td><span class="ws-type-badge ws-type-badge--sm">{{ ch.type }}</span></td>
-              <td>{{ ch.platformType || '—' }}</td>
-              <td class="ws-cell-name">{{ ch.displayName }}</td>
-              <td>
+              <td data-label="Type"><span class="ws-type-badge ws-type-badge--sm">{{ ch.type }}</span></td>
+              <td data-label="Plateforme">{{ ch.platformType || '—' }}</td>
+              <td data-label="Nom" class="ws-cell-name">{{ ch.displayName }}</td>
+              <td data-label="Page ID / Compte">
                 <div class="ws-cell-name" style="font-size:.75rem">{{ ch.accountId || '—' }}</div>
                 <div class="ws-cell-sub" *ngIf="ch.accountName">{{ ch.accountName }}</div>
               </td>
-              <td><span class="ws-ch-token-hint">{{ ch.id ? '🔐 chiffré' : '—' }}</span></td>
-              <td>
+              <td data-label="Token"><span class="ws-ch-token-hint">{{ ch.id ? '🔐 chiffré' : '—' }}</span></td>
+              <td data-label="Statut">
                 <span class="ws-ch-status" [attr.data-s]="ch.status">{{ ch.status }}</span>
               </td>
-              <td>
+              <td data-label="Actions">
                 <div class="ws-row-actions">
                   <button class="ws-act-btn ws-act-edit" title="Modifier" (click)="editChannel(ch)">✏</button>
                   <button *ngIf="ch.status !== 'CONNECTED'" class="ws-act-btn ws-act-approve" title="Marquer comme connecté" (click)="connectChannel(ch)">✓</button>
@@ -2199,11 +2219,11 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           <thead><tr><th>Code</th><th>Nom</th><th>Email</th><th>Entreprise</th><th>Actions</th></tr></thead>
           <tbody>
             <tr *ngFor="let c of clients; let i=index">
-              <td><code class="ws-code-chip">{{ c.code }}</code></td>
-              <td>{{ c.nom }} {{ c.prenoms }}</td>
-              <td>{{ c.email }}</td>
-              <td>{{ c.entrepriseName||'—' }}</td>
-              <td>
+              <td data-label="Code"><code class="ws-code-chip">{{ c.code }}</code></td>
+              <td data-label="Nom">{{ c.nom }} {{ c.prenoms }}</td>
+              <td data-label="Email">{{ c.email }}</td>
+              <td data-label="Entreprise">{{ c.entrepriseName||'—' }}</td>
+              <td data-label="Actions">
                 <div class="ws-row-actions">
                   <button class="ws-act-btn ws-act-edit" (click)="editClient(i); clientTab='form'" title="Modifier">✏</button>
                   <button class="ws-act-btn ws-act-del" (click)="softDeleteClient(i)" title="Mettre à la corbeille">🗑</button>
@@ -2221,10 +2241,10 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           <thead><tr><th>Code</th><th>Nom</th><th>Email</th><th>Actions</th></tr></thead>
           <tbody>
             <tr *ngFor="let c of clientsTrash; let i=index" class="ws-row-deleted">
-              <td><code class="ws-code-chip ws-code-chip--dim">{{ c.code }}</code></td>
-              <td>{{ c.nom }} {{ c.prenoms }}</td>
-              <td>{{ c.email }}</td>
-              <td>
+              <td data-label="Code"><code class="ws-code-chip ws-code-chip--dim">{{ c.code }}</code></td>
+              <td data-label="Nom">{{ c.nom }} {{ c.prenoms }}</td>
+              <td data-label="Email">{{ c.email }}</td>
+              <td data-label="Actions">
                 <div class="ws-row-actions">
                   <button class="ws-act-btn ws-act-restore" (click)="restoreClient(i)" title="Restaurer">↩</button>
                   <button class="ws-act-btn ws-act-del" (click)="hardDeleteClient(i)" title="Supprimer définitivement">✕</button>
@@ -2440,10 +2460,10 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           <thead><tr><th>Code</th><th>Nom</th><th>Prix</th><th>Actions</th></tr></thead>
           <tbody>
             <tr *ngFor="let p of productsTrash; let i=index" class="ws-row-deleted">
-              <td><code class="ws-code-chip ws-code-chip--dim">{{ p.code }}</code></td>
-              <td>{{ p.nom }}</td>
-              <td>{{ p.prix }}€</td>
-              <td>
+              <td data-label="Code"><code class="ws-code-chip ws-code-chip--dim">{{ p.code }}</code></td>
+              <td data-label="Nom">{{ p.nom }}</td>
+              <td data-label="Prix">{{ p.prix }}€</td>
+              <td data-label="Actions">
                 <div class="ws-row-actions">
                   <button class="ws-act-btn ws-act-restore" (click)="restoreProduct(i)" title="Restaurer">↩</button>
                   <button class="ws-act-btn ws-act-del" (click)="hardDeleteProduct(i)" title="Supprimer définitivement">✕</button>
@@ -3242,6 +3262,155 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
   .ws-pstep-dot:nth-last-child(-n+1) .ws-pstep-label,
   .ws-pstep-dot .ws-pstep-label { font-size: .6rem; }
 }
+
+/* ═══ Onglets → hamburger (mobile & petite tablette) ═══ */
+.ws-tabs-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  background: rgba(99, 102, 241, .12);
+  border: 1px solid rgba(99, 102, 241, .28);
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all .2s;
+}
+.ws-tabs-btn:hover { background: rgba(99, 102, 241, .22); border-color: rgba(129, 140, 248, .5); }
+.ws-tabs-btn svg { display: block; }
+
+.ws-tab-backdrop {
+  position: fixed;
+  top: 64px;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 1290;
+  background: rgba(2, 6, 23, .55);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+.ws-tab-backdrop.open { opacity: 1; pointer-events: auto; }
+
+.ws-tab-drawer {
+  display: none;
+  position: fixed;
+  top: 64px;
+  bottom: 0;
+  left: 0;
+  width: min(304px, 88vw);
+  z-index: 1300;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: .9rem .8rem 1.4rem;
+  background: linear-gradient(180deg, rgba(11, 15, 30, .99), rgba(13, 21, 38, .97));
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border-right: 1px solid rgba(99, 102, 241, .18);
+  box-shadow: 22px 0 54px rgba(2, 6, 23, .55);
+  transform: translateX(-108%);
+  transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+}
+.ws-tab-drawer.open { transform: none; }
+.ws-tab-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: 0 .35rem .7rem;
+  margin-bottom: .6rem;
+  border-bottom: 1px solid rgba(99, 102, 241, .16);
+}
+.ws-tab-drawer-ttl { color: #e2e8f0; font-weight: 800; font-size: .8rem; letter-spacing: .05em; }
+.ws-tab-drawer-close {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .1);
+  color: #94a3b8;
+  font-size: .8rem;
+  cursor: pointer;
+  transition: all .2s;
+}
+.ws-tab-drawer-close:hover { background: rgba(239, 68, 68, .16); color: #fca5a5; border-color: rgba(239, 68, 68, .35); }
+.ws-tab-drawer-list { display: flex; flex-direction: column; gap: .3rem; }
+.ws-tab--drawer {
+  width: 100%;
+  justify-content: flex-start;
+  padding: .62rem .75rem;
+  font-size: .8rem;
+  border-radius: 10px;
+}
+.ws-tab--drawer .ws-tab-badge { margin-left: auto; }
+
+@media (max-width: 1024px) {
+  .ws-tabs-btn { display: flex; }
+  .ws-tabs { display: none; }
+  .ws-tab-backdrop { display: block; }
+  .ws-tab-drawer { display: flex; }
+}
+
+/* ═══ Tableaux → cartes liste (mobile & petite tablette) ═══ */
+@media (max-width: 900px) {
+  .ws-table-wrap { overflow: visible; }
+  .ws-table, .ws-table tbody, .ws-table tr, .ws-table td { display: block; }
+  .ws-table { min-width: 0; }
+  .ws-table thead { display: none; }
+  .ws-table tbody { display: grid; grid-template-columns: 1fr; gap: .8rem; }
+  .ws-table tr {
+    background: linear-gradient(180deg, rgba(99, 102, 241, .07), rgba(99, 102, 241, .02));
+    border: 1px solid rgba(99, 102, 241, .16);
+    border-radius: 14px;
+    padding: .85rem 1rem;
+    transition: border-color .2s, background .2s;
+  }
+  .ws-table tr:hover td { background: transparent; }
+  .ws-table td {
+    display: grid;
+    grid-template-columns: minmax(92px, 32%) 1fr;
+    gap: .35rem 1rem;
+    align-items: center;
+    border: none;
+    padding: .3rem .35rem;
+    font-size: .84rem;
+  }
+  .ws-table td::before {
+    content: attr(data-label);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-size: .6rem;
+    font-weight: 800;
+    color: #64748b;
+    white-space: nowrap;
+  }
+  .ws-table td > div.ws-cell-sub,
+  .ws-table td > div.ws-cell-name { min-width: 0; }
+  .ws-table tr:last-child td { border-bottom: none; }
+  .ws-table td:has(.ws-row-actions),
+  .ws-table td.ws-act-cell {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: .4rem;
+    margin-top: .3rem;
+    padding-top: .2rem;
+  }
+  .ws-table td:has(.ws-row-actions)::before,
+  .ws-table td.ws-act-cell::before { display: none; }
+  .ws-table td:not([data-label]) {
+    display: block;
+    grid-column: 1 / -1;
+    padding: .2rem 0;
+  }
+  .ws-table td:not([data-label])::before { display: none; }
+  .ws-table .ws-empty { padding: .5rem 0; }
+}
 `]
 })
 export class WorkspaceComponent implements OnInit, OnDestroy {
@@ -3249,6 +3418,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   @ViewChild('wsTabs', { static: false }) wsTabs?: ElementRef<HTMLElement>;
 
   activeTab: Tab = 'agents';
+  tabsMenuOpen = false;
   tabs = [
     { id: 'agents'   as Tab, icon: '🤖', label: 'Agents',    count: 0 },
     { id: 'equipes'  as Tab, icon: '🏢', label: 'Équipes',   count: 0 },
@@ -3889,8 +4059,13 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     this.router.navigate(['/agentique/teams']);
   }
 
+  toggleTabsMenu(): void {
+    this.tabsMenuOpen = !this.tabsMenuOpen;
+  }
+
   switchTab(tab: Tab): void {
     this.activeTab = tab;
+    this.tabsMenuOpen = false;
     this.quickAdd  = '';
     this.editingId = '';
     this.formError = '';
