@@ -222,6 +222,10 @@ h1, h2, h3, h4, .brand-font { font-family: 'Outfit', sans-serif; }
 .nav-lnk:hover { color: #ffffff; }
 .nav-active { color: #3b82f6 !important; }
 
+/* ─── Accessibilité : zoom de texte (+/−) ───────────────────────────────────── */
+:root { --ui-scale: 1; }
+body { zoom: var(--ui-scale); }
+
 /* Creative Studio nav link — gradient accent */
 .nav-lnk-studio--trigger { cursor: default; user-select: none; }
 .nav-lnk-studio {

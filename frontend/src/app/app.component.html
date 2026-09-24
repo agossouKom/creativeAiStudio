@@ -119,9 +119,66 @@
           </button>
         </div>
       </div>
+
+      <!-- Taille du texte (desktop) -->
+      <div class="text-zoom-ctl text-zoom-ctl--desktop" aria-label="Taille du texte">
+        <button type="button" (click)="zoomOut()" [disabled]="textScale <= TEXT_SCALE_MIN" title="Réduire le texte">&#8722;</button>
+        <output title="Taille du texte">{{ textScale }}%</output>
+        <button type="button" (click)="zoomIn()" [disabled]="textScale >= TEXT_SCALE_MAX" title="Agrandir le texte">&#43;</button>
+      </div>
+
+      <!-- Hamburger mobile -->
+      <button class="nav-burger" (click)="toggleMobileMenu()" [attr.aria-label]="mobileMenuOpen ? 'Fermer le menu' : 'Ouvrir le menu'" [attr.aria-expanded]="mobileMenuOpen">
+        <svg *ngIf="!mobileMenuOpen" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg *ngIf="mobileMenuOpen" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
     </div>
   </div>
 </header>
+
+<!-- ── Menu mobile (hamburger) ─────────────────────────────────────────────── -->
+<nav class="nav-mobile-menu" [class.open]="mobileMenuOpen" *ngIf="!isAdmin && !isEmbedded && !chromeHeaderHidden && !isAuthPage">
+  <div class="nav-mobile-links" (click)="mobileMenuOpen = false">
+    <a routerLink="/"                       routerLinkActive="nav-active" [routerLinkActiveOptions]="{exact:true}" class="nav-mobile-lnk">
+      <span class="lnk-ico">&#127968;</span> Accueil</a>
+    <a routerLink="/docfusion"              routerLinkActive="nav-active" class="nav-mobile-lnk">
+      <span class="lnk-ico">&#128196;</span> Document</a>
+    <a routerLink="/agentique/teams"        routerLinkActive="nav-active" class="nav-mobile-lnk">
+      <span class="lnk-ico">&#129302;</span> Agentique IA</a>
+    <a routerLink="/pricing"                routerLinkActive="nav-active" class="nav-mobile-lnk">
+      <span class="lnk-ico">&#128142;</span> Plans</a>
+    <a routerLink="/contact"                routerLinkActive="nav-active" class="nav-mobile-lnk">
+      <span class="lnk-ico">&#9993;&#65039;</span> Contact</a>
+    <a *ngIf="isLoggedIn" routerLink="/history" routerLinkActive="nav-active" class="nav-mobile-lnk">
+      <span class="lnk-ico">&#9203;</span> Historique</a>
+    <a *ngIf="!isLoggedIn" routerLink="/auth" class="nav-mobile-lnk">
+      <span class="lnk-ico">&#128273;</span> Connexion</a>
+  </div>
+
+  <div class="nav-mobile-divider"></div>
+
+  <div class="nav-mobile-row">
+    <span class="nav-mobile-row-label">&#128268; Taille du texte</span>
+    <div class="text-zoom-ctl text-zoom-ctl--mobile" aria-label="Taille du texte">
+      <button type="button" (click)="zoomOut()" [disabled]="textScale <= TEXT_SCALE_MIN" title="Réduire le texte">&#8722;</button>
+      <output title="Taille du texte">{{ textScale }}%</output>
+      <button type="button" (click)="zoomIn()" [disabled]="textScale >= TEXT_SCALE_MAX" title="Agrandir le texte">&#43;</button>
+    </div>
+  </div>
+
+  <div class="nav-mobile-divider"></div>
+
+  <div class="nav-mobile-row">
+    <button type="button" class="nav-mobile-lnk nav-mobile-action" (click)="toggleTheme()">
+      <span class="lnk-ico">{{ isDark ? '&#9728;&#65039;' : '&#127769;&#65039;' }}</span>
+      <span>{{ isDark ? 'Mode clair' : 'Mode sombre' }}</span>
+    </button>
+    <button type="button" *ngIf="isLoggedIn" class="nav-mobile-lnk nav-mobile-action" (click)="logout()">
+      <span class="lnk-ico">&#128682;</span>
+      <span>Déconnexion</span>
+    </button>
+  </div>
+</nav>
 
 <!-- ── Layout (non-admin) ─────────────────────────────────────────────────── -->
 <div class="page-layout" *ngIf="!isAdmin">

@@ -22,6 +22,14 @@ export class AppComponent implements OnInit {
   megaOpen     = false;
   agentiqueOpen = false;
   isDark = false;
+  mobileMenuOpen = false;
+
+  /** Taille du texte (%), pilotée par les boutons +/− (zoom d'accessibilité) */
+  textScale = 100;
+  readonly TEXT_SCALE_MIN = 85;
+  readonly TEXT_SCALE_MAX = 150;
+  readonly TEXT_SCALE_STEP = 10;
+  private readonly TEXT_SCALE_KEY = 'cas-text-scale';
 
   /** Routes pleine largeur (cv-builder, docfusion, rag-chat, agentique, auth) */
   private noSidebarRoutes = ['/cv-builder', '/card-builder', '/docfusion', '/rag-chat', '/agentique', '/games', '/auth'];
@@ -127,7 +135,33 @@ export class AppComponent implements OnInit {
 
   toggleDropdown() {
     this.showDropdown = !this.showDropdown;
-    if (this.showDropdown) this.megaOpen = false;
+    if (this.showDropdown) { this.megaOpen = false; this.mobileMenuOpen = false; }
+  }
+
+  toggleMobileMenu(): void {
+    this.mobileMenuOpen = !this.mobileMenuOpen;
+    if (this.mobileMenuOpen) this.showDropdown = false;
+  }
+
+  zoomIn(): void {
+    if (this.textScale < this.TEXT_SCALE_MAX) {
+      this.textScale += this.TEXT_SCALE_STEP;
+      this.applyTextScale();
+    }
+  }
+
+  zoomOut(): void {
+    if (this.textScale > this.TEXT_SCALE_MIN) {
+      this.textScale -= this.TEXT_SCALE_STEP;
+      this.applyTextScale();
+    }
+  }
+
+  private applyTextScale(): void {
+    const value = Math.min(this.TEXT_SCALE_MAX, Math.max(this.TEXT_SCALE_MIN, this.textScale));
+    this.textScale = value;
+    document.documentElement.style.setProperty('--ui-scale', (value / 100).toString());
+    localStorage.setItem(this.TEXT_SCALE_KEY, String(value));
   }
 
   closeDropdown() {
@@ -162,6 +196,7 @@ export class AppComponent implements OnInit {
 
   logout() {
     this.showDropdown = false;
+    this.mobileMenuOpen = false;
     this.authService.logout();
   }
 
@@ -176,6 +211,13 @@ export class AppComponent implements OnInit {
     const saved = localStorage.getItem('cas-theme') || 'light';
     this.isDark = saved === 'dark';
     document.documentElement.setAttribute('data-theme', saved);
+    const savedScale = parseInt(localStorage.getItem(this.TEXT_SCALE_KEY) || '100', 10);
+    if (Number.isNaN(savedScale)) {
+      this.applyTextScale();
+    } else {
+      this.textScale = Math.round(savedScale / this.TEXT_SCALE_STEP) * this.TEXT_SCALE_STEP;
+      this.applyTextScale();
+    }
     this.router.events.pipe(
       filter(event => event instanceof NavigationEnd)
     ).subscribe((event: any) => {
@@ -183,6 +225,7 @@ export class AppComponent implements OnInit {
       // Fermer les menus à chaque navigation
       this.megaOpen    = false;
       this.showDropdown = false;
+      this.mobileMenuOpen = false;
       // Détecter si on est sur le dashboard admin
       this.isAdmin = event.url.includes('/dashboard');
       this.agentiqueOpen = false;
