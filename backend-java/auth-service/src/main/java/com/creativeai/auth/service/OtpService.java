@@ -118,10 +118,19 @@ public class OtpService {
                 <body style="margin:0;padding:0;background:#ffffff;color:#2c2c2c;font-family:Arial,Helvetica,sans-serif;">
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#ffffff;">
                     <tr>
-                      <td align="center" style="background:#f6f6f6;padding:18px 24px 19px 45px;">
-                        <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:26px;font-weight:700;letter-spacing:.4px;color:#00236b;">
-                          CREATIVE <span style="color:#1155cc;">AI</span> STUDIO
-                        </div>
+                      <td align="center" style="background:#f6f6f6;padding:14px 24px;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
+                          <tr>
+                            <td width="42" style="width:42px;vertical-align:middle;">
+                              <a href="https://ai.labibpro.com" style="display:block;text-decoration:none;">
+                                <img src="https://ai.labibpro.com/favicon-192.png" width="42" height="42" alt="Creative AI Studio" style="display:block;width:42px;height:42px;border:0;outline:none;text-decoration:none;">
+                              </a>
+                            </td>
+                            <td style="padding-left:12px;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:26px;font-weight:700;letter-spacing:.4px;color:#00236b;">
+                              CREATIVE <span style="color:#1155cc;">AI</span> STUDIO
+                            </td>
+                          </tr>
+                        </table>
                       </td>
                     </tr>
                     <tr>
