@@ -133,7 +133,7 @@ const EXT_OPTIONS = [
     }
 
     /* Contenu du panneau aligné sur le rail */
-    .panel, .hist-panel { max-width: 1280px; margin-inline: auto; }
+    .panel, .hist-panel { width: 100%; max-width: 1280px; margin-inline: auto; }
 
     /* ── Drawer backdrop ─── */
     .df-drawer-backdrop { display: none; }
@@ -188,18 +188,28 @@ const EXT_OPTIONS = [
 
     /* ── Drop zone ─── */
     .drop-zone { border: 2px dashed #e2e8f0; border-radius: 14px; padding: 1.5rem;
+                 min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center;
                  text-align: center; cursor: pointer; transition: all .22s; background: #fafbfc; }
     .drop-zone:hover, .drop-zone.drag { border-color: #6366f1; background: #f5f3ff; }
     .drop-zone.filled { border-color: #6366f1; background: #f5f3ff; border-style: solid; }
     .drop-up-icon { width: 42px; height: 42px; border-radius: 10px; margin: 0 auto .625rem;
                     background: white; border: 1.5px solid #e2e8f0; display: flex;
-                    align-items: center; justify-content: center; transition: all .2s; }
+                    align-items: center; justify-content: center; transition: all .2s; flex-shrink: 0; }
     .drop-zone.filled .drop-up-icon { background: #6366f1; border-color: #6366f1; }
     .drop-zone.filled .drop-up-icon svg { stroke: white; }
     .drop-title { font-size: .85rem; font-weight: 700; color: #374151; margin-bottom: .2rem; }
     .drop-sub   { font-size: .72rem; color: #94a3b8; margin-bottom: .75rem; }
-    .fmt-row    { display: flex; gap: .3rem; flex-wrap: wrap; justify-content: center; }
+    .fmt-row    { display: flex; align-self: stretch; gap: .3rem; flex-wrap: wrap; justify-content: center; }
     .fmt-chip   { font-size: .62rem; font-weight: 700; background: #f1f5f9; color: #475569; padding: .15rem .45rem; border-radius: 5px; }
+
+    @media (min-width: 1025px) {
+      .drop-zone { min-height: clamp(240px, 26vh, 320px); padding: 2.5rem 2rem; }
+      .drop-up-icon { width: 64px; height: 64px; border-radius: 16px; margin-bottom: 1rem; }
+      .drop-up-icon svg { width: 30px; height: 30px; }
+      .drop-title { font-size: 1.05rem; margin-bottom: .35rem; }
+      .drop-sub { font-size: .85rem; margin-bottom: 1rem; }
+      .fmt-chip { font-size: .7rem; padding: .22rem .55rem; }
+    }
 
     /* ── File list ─── */
     .file-list-head { display: flex; align-items: center; justify-content: space-between;
