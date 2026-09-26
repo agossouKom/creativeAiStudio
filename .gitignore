@@ -39,3 +39,6 @@ footBall/supporters/
 # Python
 __pycache__/
 *.py[cod]
+
+# Sauvegardes de rotation de cles
+backups/
