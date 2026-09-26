@@ -44,6 +44,26 @@ def _integer(name: str, default: int, minimum: int, maximum: int) -> int:
     return parsed
 
 
+_IMAGE_FORMATS = {
+    "png": ("png", "PNG"),
+    "jpeg": ("jpg", "JPEG"),
+    "webp": ("webp", "WEBP"),
+}
+
+
+def _image_format(name: str, default: str) -> str:
+    """Format de sortie force. On ne fait pas confiance au provider : il peut
+    renvoyer du JPEG alors qu'on a demande du PNG. La conversion est faite en
+    amont dans storage.py, donc le format stocke est toujours celui-ci."""
+    value = (_optional_text(name) or default).lower()
+    if value == "jpg":
+        value = "jpeg"
+    if value not in _IMAGE_FORMATS:
+        allowed = ", ".join(sorted(_IMAGE_FORMATS))
+        raise ValueError(f"{name} must be one of: {allowed}")
+    return value
+
+
 def _decimal(name: str, default: float, minimum: float, maximum: float) -> float:
     value = _optional_text(name)
     if value is None:
@@ -124,6 +144,7 @@ class Settings:
     image_generation_output_bucket: str
     image_generation_max_output_bytes: int
     image_generation_max_image_count: int
+    image_generation_output_format: str
     image_generation_request_timeout_seconds: float
 
     @classmethod
@@ -172,6 +193,9 @@ class Settings:
             ),
             image_generation_max_image_count=_integer(
                 "IMAGE_GENERATION_MAX_IMAGE_COUNT", 4, 1, 10
+            ),
+            image_generation_output_format=_image_format(
+                "IMAGE_GENERATION_OUTPUT_FORMAT", "png"
             ),
             image_generation_request_timeout_seconds=_decimal(
                 "IMAGE_GENERATION_REQUEST_TIMEOUT_SECONDS", 120.0, 1.0, 600.0

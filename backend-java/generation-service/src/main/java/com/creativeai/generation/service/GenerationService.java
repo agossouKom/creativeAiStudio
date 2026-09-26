@@ -41,6 +41,7 @@ public class GenerationService {
     private final AgentTeamGenerationClient agentTeamGenerationClient;
     private final GenerationJobStore jobStore;
     private final ObjectMapper objectMapper;
+    private final ImageModelCatalog imageModelCatalog;
 
     public GenerationService(GenerationJobRepository jobRepository,
                              GenerationOutputRepository outputRepository,
@@ -49,7 +50,8 @@ public class GenerationService {
                              MediaStorageService storageService,
                              AgentTeamGenerationClient agentTeamGenerationClient,
                              GenerationJobStore jobStore,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             ImageModelCatalog imageModelCatalog) {
         this.jobRepository = jobRepository;
         this.jobStore = jobStore;
         this.outputRepository = outputRepository;
@@ -58,6 +60,14 @@ public class GenerationService {
         this.storageService = storageService;
         this.agentTeamGenerationClient = agentTeamGenerationClient;
         this.objectMapper = objectMapper;
+        this.imageModelCatalog = imageModelCatalog;
+    }
+
+    /** Recopie les options en substituant le modele valide. */
+    private static ImageOptionsRequest withModel(ImageOptionsRequest options, String model) {
+        return new ImageOptionsRequest(
+                options.size(), options.count(), model, options.style(),
+                options.quality(), options.seed(), options.responseFormat());
     }
 
     public GenerationJobResponse createVideo(
@@ -88,6 +98,8 @@ public class GenerationService {
 
     public GenerationJobResponse createImage(CreateImageRequest request, String userEmail) {
         ImageOptionsRequest options = request.options().normalized();
+        // le champ model etait du texte libre : on le contraint au catalogue
+        options = withModel(options, imageModelCatalog.resolveOrDefault(options.model()));
         GenerationJob job = newJob(MediaType.IMAGE, request.prompt(), request.negativePrompt(),
             optionsJson(options), userEmail);
         String payload = commandFactory.imageCommand(job, options);

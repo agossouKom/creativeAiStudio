@@ -203,6 +203,7 @@ def run(settings: Settings | None = None, client: ImageProviderClient | None = N
         settings.image_generation_output_bucket,
         settings.image_generation_max_output_bytes,
         settings.image_generation_request_timeout_seconds,
+        settings.image_generation_output_format,
     )
     storage.ensure_bucket()
     consumer = KafkaConsumer(

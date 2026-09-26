@@ -45,6 +45,50 @@ _MAGIC_TYPES: tuple[tuple[bytes, str, str], ...] = (
 _BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal", "169.254.169.254"})
 _BLOCKED_SUFFIXES = (".local", ".internal", ".localhost")
 
+_PILLOW_FORMATS = {"png": "PNG", "jpeg": "JPEG", "webp": "WEBP"}
+_PILLOW_EXTENSIONS = {"png": "png", "jpeg": "jpg", "webp": "webp"}
+_PILLOW_CONTENT_TYPES = {
+    "png": "image/png",
+    "jpeg": "image/jpeg",
+    "webp": "image/webp",
+}
+
+
+def _to_png(data: bytes, target: str) -> bytes:
+    """Convertit l'image renvoyee par le provider vers le format impose.
+
+    Sans ca, la demande « PNG uniquement » n'est qu'une intention : un provider
+    peut renvoyer du JPEG ou du WebP, et le stockage le rangeait tel quel. La
+    conversion est faite ici, une seule fois, juste avant le put_object, donc
+    ce qui atterrit dans MinIO est toujours dans le format demande.
+    """
+    if target == "png" and data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return data
+    try:
+        import io
+
+        from PIL import Image
+    except ImportError as exc:
+        raise StorageError(
+            "OUTPUT_CONVERT_UNAVAILABLE",
+            "Pillow is required to enforce the output format",
+        ) from exc
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            image.load()
+            if image.mode not in ("RGB", "RGBA"):
+                # P/LA/CMYK... : PNG n'accepte ni palette ni CMYK
+                image = image.convert("RGBA" if "A" in image.mode else "RGB")
+            buffer = io.BytesIO()
+            image.save(buffer, format=_PILLOW_FORMATS[target])
+            return buffer.getvalue()
+    except StorageError:
+        raise
+    except Exception as exc:
+        raise StorageError(
+            "OUTPUT_CONVERT_FAILED", "provider output could not be converted"
+        ) from exc
+
 
 def _sniff_image(data: bytes) -> tuple[str, str] | None:
     for prefix, content_type, extension in _MAGIC_TYPES:
@@ -64,6 +108,7 @@ class MinioImageStorage:
         bucket: str,
         max_output_bytes: int,
         timeout_seconds: float,
+        output_format: str = "png",
         *,
         session: requests.Session | None = None,
         s3_client: Any | None = None,
@@ -73,9 +118,13 @@ class MinioImageStorage:
             raise ValueError("image output storage configuration is incomplete")
         if max_output_bytes < 1:
             raise ValueError("max_output_bytes must be positive")
+        if output_format not in _PILLOW_FORMATS:
+            allowed = ", ".join(sorted(_PILLOW_FORMATS))
+            raise ValueError(f"output_format must be one of: {allowed}")
         self.endpoint_url = endpoint_url.rstrip("/")
         self.bucket = bucket
         self.max_output_bytes = max_output_bytes
+        self.output_format = output_format
         self.timeout_seconds = timeout_seconds
         self.session = session or requests.Session()
         self.resolver = resolver or self._resolve_with_socket
@@ -182,6 +231,18 @@ class MinioImageStorage:
                 "OUTPUT_CONTENT_INVALID", "provider output is not a supported image"
             )
         content_type, extension = sniffed
+        target = self.output_format
+        if extension != _PILLOW_EXTENSIONS[target]:
+            # le provider a renvoye un autre format : on convertit, plutot que
+            # de stocker ce qu'il a donne en croyant que c'est du PNG
+            data = _to_png(data, target)
+            content_type = _PILLOW_CONTENT_TYPES[target]
+            extension = _PILLOW_EXTENSIONS[target]
+            if len(data) > self.max_output_bytes:
+                raise StorageError(
+                    "OUTPUT_TOO_LARGE",
+                    "converted output exceeds the size limit",
+                )
         digest = hashlib.sha256(data).hexdigest()
         object_key = self._object_key(job_id, execution_version, index, extension)
         self.s3.put_object(

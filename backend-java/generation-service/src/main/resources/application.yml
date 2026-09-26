@@ -52,6 +52,10 @@ generation:
   image:
     input-topic: ${IMAGE_GENERATION_INPUT_TOPIC:creativeai.image-generation}
     result-topic: ${IMAGE_GENERATION_RESULT_TOPIC:creativeai.image-generation.results}
+  # alimente le "available" du catalogue de modeles d'image, pour que le Studio
+  # puisse dire "les images ne sont pas disponibles" au lieu de proposer un
+  # modele que personne ne peut servir
+  image-provider-configured: ${IMAGE_PROVIDER_CONFIGURED:false}
   download-url-expiry-minutes: ${GENERATION_DOWNLOAD_URL_EXPIRY_MINUTES:120}
   publish:
     # Délégation de la publication sociale à agent-team-service, qui détient

@@ -61,12 +61,17 @@ Quatre étapes : choisir un média dans la galerie, choisir la date et l'heure, 
 
 ## 4. Ordre de réalisation proposé
 
-1. **G1, G2, G3** (bloquants, petits) — sans eux, l'exigence « agent par défaut préconfiguré » et « PNG uniquement » est fausse.
+1. ~~**G1, G2, G3, G4** (bloquants, petits)~~ — **fait et déployé en prod.** Sans eux, l'exigence « agent par défaut préconfiguré » et « PNG uniquement » était fausse.
 2. **Onglet A** — le plus de valeur, et l'existant couvre l'essentiel.
 3. **Onglet C** — une vue SQL plus deux endpoints.
 4. **Onglet D** — OAuth est le vrai chantier, le reste est du rechargement.
 5. **Onglet E** — table + scheduler, indépendant du reste.
 6. **Onglet B** — le plus lourd, à traiter seul.
+
+### Reste à faire avant que le Studio soit utilisable
+
+- **G11** — la sélection d'agent par `slug` au démarrage de l'onglet A. L'agent est provisionné, mais l'onglet choisit encore le premier de la liste.
+- Les 5 onglets, dont aucun n'existe au-delà de l'ébauche de l'onglet A.
 
 ## 5. Écarts bloquants et manques
 
@@ -78,7 +83,7 @@ Aucun `data.sql`, aucun `CommandLineRunner`, aucun `ApplicationRunner` dans `age
 
 → `seed-studio-agent.py` + résolution par `slug` au démarrage du Studio.
 
-### G2 — Le prompt de l'agent est ignoré pour la génération
+### G2 — Le prompt de l'agent est ignoré pour la génération — **CORRIGÉ**
 
 `AgentGenerationController.storyboards` (ligne 57) écrase le prompt de l'agent :
 
@@ -86,23 +91,21 @@ Aucun `data.sql`, aucun `CommandLineRunner`, aucun `ApplicationRunner` dans `age
 String systemPrompt = "Return only a JSON object matching this schema: " + STORYBOARD_SCHEMA;
 ```
 
-`STORYBOARD_SCHEMA` est une constante (lignes 29-40). Le prompt système, la persona et les restrictions de l'agent ne sont donc **pas** utilisés pour le storyboard. Le YAML de ce dossier décrit le prompt voulu ; il ne sera pris en compte qu'après correction.
+**Corrigé.** `buildSystemPrompt(agentId)` empile désormais la persona rendue par `PromptService.renderPrompt(agentId, SYSTEM)` **avant** `STORYBOARD_SCHEMA`, qui reste comme garde-fou de forme puisque la réponse est désérialisée telle quelle. Repli sur un prompt générique si l'agent n'a pas de prompt `SYSTEM`, et l'appel ne casse pas si `PromptService` lève.
 
-C'est le manque le plus important : sans lui, « préconfiguré avec les prompts requis » est décoratif.
+Vérifié en prod sur `studio-media-creator` : 5 scènes, durées sommant à 10 s, narration en français. 3 tests dans `AgentGenerationStoryboardPromptTest`.
 
-→ Empiler le prompt de l'agent **avant** le schéma, et ne conserver le schéma que comme garde-fou de sortie.
+### G3 — Le format PNG n'est pas garanti — **CORRIGÉ**
 
-### G3 — Le format PNG n'est pas garanti
+**Corrigé.** `IMAGE_GENERATION_OUTPUT_FORMAT` (défaut `png`) + `_to_png()` dans `storage.py`, appelé dans `_store_bytes()` juste avant le `put_object`. Le sniff des magic bytes ne sert plus qu'à valider que la sortie est bien une image : ce qui atterrit dans MinIO est converti dans le format demandé, quel que soit ce que le provider a renvoyé. Repli si la conversion dépasse `max_output_bytes`. Pillow ajouté aux dépendances.
 
-`image-generation-worker` ne gère aucun format de sortie. Il déduit l'extension par sniff des magic bytes (`storage.py:38-55`) et accepte PNG, JPEG, GIF, BMP, WebP. Aucun paramètre `output_format` n'est envoyé au provider. Un provider peut donc renvoyer du JPEG alors que l'agent est configuré pour du PNG.
+4 tests(storage) : JPEG→PNG, PNG inchangé, cible `webp` explicite, image corrompue rejetée.
 
-→ Conversion Pillow avant upload, plus `output_format: png` quand le provider le supporte. C'est le seul moyen de tenir la contrainte quel que soit le provider.
+### G4 — Le modèle d'image est un champ texte libre — **CORRIGÉ**
 
-### G4 — Le modèle d'image est un champ texte libre
+**Corrigé.** `ImageModelCatalog` (3 modèles) + `GET /api/generation/image-models`. Les libellés sont orientés usage (« Qualité maximale », « Style illustré », « Rapide et économique »), jamais des noms de fournisseur. `createImage` passe maintenant par `resolveOrDefault()`, qui refuse tout identifiant hors catalogue en `400` au lieu de le transmettre au provider. Chaque modèle porte un `available` et une `unavailableReason` : le Studio peut dire « les images ne sont pas disponibles » plutôt que d'offrir un modèle mort.
 
-`imageOptions.model` accepte 64 caractèresarbitraires. L'agent peut taper un nom de fournisseur ou une chaîne vide. Contredit directement l'exigence d'un menu déroulant sans détail technique.
-
-→ `GET /api/generation/image-models`, alimenté par le YAML.
+Vérifié en prod : `400 model doit faire partie de : gpt-image-1, dall-e-3, dall-e-2`. 4 tests dans `ImageModelCatalogTest`.
 
 ### G5 — Aucun upload de média utilisateur
 

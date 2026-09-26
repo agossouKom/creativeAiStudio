@@ -246,8 +246,13 @@ services:
       - POSTGRES_USER=creativeai
       - POSTGRES_PASSWORD=creativeai123
       - GROQ_API_KEY=${GROQ_API_KEY}
-      - RAG_CHAT_MODEL=llama-3.1-8b-instant
-      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      # llama-3.1-8b-instant a ete retire de Groq (404 model_not_found).
+      # Modeles texte servis par ce compte : openai/gpt-oss-20b,
+      # openai/gpt-oss-120b, qwen/qwen3.8-27b
+      - RAG_CHAT_MODEL=${RAG_CHAT_MODEL:-openai/gpt-oss-20b}
+      # Aucun modele vision sur ce compte Groq. Laisser vide plutot que
+      # pointer un modele retire : l'analyse d'image echouera proprement.
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - SPRING_AI_OPENAI_BASE_URL=https://api.groq.com/openai
       # Cache ONNX — monté directement sur le chemin interne de Spring AI
       - SPRING_AI_TRANSFORMERS_CACHE_DIRECTORY=/tmp/spring-ai-onnx-generative
@@ -612,7 +617,7 @@ services:
       # (generation de storyboard, chat agent) echoue en 409.
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OLLAMA_BASE_URL: http://ollama:11434/v1
-      DEFAULT_MODEL: llama-3.1-8b-instant
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-openai/gpt-oss-20b}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       MINIO_URL: http://minio:9000
       # Doit être le MÊME hôte que pour generation-service : agent-team reconnaît

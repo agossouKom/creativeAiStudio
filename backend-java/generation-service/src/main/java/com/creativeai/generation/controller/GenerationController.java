@@ -6,6 +6,8 @@ import com.creativeai.generation.dto.GenerationJobResponse;
 import com.creativeai.generation.dto.GenerationOutputResponse;
 import com.creativeai.generation.dto.PageResponse;
 import com.creativeai.generation.service.GenerationService;
+import com.creativeai.generation.service.ImageModelCatalog;
+import com.creativeai.generation.service.ImageModelCatalog.ImageModel;
 import com.creativeai.generation.service.MediaStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,6 +36,13 @@ import java.util.Map;
 public class GenerationController {
 
     private final GenerationService generationService;
+    private final ImageModelCatalog imageModelCatalog;
+
+    @GetMapping("/image-models")
+    @Operation(summary = "Liste les modeles d'image proposables dans le Studio")
+    public List<ImageModel> imageModels() {
+        return imageModelCatalog.list();
+    }
 
     @PostMapping("/video")
     @Operation(summary = "Lance une génération vidéo (pipeline local FFmpeg)")

@@ -3,12 +3,17 @@ package com.creativeai.agentteam.controller;
 import com.creativeai.agentteam.dto.request.GenerationStoryboardRequest;
 import com.creativeai.agentteam.dto.response.GenerationStoryboardResponse;
 import com.creativeai.agentteam.llm.LlmGateway;
+import com.creativeai.agentteam.model.enums.PromptType;
 import com.creativeai.agentteam.repository.AgentRepository;
+import com.creativeai.agentteam.service.PromptService;
 import com.creativeai.agentteam.service.ResourceNotFoundException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,9 +22,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/agents/{agentId}/generation")
@@ -42,6 +44,7 @@ public class AgentGenerationController {
     private final AgentRepository agentRepository;
     private final LlmGateway llmGateway;
     private final ObjectMapper objectMapper;
+    private final PromptService promptService;
 
     @Operation(
         summary = "Générer un storyboard vidéo avec le provider de l'agent ou de son équipe",
@@ -54,7 +57,7 @@ public class AgentGenerationController {
         agentRepository.findByIdAndOwnerIdAndDeletedFalse(agentId, userId)
             .orElseThrow(() -> new ResourceNotFoundException("Agent non trouvé: " + agentId));
 
-        String systemPrompt = "Return only a JSON object matching this schema: " + STORYBOARD_SCHEMA;
+        String systemPrompt = buildSystemPrompt(agentId);
         List<JsonNode> results = new ArrayList<>();
         for (int variation = 0; variation < request.variations(); variation++) {
             String language = request.language() == null || request.language().isBlank()
@@ -81,5 +84,29 @@ public class AgentGenerationController {
             }
         }
         return ResponseEntity.ok(new GenerationStoryboardResponse(results));
+    }
+
+    /**
+     * Construit le system prompt du storyboard en empilant deux couches :
+     * la persona de l'agent (prompt SYSTEM, sinon fallback generique) puis le
+     * contrat de forme JSON, qui n'est pas negociable puisque la reponse est
+     * deserialisee telle quelle par le controleur.
+     *
+     * Avant, seul le contrat de forme etait envoye : la persona, le ton et les
+     * garde-fous configures sur l'agent etaient donc totalement ignores pour la
+     * generation video.
+     */
+    private String buildSystemPrompt(String agentId) {
+        String persona = null;
+        try {
+            persona = promptService.renderPrompt(agentId, PromptType.SYSTEM, Map.of());
+        } catch (Exception ignored) {
+            // pas de prompt SYSTEM : on retombe sur le contrat nu, comme avant
+        }
+        if (persona == null || persona.isBlank()) {
+            persona = "You are a professional video storytelling assistant.";
+        }
+        return persona.strip() + "\n\n"
+            + "Return only a JSON object matching this schema: " + STORYBOARD_SCHEMA;
     }
 }

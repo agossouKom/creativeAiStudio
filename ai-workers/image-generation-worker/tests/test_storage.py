@@ -10,6 +10,27 @@ JPEG = b"\xff\xd8\xff\xe0" + b"jpeg-data" * 8
 PNG_B64 = base64.b64encode(PNG).decode()
 
 
+def _real_png():
+    """PNG 2x2 vrai, pour tester la conversionJPEG -> PNG."""
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (2, 2), (200, 30, 30)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _real_jpeg():
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (2, 2), (200, 30, 30)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
 class FakeResponse:
     def __init__(self, chunks, *, content_type="image/png", content_length=None, status_code=200):
         self.chunks = list(chunks)
@@ -56,7 +77,10 @@ def _public_resolver(host):
 
 
 class MinioImageStorageTest(unittest.TestCase):
-    def _storage(self, session, max_output_bytes=4096, resolver=_public_resolver):
+    def _storage(
+        self, session, max_output_bytes=4096, resolver=_public_resolver,
+        output_format="png",
+    ):
         s3 = FakeS3()
         return (
             MinioImageStorage(
@@ -66,6 +90,7 @@ class MinioImageStorageTest(unittest.TestCase):
                 "image-generation-results",
                 max_output_bytes,
                 10,
+                output_format,
                 session=session,
                 s3_client=s3,
                 resolver=resolver,
@@ -86,14 +111,55 @@ class MinioImageStorageTest(unittest.TestCase):
         self.assertEqual(stored.sha256, hashlib.sha256(PNG).hexdigest())
         self.assertEqual(stored.payload()["objectKey"], stored.object_key)
 
-    def test_detects_jpeg_and_uses_jpg_extension(self):
+    def test_converts_provider_jpeg_to_png(self):
+        # Le provider peut renvoyer du JPEG alors que le format impose est PNG.
+        # Le stockage ne doit plus le ranger tel quel.
         storage, s3 = self._storage(FakeSession(FakeResponse([])))
         stored = storage.store_base64(
-            base64.b64encode(JPEG).decode(), job_id="job-1", execution_version=1, index=3
+            base64.b64encode(_real_jpeg()).decode(),
+            job_id="job-1",
+            execution_version=1,
+            index=3,
         )
-        self.assertEqual(stored.content_type, "image/jpeg")
-        self.assertTrue(stored.object_key.endswith("image-3.jpg"))
-        self.assertEqual(s3.objects[0]["ContentType"], "image/jpeg")
+        self.assertEqual(stored.content_type, "image/png")
+        self.assertTrue(stored.object_key.endswith("image-3.png"))
+        self.assertEqual(s3.objects[0]["ContentType"], "image/png")
+        self.assertTrue(s3.objects[0]["Body"].startswith(b"\x89PNG\r\n\x1a\n"))
+        # pas d'egalite d'octets : le JPEG est deja passe par une compression
+        # lossy, le PNG reconverti ne peut pas etre identique a l'original
+        self.assertNotEqual(s3.objects[0]["Body"], JPEG)
+
+    def test_keeps_png_untouched(self):
+        storage, s3 = self._storage(FakeSession(FakeResponse([])))
+        stored = storage.store_base64(
+            PNG_B64, job_id="job-1", execution_version=1, index=1
+        )
+        self.assertEqual(s3.objects[0]["Body"], PNG)
+        self.assertEqual(stored.sha256, hashlib.sha256(PNG).hexdigest())
+
+    def test_honours_explicit_webp_target(self):
+        storage, s3 = self._storage(FakeSession(FakeResponse([])), output_format="webp")
+        stored = storage.store_base64(
+            base64.b64encode(_real_png()).decode(),
+            job_id="job-1",
+            execution_version=1,
+            index=2,
+        )
+        self.assertEqual(stored.content_type, "image/webp")
+        self.assertTrue(stored.object_key.endswith("image-2.webp"))
+        self.assertEqual(s3.objects[0]["ContentType"], "image/webp")
+        self.assertTrue(s3.objects[0]["Body"].startswith(b"RIFF"))
+
+    def test_rejects_corrupt_image_when_conversion_required(self):
+        # des octets JPEG invalides ne doivent pas passer pour une image
+        storage, _ = self._storage(FakeSession(FakeResponse([])))
+        with self.assertRaisesRegex(StorageError, "could not be converted"):
+            storage.store_base64(
+                base64.b64encode(JPEG).decode(),
+                job_id="job-1",
+                execution_version=1,
+                index=4,
+            )
 
     def test_accepts_data_url_payload(self):
         storage, _ = self._storage(FakeSession(FakeResponse([])))
