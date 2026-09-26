@@ -999,7 +999,7 @@ export class RagChatComponent implements OnInit {
 
   async loadIndexedDocs() {
     try {
-      const res = await fetch('/api/rag/documents');
+      const res = await fetch('/api/rag/documents', { headers: this.ragHeaders() });
       if (res.ok) {
         const data: { filename: string; chunks: number }[] = await res.json();
         this.indexedDocs = data.map(d => ({ filename: d.filename, chunks: Number(d.chunks) }));
@@ -1012,7 +1012,10 @@ export class RagChatComponent implements OnInit {
     doc.deleting = true;
     this.cdr.detectChanges();
     try {
-      const res = await fetch(`/api/rag/documents?filename=${encodeURIComponent(doc.filename)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/rag/documents?filename=${encodeURIComponent(doc.filename)}`, {
+        method: 'DELETE',
+        headers: this.ragHeaders(),
+      });
       if (res.ok) {
         this.indexedDocs = this.indexedDocs.filter(d => d.filename !== doc.filename);
         await this.refreshCount();
@@ -1116,6 +1119,7 @@ export class RagChatComponent implements OnInit {
 
       const response = await fetch('/api/rag/ingest', {
         method: 'POST',
+        headers: this.ragHeaders(),
         body: formData,
       });
 
@@ -1147,7 +1151,7 @@ export class RagChatComponent implements OnInit {
 
   async refreshCount() {
     try {
-      const res = await fetch('/api/rag/documents/count');
+      const res = await fetch('/api/rag/documents/count', { headers: this.ragHeaders() });
       if (res.ok) {
         const data = await res.json();
         this.docCount = data.count ?? 0;
@@ -1168,7 +1172,7 @@ export class RagChatComponent implements OnInit {
     this.cdr.detectChanges();
 
     try {
-      const res = await fetch('/api/rag/documents', { method: 'DELETE' });
+      const res = await fetch('/api/rag/documents', { method: 'DELETE', headers: this.ragHeaders() });
       if (res.ok) {
         this.docCount = 0;
         this.ingestResults = [];
@@ -1227,7 +1231,7 @@ export class RagChatComponent implements OnInit {
     try {
       const response = await fetch('/api/rag/chat/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...this.ragHeaders() },
         body: JSON.stringify({ question }),
       });
 
@@ -1317,4 +1321,21 @@ export class RagChatComponent implements OnInit {
       }
     }, 0);
   }
+
+  /**
+   * /api/rag/** est protege par le filtre JWT de la gateway depuis que
+   * l'ingestion et la suppression etaient ouvertes a quiconque atteignait
+   * le domaine public. Ces appels passaient par fetch() brut, sans header :
+   * on lit donc le jeton au meme endroit que AuthService.
+   */
+  private ragHeaders(): Record<string, string> {
+    try {
+      const raw = localStorage.getItem('ms_auth');
+      const token = raw ? (JSON.parse(raw).token ?? null) : null;
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch {
+      return {};
+    }
+  }
+
 }

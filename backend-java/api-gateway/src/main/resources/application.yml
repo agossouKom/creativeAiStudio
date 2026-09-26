@@ -116,6 +116,10 @@ spring:
           predicates:
             - Path=/api/rag/**
           filters:
+            # Sans ce filtre, /api/rag/ingest acceptait n'importe quel upload
+            # et DELETE /api/rag/documents vidait toute la base de connaissance,
+            # le tout sans jeton et depuis l'Internet public.
+            - AuthenticationFilter
             - RewritePath=/api/rag/(?<segment>.*), /rag/${segment}
 
         # OCR Worker (Groq Vision → Tesseract fallback)
