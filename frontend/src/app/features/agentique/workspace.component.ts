@@ -9,7 +9,7 @@ import * as XLSX from 'xlsx';
 
 const API = '';
 
-type Tab = 'agents' | 'equipes' | 'taches' | 'inbox' | 'email' | 'prompts' | 'workflow' | 'chat' | 'llm' | 'rag' | 'canaux' | 'profil' | 'social';
+type Tab = 'agents' | 'equipes' | 'taches' | 'inbox' | 'email' | 'prompts' | 'workflow' | 'chat' | 'llm' | 'rag' | 'canaux' | 'profil' | 'social' | 'studio';
 
 const AGENT_TYPES = [
   { v:'SCRUM_MASTER',      l:'Scrum Master' },
@@ -993,48 +993,68 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
       <!-- ── Mode : Équipe ── -->
       <ng-container *ngIf="llmMode === 'team'">
         <div class="ws-llm-target-bar">
-          <select class="ws-filter-sel" style="min-width:220px" [(ngModel)]="llmTeamId">
+          <select class="ws-filter-sel" style="min-width:220px" [(ngModel)]="llmTeamId" (ngModelChange)="loadTeamLlmProviders($event)">
             <option value="">— Choisir une équipe —</option>
             <option *ngFor="let t of teams" [value]="t.id">{{ t.name }}</option>
           </select>
           <span *ngIf="llmTeamId" class="ws-llm-team-count">
             {{ agentsInTeam(llmTeamId).length }} agent(s)
           </span>
+          <div *ngIf="llmTeamId" class="ws-llm-filter-pills">
+            <button class="ws-pill" [class.ws-pill--active]="llmFilter==='active'" (click)="setLlmFilter('active')">Actifs</button>
+            <button class="ws-pill" [class.ws-pill--active]="llmFilter==='deleted'" (click)="setLlmFilter('deleted')">Supprimés</button>
+            <button class="ws-pill" [class.ws-pill--active]="llmFilter==='all'" (click)="setLlmFilter('all')">Tous</button>
+          </div>
           <button *ngIf="llmTeamId" class="ws-btn-primary" (click)="toggleQuickAdd('llm-team')">
-            {{ quickAdd === 'llm-team' ? "✕ Fermer" : "⚡ Configurer pour toute l'équipe" }}
+            {{ quickAdd === 'llm-team' ? "✕ Fermer" : "＋ Ajouter un provider à l'équipe" }}
           </button>
         </div>
 
-        <!-- Formulaire bulk (mode équipe) -->
+        <!-- Provider partagé par l'équipe -->
         <div *ngIf="quickAdd === 'llm-team' && llmTeamId" class="ws-quick-form">
-          <div class="ws-llm-team-info">
-            Agents concernés :
-            <span *ngFor="let a of agentsInTeam(llmTeamId); let last = last" class="ws-llm-agent-chip">
-              {{ a.name }}<ng-container *ngIf="!last">, </ng-container>
-            </span>
-          </div>
           <ng-container *ngTemplateOutlet="llmForm_tpl"></ng-container>
           <div *ngIf="llmHint" class="ws-llm-hint">{{ llmHint }}</div>
           <div *ngIf="formError" class="ws-error">{{ formError }}</div>
           <div class="ws-qf-actions">
-            <button class="ws-btn-cancel" (click)="quickAdd = ''; llmBulkResult = []">Annuler</button>
-            <button class="ws-btn-primary" (click)="applyToTeam()" [disabled]="llmBulkRunning">
-              <span *ngIf="!llmBulkRunning">⚡ Appliquer à {{ agentsInTeam(llmTeamId).length }} agent(s)</span>
-              <span *ngIf="llmBulkRunning" class="ws-spin"></span>
+            <button class="ws-btn-cancel" (click)="quickAdd = ''">Annuler</button>
+            <button class="ws-btn-primary" (click)="addLlmProvider()" [disabled]="saving">
+              <span *ngIf="!saving">Ajouter au provider de l'équipe</span>
+              <span *ngIf="saving" class="ws-spin"></span>
             </button>
           </div>
         </div>
 
-        <!-- Résultats bulk -->
-        <div *ngIf="llmBulkResult.length > 0" class="ws-llm-bulk-result">
-          <div *ngFor="let r of llmBulkResult" class="ws-llm-bulk-row" [class.ws-llm-bulk-row--ok]="r.status==='ok'" [class.ws-llm-bulk-row--err]="r.status==='error'">
-            <span class="ws-llm-bulk-icon">{{ r.status === 'ok' ? '✓' : '✗' }}</span>
-            <span class="ws-llm-bulk-name">{{ r.agentName }}</span>
-            <span *ngIf="r.message" class="ws-llm-bulk-msg">{{ r.message }}</span>
-          </div>
+        <div *ngIf="llmTeamId && loadingLlm" class="ws-loading"><div class="ws-spinner"></div></div>
+        <div class="ws-table-wrap" *ngIf="llmTeamId && !loadingLlm">
+          <table class="ws-table">
+            <thead><tr><th>Type</th><th>Modèle</th><th>Base URL</th><th>Clé API</th><th>Principal</th><th>Actions</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let p of llmDisplayedProviders" [class.ws-row--deleted]="p.deleted">
+                <td data-label="Type"><span class="ws-type-badge">{{ p.type }}</span></td>
+                <td data-label="Modèle" class="ws-cell-name">{{ p.modelId }} <span *ngIf="p.deleted" class="ws-deleted-tag">supprimé</span></td>
+                <td data-label="Base URL"><span class="ws-cell-sub">{{ p.baseUrl || '(défaut)' }}</span></td>
+                <td data-label="Clé API" class="ws-key-cell">
+                  <ng-container *ngIf="p.hasApiKey; else teamNoKey">
+                    <span class="ws-key-mask">{{ revealedKeys[p.id] ? maskDisplay(revealedKeys[p.id]) : '••••••••••••' }}</span>
+                    <button class="ws-key-btn" (click)="revealAndCopyKey(p)" title="Révéler et copier">👁</button>
+                  </ng-container>
+                  <ng-template #teamNoKey><span class="ws-cell-sub">—</span></ng-template>
+                </td>
+                <td data-label="Principal"><span class="ws-bool" [class.ws-bool--on]="p.primary && !p.deleted">{{ p.primary && !p.deleted ? '★ Oui' : '—' }}</span></td>
+                <td data-label="Actions" class="ws-act-cell">
+                  <button *ngIf="!p.primary && !p.deleted" class="ws-act-btn ws-act-star" title="Définir comme principal" (click)="llmSetPrimary(p)">⭐</button>
+                  <button *ngIf="p.deleted" class="ws-act-btn ws-act-restore" title="Restaurer" (click)="llmRestore(p)">♻️</button>
+                  <button *ngIf="!p.deleted" class="ws-act-btn ws-act-del" title="Supprimer" (click)="llmAskDelete(p)">🗑</button>
+                </td>
+              </tr>
+              <tr *ngIf="llmDisplayedProviders.length === 0">
+                <td colspan="6"><div class="ws-empty" style="padding:1rem">Aucun provider propre à cette équipe. Les providers des agents et du compte restent utilisables comme fallback.</div></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <div *ngIf="!llmTeamId" class="ws-empty">Sélectionnez une équipe pour configurer tous ses agents en une fois.</div>
+        <div *ngIf="!llmTeamId" class="ws-empty">Sélectionnez une équipe pour gérer ses providers partagés.</div>
       </ng-container>
 
     </div>
@@ -3431,6 +3451,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     { id: 'llm'      as Tab, icon: '🔑', label: 'Clés API',  count: 0 },
     { id: 'canaux'   as Tab, icon: '📡', label: 'Canaux',    count: 0 },
     { id: 'social'   as Tab, icon: '📲', label: 'Réseaux',   count: 0 },
+    { id: 'studio'   as Tab, icon: '🎬', label: 'Studio',   count: 0 },
     { id: 'email'    as Tab, icon: '📧', label: 'Email',     count: 0 },
     { id: 'profil'   as Tab, icon: '👤', label: 'Mon Profil', count: 0 },
   ];
@@ -4064,6 +4085,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   }
 
   switchTab(tab: Tab): void {
+    if (tab === 'studio') {
+      this.router.navigate(['/generation/studio']);
+      return;
+    }
     this.activeTab = tab;
     this.tabsMenuOpen = false;
     this.quickAdd  = '';
@@ -5650,6 +5675,8 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
     this.llmBulkResult = [];
     this.llmSelectedProvider = '';
     this.formError = '';
+    if (mode === 'agent' && this.llmAgentId) this.loadLlmProviders(this.llmAgentId);
+    if (mode === 'team' && this.llmTeamId) this.loadTeamLlmProviders(this.llmTeamId);
   }
 
   agentsInTeam(teamId: string): any[] {
@@ -5708,6 +5735,7 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
   setLlmFilter(f: 'active' | 'deleted' | 'all'): void {
     this.llmFilter = f;
     if (this.llmAgentId) this.loadLlmProviders(this.llmAgentId);
+    if (this.llmMode === 'team' && this.llmTeamId) this.loadTeamLlmProviders(this.llmTeamId);
   }
 
   loadLlmProviders(agentId: string): void {
@@ -5721,16 +5749,43 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
     });
   }
 
+  loadTeamLlmProviders(teamId: string): void {
+    if (!teamId) { this.llmProviders = []; return; }
+    this.loadingLlm = true;
+    const includeDeleted = this.llmFilter === 'deleted' || this.llmFilter === 'all';
+    const url = `${API}/api/teams/${teamId}/llm-providers${includeDeleted ? '?includeDeleted=true' : ''}`;
+    this.http.get<any[]>(url).subscribe({
+      next: (res) => { this.llmProviders = Array.isArray(res) ? res : []; this.loadingLlm = false; this.cd.markForCheck(); },
+      error: (e) => {
+        this.llmProviders = [];
+        this.loadingLlm = false;
+        this.dialog.alert(`Impossible de charger les providers de l'équipe : ${e?.error?.message || ''}`, 'Erreur', 'error');
+        this.cd.markForCheck();
+      }
+    });
+  }
+
+  private currentLlmProviderUrl(): string {
+    return this.llmMode === 'team'
+      ? `${API}/api/teams/${this.llmTeamId}/llm-providers`
+      : `${API}/api/agents/${this.llmAgentId}/llm-providers`;
+  }
+
+  private reloadCurrentLlmProviders(): void {
+    if (this.llmMode === 'team') this.loadTeamLlmProviders(this.llmTeamId);
+    else this.loadLlmProviders(this.llmAgentId);
+  }
+
   llmSetPrimary(p: any): void {
-    this.http.patch<any>(`${API}/api/agents/${this.llmAgentId}/llm-providers/${p.id}/primary`, {}).subscribe({
-      next: () => this.loadLlmProviders(this.llmAgentId),
+    this.http.patch<any>(`${this.currentLlmProviderUrl()}/${p.id}/primary`, {}).subscribe({
+      next: () => this.reloadCurrentLlmProviders(),
       error: (e) => this.dialog.alert(`Erreur : ${e?.error?.message || ''}`, 'Erreur', 'error')
     });
   }
 
   llmRestore(p: any): void {
-    this.http.post<any>(`${API}/api/agents/${this.llmAgentId}/llm-providers/${p.id}/restore`, {}).subscribe({
-      next: () => this.loadLlmProviders(this.llmAgentId),
+    this.http.post<any>(`${this.currentLlmProviderUrl()}/${p.id}/restore`, {}).subscribe({
+      next: () => this.reloadCurrentLlmProviders(),
       error: (e) => this.dialog.alert(`Erreur : ${e?.error?.message || ''}`, 'Erreur', 'error')
     });
   }
@@ -5749,7 +5804,7 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
       });
       return;
     }
-    this.http.get<{ apiKey: string }>(`${API}/api/agents/${this.llmAgentId}/llm-providers/${p.id}/reveal`).subscribe({
+    this.http.get<{ apiKey: string }>(`${this.currentLlmProviderUrl()}/${p.id}/reveal`).subscribe({
       next: (res) => {
         this.revealedKeys[p.id] = res.apiKey;
         navigator.clipboard.writeText(res.apiKey).then(() => {
@@ -5773,28 +5828,31 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
     this.llmConfirmOpen = false;
     this.llmConfirmProvider = null;
     if (!p) return;
-    this.http.delete(`${API}/api/agents/${this.llmAgentId}/llm-providers/${p.id}`).subscribe({
-      next: () => this.loadLlmProviders(this.llmAgentId),
+    this.http.delete(`${this.currentLlmProviderUrl()}/${p.id}`).subscribe({
+      next: () => this.reloadCurrentLlmProviders(),
       error: (e) => this.dialog.alert(`Erreur : ${e?.error?.message || ''}`, 'Erreur', 'error')
     });
   }
 
   addLlmProvider(): void {
-    if (!this.llmForm.apiKey.trim()) { this.formError = 'La clé API est obligatoire.'; return; }
+    if (!this.llmForm.apiKey.trim() && this.llmForm.type !== 'OLLAMA') {
+      this.formError = 'La clé API est obligatoire pour ce provider.';
+      return;
+    }
     if (!this.llmForm.modelId.trim()) { this.formError = 'L\'identifiant de modèle est obligatoire.'; return; }
     this.saving = true; this.formError = '';
     const body: any = {
       type:                 this.llmForm.type,
       modelId:              this.llmForm.modelId.trim(),
-      apiKey:               this.llmForm.apiKey.trim(),
       maxTokens:            this.llmForm.maxTokens,
       primary:              this.llmForm.primary,
       streamingEnabled:     true,
       requestTimeoutSeconds: 60,
     };
+    if (this.llmForm.apiKey.trim()) body.apiKey = this.llmForm.apiKey.trim();
     if (this.llmForm.baseUrl.trim()) body.baseUrl = this.llmForm.baseUrl.trim();
 
-    this.http.post<any>(`${API}/api/agents/${this.llmAgentId}/llm-providers`, body).subscribe({
+    this.http.post<any>(this.currentLlmProviderUrl(), body).subscribe({
       next: (p) => {
         this.llmProviders = [p, ...this.llmProviders];
         this.llmForm    = { type:'GEMINI', modelId:'gemini-2.0-flash', apiKey:'', baseUrl:'https://generativelanguage.googleapis.com/v1beta/openai', maxTokens:1024, primary:true };
@@ -5802,6 +5860,7 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
         this.llmHint    = '';
         this.llmSelectedProvider = '';
         this.saving = false; this.quickAdd = '';
+        this.reloadCurrentLlmProviders();
         this.cd.markForCheck();
       },
       error: (e) => { this.formError = `Erreur : ${e?.error?.message || e?.message || ''}`; this.saving = false; this.cd.markForCheck(); }
@@ -5809,41 +5868,8 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
   }
 
 
-  async applyToTeam(): Promise<void> {
-    const teamAgents = this.agentsInTeam(this.llmTeamId);
-    if (teamAgents.length === 0) { this.formError = 'Aucun agent dans cette équipe.'; return; }
-    if (!this.llmForm.apiKey.trim()) { this.formError = 'La clé API est obligatoire.'; return; }
-    if (!this.llmForm.modelId.trim()) { this.formError = "L'identifiant de modèle est obligatoire."; return; }
-
-    this.llmBulkRunning = true;
-    this.llmBulkResult = [];
-    this.formError = '';
-
-    const body: any = {
-      type:                  this.llmForm.type,
-      modelId:               this.llmForm.modelId.trim(),
-      apiKey:                this.llmForm.apiKey.trim(),
-      maxTokens:             this.llmForm.maxTokens,
-      primary:               this.llmForm.primary,
-      streamingEnabled:      true,
-      requestTimeoutSeconds: 60,
-    };
-    if (this.llmForm.baseUrl.trim()) body.baseUrl = this.llmForm.baseUrl.trim();
-
-    for (const agent of teamAgents) {
-      try {
-        await this.http.post(`${API}/api/agents/${agent.id}/llm-providers`, body).toPromise();
-        this.llmBulkResult.push({ agentName: agent.name, status: 'ok' });
-      } catch (e: any) {
-        const msg = e?.error?.message || e?.message || 'Erreur inconnue';
-        this.llmBulkResult.push({ agentName: agent.name, status: 'error', message: msg });
-      }
-      this.cd.markForCheck();
-    }
-
-    this.llmBulkRunning = false;
-    this.quickAdd = '';
-    this.cd.markForCheck();
+  applyToTeam(): void {
+    this.addLlmProvider();
   }
 
   // ── CANAUX ────────────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ public record LlmProviderRequest(
     @Schema(
         description = "Fournisseur LLM",
         example = "OPENAI",
-        allowableValues = {"GROQ", "OPENAI", "ANTHROPIC", "OLLAMA", "MISTRAL", "GEMINI", "COHERE", "TOGETHER_AI"}
+        allowableValues = {"GROQ", "OPENAI", "ANTHROPIC", "OLLAMA", "MISTRAL", "GEMINI", "COHERE", "TOGETHER_AI", "DEEPSEEK"}
     )
     @NotNull
     LlmType type,

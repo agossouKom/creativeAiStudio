@@ -1,0 +1,92 @@
+server:
+  port: ${SERVER_PORT:8088}
+
+spring:
+  application:
+    name: generation-service
+  jackson:
+    deserialization:
+      # Un champ mal orthographié (ex. imageCount au lieu de count) doit renvoyer
+      # un 400 explicite plutôt qu'être silencieusement ignoré avec les défauts.
+      fail-on-unknown-properties: true
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/creativeai_generation
+    username: ${DB_USER:creativeai}
+    password: ${DB_PASSWORD:creativeai123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+      show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: generation-service-results
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+generation:
+  video:
+    input-topic: ${VIDEO_GENERATION_INPUT_TOPIC:creativeai.video-generation}
+    result-topic: ${VIDEO_GENERATION_RESULT_TOPIC:creativeai.video-generation.results}
+  image:
+    input-topic: ${IMAGE_GENERATION_INPUT_TOPIC:creativeai.image-generation}
+    result-topic: ${IMAGE_GENERATION_RESULT_TOPIC:creativeai.image-generation.results}
+  download-url-expiry-minutes: ${GENERATION_DOWNLOAD_URL_EXPIRY_MINUTES:120}
+  publish:
+    # Délégation de la publication sociale à agent-team-service, qui détient
+    # déjà les credentials Meta (Facebook / Instagram) et le client Graph API.
+    enabled: ${SOCIAL_PUBLISH_ENABLED:false}
+    agent-team-base-url: ${AGENT_TEAM_BASE_URL:http://agent-team-service:8087}
+    request-timeout-seconds: ${SOCIAL_PUBLISH_TIMEOUT_SECONDS:120}
+
+agent:
+  jwt-secret: ${JWT_SECRET:creativeaistudio-super-secret-key-that-is-long-enough-for-hs256}
+
+minio:
+  url: ${MINIO_URL:http://localhost:9000}
+  # Endpoint atteignable par les services qui savent télécharger le média avec leurs
+  # credentials (Facebook : upload binaire via agent-team-service).
+  public-url: ${MINIO_PUBLIC_URL:http://localhost:9400}
+  access-key: ${MINIO_ACCESS_KEY:creativeai}
+  secret-key: ${MINIO_SECRET_KEY:creativeai123}
+  region: ${MINIO_REGION:us-east-1}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.creativeai.generation: INFO

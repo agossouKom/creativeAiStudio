@@ -1,0 +1,1 @@
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS agent_id VARCHAR(64);

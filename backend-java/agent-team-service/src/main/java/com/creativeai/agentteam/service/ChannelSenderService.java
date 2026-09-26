@@ -177,6 +177,8 @@ public class ChannelSenderService {
             }
         } else {
             log.warn("[SOCIAL] No {} channel CONNECTED for agent {}", platform, agentId);
+            return new SendResult(false, null,
+                "Aucun canal " + platform + " connecté pour cet agent");
         }
 
         // Archiver dans l'inbox (pour tous les canaux, réussis ou en mode stub)

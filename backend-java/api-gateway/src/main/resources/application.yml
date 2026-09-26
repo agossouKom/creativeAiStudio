@@ -156,6 +156,15 @@ spring:
           predicates:
             - Path=/api/card-entreprises/**
 
+        # Generation Service (générations vidéo/image + publication sociale)
+        - id: generation-service
+          uri: http://${GENERATION_SERVICE_HOST:generation-service}:8088
+          predicates:
+            - Path=/api/generation/**
+          filters:
+            - AuthenticationFilter
+            - RewritePath=/api/generation/(?<segment>.*), /api/generation/${segment}
+
         # ── Agent Team Service — DOIT être AVANT les routes agent génériques ──────
         - id: agent-team-agents
           uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
@@ -212,6 +221,14 @@ spring:
             - Path=/api/facebook/**
           filters:
             - RewritePath=/api/facebook/(?<segment>.*), /api/facebook/${segment}
+
+        # Instagram Graph API (connexion de compte, médias, publication)
+        - id: agent-team-instagram
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/instagram/**
+          filters:
+            - RewritePath=/api/instagram/(?<segment>.*), /api/instagram/${segment}
 
         # LLM providers du compte courant (CRUD rattaché à l'utilisateur)
         - id: agent-team-my-llm-providers

@@ -10,20 +10,24 @@ Creative AI Studio is a multi-media recognition SaaS: search/identify songs, vid
 
 ## Architecture
 
-**Request flow**: Angular frontend → `api-gateway` (Spring Cloud Gateway, JWT filter, port 8480) → routes to `auth-service`, `search-service`, `docfusion-service`, `rag-service`, `agent-team-service`, `telegram-mcp-service` (all internal-only, no host ports). AI processing work is dispatched over Kafka (Redpanda) to Python workers, not via direct HTTP: topics like `creativeai.audio`, `.video`, `.face`, `.pdf`, `.ocr` feed each worker, results land on `creativeai.results`, and each topic has a paired `.dlq` dead-letter topic (7-day retention, created by the one-shot `kafka-topics-init` container).
+**Request flow**: Angular frontend → `api-gateway` (Spring Cloud Gateway, JWT filter, port 8480) → routes to `auth-service`, `search-service`, `docfusion-service`, `rag-service`, `agent-team-service`, `generation-service`, `telegram-mcp-service` (all internal-only, no host ports). AI processing work is dispatched over Kafka (Redpanda) to Python workers, not via direct HTTP: topics like `creativeai.audio`, `.video`, `.face`, `.pdf`, `.ocr` feed each worker, results land on `creativeai.results`, and each topic has a paired `.dlq` dead-letter topic (7-day retention, created by the one-shot `kafka-topics-init` container).
 
-**`backend-java/`** — 7 Spring Boot services under one Maven reactor (parent POM: `com.creativeai:creativeai-backend`, packaging `pom`, Spring Boot 3.2.5, Java 21, Spring Cloud 2023.0.1, Spring AI 1.0.0 BOM). Build from `backend-java/`: `mvn clean install` (all modules), or scope to one with `-pl <module> -am`. No test directories currently exist in any module.
+**`backend-java/`** — 8 Spring Boot services under one Maven reactor (parent POM: `com.creativeai:creativeai-backend`, packaging `pom`, Spring Boot 3.2.5, Java 21, Spring Cloud 2023.0.1, Spring AI 1.0.0 BOM). Build from `backend-java/`: `mvn clean install` (all modules), or scope to one with `-pl <module> -am`. Tests exist in `generation-service` (65) and `agent-team-service` (`SocialPostControllerTest`, plus the pre-existing `TaskCreationFlowIT`).
+
+> **Maven needs `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`.** The default `JAVA_HOME` on this machine points at a JDK 26 that Lombok 1.18.32 cannot instrument, so every build fails without this override.
 - `api-gateway` — reactive gateway + JWT filter, the single entry point.
 - `auth-service` — Spring Security/JWT/JPA over Postgres; also has a Gmail-OAuth email agent (`service/agent`, `dto/gmail`).
 - `search-service` / `docfusion-service` — JPA + Kafka + WebSocket + Redis + Flyway + MinIO; note `DocFusion/` at repo root is a *separate*, older standalone precursor project (its own docker-compose, own OCR/convert/gateway services) — not the same code as `backend-java/docfusion-service`, don't conflate them.
 - `rag-service` — Spring AI + pgvector, chat model routed through Groq's OpenAI-compatible endpoint.
-- `agent-team-service` — multi-agent orchestration (`orchestrator`, `tool/impl`, `llm` packages), uses Ollama + Groq.
+- `agent-team-service` — multi-agent orchestration (`orchestrator`, `tool/impl`, `llm` packages), uses Ollama + Groq. LLM providers can be configured at agent, team, or user scope; provider resolution prefers agent overrides, then team, user, admin default, and environment fallback.
 - `telegram-mcp-service` — Telegram bot exposed as an MCP server, backed by DeepSeek.
+- `generation-service` — orchestrator of video/image generation (port 8088, own DB `creativeai_generation`). Owns the job lifecycle and its tables; the Python workers own provider calls and MinIO writes. Its Kafka command topics (`creativeai.video-generation`, `creativeai.image-generation`) and their `.results`/`.dlq` counterparts are created by `KafkaConfig` and by `kafka-topics-init`. Its Docker target is the only glibc-based JRE image (`eclipse-temurin:21-jre-jammy`): the Kafka client must decompress snappy batches, whose native lib is unavailable on musl/Alpine. Social publishing is delegated to `agent-team-service` via `SocialPostController.publish` → `POST /api/agents/{agentId}/posts`, forwarding the caller's JWT so agent-team can verify channel ownership; only Facebook and Instagram have real adapters, everything else is `PLANNED` and refused with `409 PLATFORM_NOT_AVAILABLE`. Presigned URLs are signed with a dedicated `minioPublicClient` bound to `minio.public-url` (the internal `minio.url` host is unreachable from browsers and from Meta, and the SigV4 signature covers the host).
 - gRPC messages are defined in `proto/mediasearch.proto` and code-generated via the parent POM's protobuf-maven-plugin.
 
 **`ai-workers/`** — 6 Python services, each with dual entry points: a FastAPI `app/main.py` (synchronous REST) and an `app/kafka_worker.py` that re-imports the same functions to consume its Kafka topic asynchronously. Each has its own `Dockerfile`/`requirements.txt`/`start.sh`.
 - `audio-worker` — Shazam (`shazamio`) + AcoustID fingerprinting; also has a `grpc_server.py`.
 - `video-worker` — OpenCV metadata + Shazam (audio track) + TMDB lookup.
+- `video-generation-worker` — selectable Ollama/Groq/DeepSeek/OpenAI-compatible JSON storyboard provider, Pexels/Pixabay stock video, eSpeak NG narration, optional local music, FFmpeg rendering and ffprobe checks; uploads outputs to MinIO before publishing `COMPLETED`. MoneyPrinterTurbo is an explicit legacy mode. Coverr is not integrated in local mode yet; local video composition is stock-footage based, not native text-to-video.
 - `face-worker` — OpenCV Haar-cascade detection + reverse-image lookup (SerpAPI/NumVerify/Bing/DuckDuckGo/Playwright).
 - `ocr-worker` — Groq Llama vision model primary, Tesseract fallback, PyMuPDF for PDF text.
 - `pdf-worker` — PDF/DOCX conversion (pdf2docx, PyMuPDF, python-docx, reportlab), format detected by magic bytes.
@@ -48,9 +52,10 @@ Creative AI Studio is a multi-media recognition SaaS: search/identify songs, vid
 docker compose ps
 docker compose logs -f creativeai-<name>   # container names, not compose service names (see ACCES.md)
 
-# backend-java (run from backend-java/)
-mvn clean install                 # build all 7 services
+# backend-java (run from backend-java/, with JAVA_HOME set to JDK 21 - see note above)
+mvn clean install                 # build all 8 services
 mvn -pl <module> -am clean install   # build one service + its deps
+mvn -pl generation-service test        # 65 tests, no infra needed
 
 # frontend (run from frontend/)
 npm start        # ng serve

@@ -29,6 +29,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class AgentService {
 
     private final AgentRepository          agentRepo;
+    private final AgentTeamRepository      teamRepo;
     private final AgentConfigRepository   configRepo;
     private final AgentProfileRepository  profileRepo;
     private final LlmProviderRepository   llmRepo;
@@ -468,6 +469,145 @@ public class AgentService {
         llm.setPrimary(true);
         llm.setDeleted(false);
         return LlmProviderResponse.from(llmRepo.save(llm));
+    }
+
+    // ── LLM Providers (équipe) ──────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<LlmProviderResponse> listTeamLlmProviders(
+            String ownerId, String teamId, boolean includeDeleted) {
+        requireOwnedTeam(ownerId, teamId);
+        List<LlmProvider> providers = includeDeleted
+            ? llmRepo.findByTeamIdOrderByPrimaryDescCreatedAtDesc(teamId)
+            : llmRepo.findByTeamIdAndDeletedFalseOrderByPrimaryDesc(teamId);
+        return providers.stream().map(LlmProviderResponse::from).toList();
+    }
+
+    @Transactional
+    public LlmProviderResponse addTeamLlmProvider(
+            String ownerId, String teamId, LlmProviderRequest req) {
+        requireOwnedTeam(ownerId, teamId);
+        boolean makePrimary = req.primary() != null && req.primary();
+        if (makePrimary) {
+            llmRepo.findByTeamIdAndDeletedFalseOrderByPrimaryDesc(teamId)
+                .forEach(provider -> {
+                    provider.setPrimary(false);
+                    llmRepo.save(provider);
+                });
+        }
+        String encryptedKey = req.apiKey() != null && !req.apiKey().isBlank()
+            ? encryptionService.encrypt(req.apiKey())
+            : null;
+        LlmProvider provider = LlmProvider.builder()
+            .teamId(teamId)
+            .type(req.type())
+            .modelId(req.modelId())
+            .baseUrl(req.baseUrl())
+            .encryptedApiKey(encryptedKey)
+            .displayName(req.displayName())
+            .temperature(req.temperature() != null ? req.temperature() : 0.7)
+            .maxTokens(req.maxTokens() != null ? req.maxTokens() : 2048)
+            .streamingEnabled(req.streamingEnabled() != null ? req.streamingEnabled() : true)
+            .requestTimeoutSeconds(req.requestTimeoutSeconds() != null
+                ? req.requestTimeoutSeconds() : 60)
+            .rateLimitRpm(req.rateLimitRpm() != null ? req.rateLimitRpm() : 30)
+            .primary(makePrimary)
+            .extraParams(req.extraParams())
+            .build();
+        LlmProvider saved = llmRepo.save(provider);
+        auditService.log(ownerId, "ADD_TEAM_LLM_PROVIDER", "team", teamId, true,
+            AuditService.details("provider", req.type(), "model", req.modelId()));
+        return LlmProviderResponse.from(saved);
+    }
+
+    @Transactional
+    public LlmProviderResponse updateTeamLlmProvider(
+            String ownerId, String teamId, String llmId, LlmProviderRequest req) {
+        requireOwnedTeam(ownerId, teamId);
+        LlmProvider provider = findByTeamActive(teamId, llmId);
+        if (req.type() != null) provider.setType(req.type());
+        if (req.modelId() != null) provider.setModelId(req.modelId());
+        if (req.baseUrl() != null) provider.setBaseUrl(req.baseUrl());
+        if (req.displayName() != null) provider.setDisplayName(req.displayName());
+        if (req.apiKey() != null && !req.apiKey().isBlank()) {
+            provider.setEncryptedApiKey(encryptionService.encrypt(req.apiKey()));
+        }
+        if (req.temperature() != null) provider.setTemperature(req.temperature());
+        if (req.maxTokens() != null) provider.setMaxTokens(req.maxTokens());
+        if (req.streamingEnabled() != null) provider.setStreamingEnabled(req.streamingEnabled());
+        if (req.requestTimeoutSeconds() != null) {
+            provider.setRequestTimeoutSeconds(req.requestTimeoutSeconds());
+        }
+        if (req.rateLimitRpm() != null) provider.setRateLimitRpm(req.rateLimitRpm());
+        if (req.extraParams() != null) provider.setExtraParams(req.extraParams());
+        if (Boolean.TRUE.equals(req.primary())) {
+            llmRepo.findByTeamIdAndDeletedFalseOrderByPrimaryDesc(teamId)
+                .forEach(candidate -> {
+                    if (!candidate.getId().equals(llmId)) candidate.setPrimary(false);
+                    llmRepo.save(candidate);
+                });
+            provider.setPrimary(true);
+        }
+        LlmProvider saved = llmRepo.save(provider);
+        auditService.log(ownerId, "UPDATE_TEAM_LLM_PROVIDER", "team", teamId, true,
+            AuditService.details("provider", provider.getType(), "model", provider.getModelId()));
+        return LlmProviderResponse.from(saved);
+    }
+
+    @Transactional
+    public void deleteTeamLlmProvider(String ownerId, String teamId, String llmId) {
+        requireOwnedTeam(ownerId, teamId);
+        LlmProvider provider = findByTeamActive(teamId, llmId);
+        provider.setDeleted(true);
+        provider.setPrimary(false);
+        llmRepo.save(provider);
+        auditService.log(ownerId, "REMOVE_TEAM_LLM_PROVIDER", "team", teamId, true,
+            AuditService.details("provider", provider.getType(), "model", provider.getModelId()));
+    }
+
+    @Transactional
+    public LlmProviderResponse restoreTeamLlmProvider(
+            String ownerId, String teamId, String llmId) {
+        requireOwnedTeam(ownerId, teamId);
+        LlmProvider provider = llmRepo.findByTeamIdAndIdAndDeletedTrue(teamId, llmId)
+            .stream().findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "LLM provider supprimé non trouvé: " + llmId));
+        provider.setDeleted(false);
+        return LlmProviderResponse.from(llmRepo.save(provider));
+    }
+
+    @Transactional
+    public LlmProviderResponse setPrimaryTeamLlmProvider(
+            String ownerId, String teamId, String llmId) {
+        requireOwnedTeam(ownerId, teamId);
+        LlmProvider provider = findByTeamActive(teamId, llmId);
+        llmRepo.findByTeamIdAndDeletedFalseOrderByPrimaryDesc(teamId)
+            .forEach(candidate -> {
+                candidate.setPrimary(candidate.getId().equals(llmId));
+                llmRepo.save(candidate);
+            });
+        provider.setPrimary(true);
+        return LlmProviderResponse.from(llmRepo.save(provider));
+    }
+
+    public String revealTeamLlmApiKey(String ownerId, String teamId, String llmId) {
+        requireOwnedTeam(ownerId, teamId);
+        LlmProvider provider = findByTeamActive(teamId, llmId);
+        if (provider.getEncryptedApiKey() == null || provider.getEncryptedApiKey().isBlank()) {
+            return "";
+        }
+        return encryptionService.decrypt(provider.getEncryptedApiKey());
+    }
+
+    private AgentTeam requireOwnedTeam(String ownerId, String teamId) {
+        return teamRepo.findByIdAndOwnerIdAndDeletedFalse(teamId, ownerId)
+            .orElseThrow(() -> new ResourceNotFoundException("Équipe introuvable: " + teamId));
+    }
+
+    private LlmProvider findByTeamActive(String teamId, String llmId) {
+        return llmRepo.findByTeamIdAndIdAndDeletedFalse(teamId, llmId).stream().findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("LLM provider non trouvé: " + llmId));
     }
 
     private LlmProvider findByUserActive(String userId, String llmId) {

@@ -30,7 +30,45 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
-      MINIO_SERVER_URL: ${MINIO_PUBLIC_URL:-https://ai.labibpro.com/minio}
+      MINIO_SERVER_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
+
+  video-generation-worker:
+    environment:
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+      VIDEO_GENERATION_PROVIDER: ${VIDEO_GENERATION_PROVIDER:-local}
+      VIDEO_GENERATION_OLLAMA_URL: ${VIDEO_GENERATION_OLLAMA_URL:-http://ollama:11434}
+      VIDEO_GENERATION_OLLAMA_MODEL: ${VIDEO_GENERATION_OLLAMA_MODEL:-qwen2.5:3b}
+      VIDEO_GENERATION_LLM_PROVIDER: ${VIDEO_GENERATION_LLM_PROVIDER:-ollama}
+      VIDEO_GENERATION_LLM_BASE_URL: ${VIDEO_GENERATION_LLM_BASE_URL:-}
+      VIDEO_GENERATION_LLM_API_KEY: ${VIDEO_GENERATION_LLM_API_KEY:-}
+      VIDEO_GENERATION_LLM_MODEL: ${VIDEO_GENERATION_LLM_MODEL:-}
+      VIDEO_GENERATION_LLM_ALLOW_UNAUTHENTICATED: ${VIDEO_GENERATION_LLM_ALLOW_UNAUTHENTICATED:-false}
+      VIDEO_GENERATION_LLM_TIMEOUT_SECONDS: ${VIDEO_GENERATION_LLM_TIMEOUT_SECONDS:-120}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
+      VIDEO_GENERATION_MUSIC_DIR: ${VIDEO_GENERATION_MUSIC_DIR:-}
+      MONEYPRINTER_API_URL: ${MONEYPRINTER_API_URL:-}
+      MONEYPRINTER_API_KEY: ${MONEYPRINTER_API_KEY:-}
+      VIDEO_GENERATION_OUTPUT_BUCKET: ${VIDEO_GENERATION_OUTPUT_BUCKET:-video-generation-results}
+
+  image-generation-worker:
+    environment:
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+      IMAGE_PROVIDER_URL: ${IMAGE_PROVIDER_URL:-}
+      IMAGE_PROVIDER_API_KEY: ${IMAGE_PROVIDER_API_KEY:-}
+      IMAGE_PROVIDER_ALLOW_UNAUTHENTICATED: ${IMAGE_PROVIDER_ALLOW_UNAUTHENTICATED:-false}
+      IMAGE_PROVIDER_AUTH_HEADER: ${IMAGE_PROVIDER_AUTH_HEADER:-Authorization}
+      IMAGE_PROVIDER_AUTH_SCHEME: ${IMAGE_PROVIDER_AUTH_SCHEME:-Bearer}
+      IMAGE_PROVIDER_API_PATH: ${IMAGE_PROVIDER_API_PATH:-/v1/images/generations}
+      IMAGE_PROVIDER_SUPPORTS_NEGATIVE_PROMPT: ${IMAGE_PROVIDER_SUPPORTS_NEGATIVE_PROMPT:-false}
+      IMAGE_MODEL: ${IMAGE_MODEL:-}
+      IMAGE_GENERATION_OUTPUT_BUCKET: ${IMAGE_GENERATION_OUTPUT_BUCKET:-image-generation-results}
 
   # ── API Gateway ────────────────────────────────────────────────────────────
 
@@ -48,7 +86,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD requis dans .env}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://ai.labibpro.com/minio}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:?SPRING_MAIL_PASSWORD requis dans .env}
       GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
@@ -72,7 +110,7 @@ services:
     environment:
       DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://ai.labibpro.com/minio}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
 
@@ -100,12 +138,33 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-https://ai.labibpro.com}
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://ai.labibpro.com/minio}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:?SPRING_MAIL_PASSWORD requis dans .env}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+
+  # ── Generation Service ─────────────────────────────────────────────────────
+  # Publication sociale : activée explicitement dans .env (Facebook/Instagram
+  # sont publies via agent-team-service, qui detient les credentials Meta).
+
+  generation-service:
+    # En prod, 127.0.0.1:8088 est déjà pris par visversa (proxy nginx). Le port
+    # interne reste 8088 (api-gateway y parle par nom de service) ; seul le
+    # port publié sur l'hôte change. !override remplace la liste du fichier de
+    # base au lieu de s'y ajouter, sinon le bind sur 8088 echoue.
+    ports: !override
+      - "127.0.0.1:8099:8088"
+    environment:
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
+      AGENT_TEAM_BASE_URL: ${AGENT_TEAM_BASE_URL:-http://agent-team-service:8087}
+      SOCIAL_PUBLISH_ENABLED: ${SOCIAL_PUBLISH_ENABLED:-false}
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
 
   # ── Telegram MCP ───────────────────────────────────────────────────────────

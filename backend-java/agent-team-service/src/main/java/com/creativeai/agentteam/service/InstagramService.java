@@ -135,8 +135,10 @@ public class InstagramService {
         containerParams.put("access_token", accessToken);
 
         if (imageUrl != null) {
-            String lowerUrl = imageUrl.toLowerCase();
-            if (lowerUrl.endsWith(".mp4") || lowerUrl.endsWith(".mov") || lowerUrl.endsWith(".webm")) {
+            // L'extension est lue sur le chemin seul : une URL signée se termine par
+            // "?X-Amz-...", sinon une vidéo serait envoyée comme une image.
+            String path = imageUrl.split("[?#]", 2)[0].toLowerCase();
+            if (path.endsWith(".mp4") || path.endsWith(".mov") || path.endsWith(".webm")) {
                 containerParams.put("media_type", "REELS");
                 containerParams.put("video_url", imageUrl);
                 containerParams.put("share_to_feed", true);

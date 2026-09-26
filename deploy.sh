@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploy a backend service: build JAR then rebuild Docker image.
 # Usage: ./deploy.sh <service>
-#   service: agent-team | api-gateway | auth | search | rag | docfusion
+#   service: agent-team | generation | api-gateway | auth | search | rag | docfusion
 set -euo pipefail
 
 SERVICE=${1:-agent-team}
@@ -11,6 +11,10 @@ case "$SERVICE" in
   agent-team)
     MODULE="backend-java/agent-team-service"
     CONTAINER="agent-team-service"
+    ;;
+  generation)
+    MODULE="backend-java/generation-service"
+    CONTAINER="generation-service"
     ;;
   api-gateway|gateway)
     MODULE="backend-java/api-gateway"
@@ -40,7 +44,7 @@ case "$SERVICE" in
     ;;
   *)
     echo "Unknown service: $SERVICE"
-    echo "Usage: $0 agent-team|api-gateway|auth|search|docfusion|frontend"
+    echo "Usage: $0 agent-team|generation|api-gateway|auth|search|docfusion|frontend"
     exit 1
     ;;
 esac

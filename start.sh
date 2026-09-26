@@ -20,6 +20,9 @@ if [[ -f "$ROOT/.env" && -f "$ROOT/docker-compose.prod.yml" ]] \
   && grep -q '^POSTGRES_PASSWORD=' "$ROOT/.env"; then
   COMPOSE="docker compose --env-file $ROOT/.env -f $ROOT/docker-compose.yml -f $ROOT/docker-compose.prod.yml"
 fi
+# Workers de génération image/vidéo : sans ces profils, aucun consommateur sur
+# creativeai.{image,video}-generation → les jobs restent QUEUED à l'infini.
+COMPOSE="$COMPOSE --profile video-generation --profile image-generation"
 HEALTH="$ROOT/healthcheck.sh"
 
 # ── Couleurs ────────────────────────────────────────────────────
@@ -64,6 +67,7 @@ container_for() {
     ocr-worker)            echo "creativeai-ocr-ai" ;;
     kafka-topics-init)     echo "creativeai-kafka-init" ;;
     agent-team-service)    echo "creativeai-agent-team" ;;
+    generation-service)    echo "creativeai-generation" ;;
     telegram-mcp-service)  echo "creativeai-telegram-mcp" ;;
     *)                     echo "creativeai-$1" ;;
   esac
@@ -73,8 +77,8 @@ container_for() {
 INFRA_SERVICES=(postgres redis redpanda minio otel-collector jaeger prometheus grafana pgadmin)
 INIT_SERVICES=(kafka-topics-init)
 CORE_SERVICES=(auth-service api-gateway)
-APP_SERVICES=(agent-team-service rag-service search-service docfusion-service)
-AI_WORKERS=(audio-worker video-worker face-worker pdf-worker ocr-worker)
+APP_SERVICES=(agent-team-service generation-service rag-service search-service docfusion-service)
+AI_WORKERS=(audio-worker video-worker face-worker pdf-worker ocr-worker video-generation-worker image-generation-worker)
 SUPPORT_SERVICES=(gotenberg onlyoffice rxresume penpot-backend penpot-exporter penpot-frontend penpot-mcp telegram-mcp-service ollama)
 FRONT_SERVICES=(frontend)
 
@@ -83,6 +87,7 @@ declare -A SERVICE_URLS=(
   [frontend]="http://localhost:4400"
   [api-gateway]="http://localhost:8480"
   [agent-team-service]="http://localhost:8087"
+  [generation-service]="http://localhost:8088"
   [rag-service]="http://localhost:8084"
   [pgadmin]="http://localhost:8085"
   [grafana]="http://localhost:3002"
@@ -234,7 +239,7 @@ cmd_status() {
   local groups=(
     "Infrastructure:postgres redis redpanda minio otel-collector jaeger prometheus grafana pgadmin"
     "Core:auth-service api-gateway"
-    "Métier:agent-team-service rag-service search-service docfusion-service"
+    "Métier:agent-team-service generation-service rag-service search-service docfusion-service"
     "Workers IA:audio-worker video-worker face-worker pdf-worker ocr-worker"
     "Support:gotenberg onlyoffice rxresume penpot-frontend telegram-mcp-service ollama"
     "Frontend:frontend"
@@ -304,7 +309,7 @@ cmd_build() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
     error "Précise le service à builder : ./start.sh build <service>"
-    echo "  Services Java : agent-team | api-gateway | auth | search | docfusion | rag"
+    echo "  Services Java : agent-team | generation | api-gateway | auth | search | docfusion | rag"
     echo "  Frontend      : frontend"
     exit 1
   fi

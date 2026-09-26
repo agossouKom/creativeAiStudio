@@ -155,7 +155,11 @@ services:
       JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       MINIO_URL: http://minio:9000
-      MINIO_PUBLIC_URL: https://minio.labibpro.store
+      # Doit être le MÊME hôte que pour generation-service : agent-team reconnaît
+      # les URLs MinIO par prefixe (ChannelSenderService.isMinioUrl) et réécrit
+      # l'hôte pour Instagram (resolvePublicImageUrl). Deux valeurs différentes =
+      # publication Facebook/Instagram cassée.
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9400}
       MINIO_ACCESS_KEY: creativeai
       MINIO_SECRET_KEY: creativeai123
       # Gmail OAuth2 — renseigner dans .env avant docker compose up
@@ -210,7 +214,11 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       REDIS_HOST: redis
       MINIO_URL: http://minio:9000
-      MINIO_PUBLIC_URL: https://minio.labibpro.store
+      # Doit être le MÊME hôte que pour generation-service : agent-team reconnaît
+      # les URLs MinIO par prefixe (ChannelSenderService.isMinioUrl) et réécrit
+      # l'hôte pour Instagram (resolvePublicImageUrl). Deux valeurs différentes =
+      # publication Facebook/Instagram cassée.
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9400}
       MINIO_ACCESS_KEY: creativeai
       MINIO_SECRET_KEY: creativeai123
       JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
@@ -289,6 +297,86 @@ services:
       redpanda:
         condition: service_healthy
 
+  video-generation-worker:
+    profiles: ["video-generation"]
+    build: ./ai-workers/video-generation-worker
+    container_name: creativeai-video-generation
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      VIDEO_GENERATION_INPUT_TOPIC: ${VIDEO_GENERATION_INPUT_TOPIC:-creativeai.video-generation}
+      VIDEO_GENERATION_RESULT_TOPIC: ${VIDEO_GENERATION_RESULT_TOPIC:-creativeai.video-generation.results}
+      VIDEO_GENERATION_GROUP_ID: ${VIDEO_GENERATION_GROUP_ID:-video-generation-worker}
+      VIDEO_GENERATION_PROVIDER: ${VIDEO_GENERATION_PROVIDER:-local}
+      VIDEO_GENERATION_OLLAMA_URL: ${VIDEO_GENERATION_OLLAMA_URL:-http://ollama:11434}
+      VIDEO_GENERATION_OLLAMA_MODEL: ${VIDEO_GENERATION_OLLAMA_MODEL:-qwen2.5:3b}
+      VIDEO_GENERATION_LLM_PROVIDER: ${VIDEO_GENERATION_LLM_PROVIDER:-ollama}
+      VIDEO_GENERATION_LLM_BASE_URL: ${VIDEO_GENERATION_LLM_BASE_URL:-}
+      VIDEO_GENERATION_LLM_API_KEY: ${VIDEO_GENERATION_LLM_API_KEY:-}
+      VIDEO_GENERATION_LLM_MODEL: ${VIDEO_GENERATION_LLM_MODEL:-}
+      VIDEO_GENERATION_LLM_ALLOW_UNAUTHENTICATED: ${VIDEO_GENERATION_LLM_ALLOW_UNAUTHENTICATED:-false}
+      VIDEO_GENERATION_LLM_TIMEOUT_SECONDS: ${VIDEO_GENERATION_LLM_TIMEOUT_SECONDS:-120}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
+      VIDEO_GENERATION_TTS_PROVIDER: ${VIDEO_GENERATION_TTS_PROVIDER:-espeak}
+      VIDEO_GENERATION_TTS_BINARY: ${VIDEO_GENERATION_TTS_BINARY:-espeak-ng}
+      VIDEO_GENERATION_EDGE_TTS_BINARY: ${VIDEO_GENERATION_EDGE_TTS_BINARY:-edge-tts}
+      VIDEO_GENERATION_MUSIC_DIR: ${VIDEO_GENERATION_MUSIC_DIR:-}
+      MONEYPRINTER_API_URL: ${MONEYPRINTER_API_URL:-}
+      MONEYPRINTER_API_KEY: ${MONEYPRINTER_API_KEY:-}
+      MONEYPRINTER_ALLOW_UNAUTHENTICATED: ${MONEYPRINTER_ALLOW_UNAUTHENTICATED:-false}
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-creativeai}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-creativeai123}
+      VIDEO_GENERATION_OUTPUT_BUCKET: ${VIDEO_GENERATION_OUTPUT_BUCKET:-video-generation-results}
+      VIDEO_GENERATION_MAX_OUTPUT_BYTES: ${VIDEO_GENERATION_MAX_OUTPUT_BYTES:-524288000}
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8006/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  image-generation-worker:
+    profiles: ["image-generation"]
+    build: ./ai-workers/image-generation-worker
+    container_name: creativeai-image-generation
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      IMAGE_GENERATION_INPUT_TOPIC: ${IMAGE_GENERATION_INPUT_TOPIC:-creativeai.image-generation}
+      IMAGE_GENERATION_RESULT_TOPIC: ${IMAGE_GENERATION_RESULT_TOPIC:-creativeai.image-generation.results}
+      IMAGE_GENERATION_GROUP_ID: ${IMAGE_GENERATION_GROUP_ID:-image-generation-worker}
+      IMAGE_PROVIDER_URL: ${IMAGE_PROVIDER_URL:-}
+      IMAGE_PROVIDER_API_KEY: ${IMAGE_PROVIDER_API_KEY:-}
+      IMAGE_PROVIDER_ALLOW_UNAUTHENTICATED: ${IMAGE_PROVIDER_ALLOW_UNAUTHENTICATED:-false}
+      IMAGE_PROVIDER_AUTH_HEADER: ${IMAGE_PROVIDER_AUTH_HEADER:-Authorization}
+      IMAGE_PROVIDER_AUTH_SCHEME: ${IMAGE_PROVIDER_AUTH_SCHEME:-Bearer}
+      IMAGE_PROVIDER_API_PATH: ${IMAGE_PROVIDER_API_PATH:-/v1/images/generations}
+      IMAGE_PROVIDER_SUPPORTS_NEGATIVE_PROMPT: ${IMAGE_PROVIDER_SUPPORTS_NEGATIVE_PROMPT:-false}
+      IMAGE_MODEL: ${IMAGE_MODEL:-}
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-creativeai}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-creativeai123}
+      IMAGE_GENERATION_OUTPUT_BUCKET: ${IMAGE_GENERATION_OUTPUT_BUCKET:-image-generation-results}
+      IMAGE_GENERATION_MAX_OUTPUT_BYTES: ${IMAGE_GENERATION_MAX_OUTPUT_BYTES:-33554432}
+      IMAGE_GENERATION_MAX_IMAGE_COUNT: ${IMAGE_GENERATION_MAX_IMAGE_COUNT:-4}
+      IMAGE_GENERATION_REQUEST_TIMEOUT_SECONDS: ${IMAGE_GENERATION_REQUEST_TIMEOUT_SECONDS:-120}
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8007/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   pdf-worker:
     build: ./ai-workers/pdf-worker
     container_name: creativeai-pdf-ai
@@ -337,16 +425,22 @@ services:
           creativeai.audio creativeai.video creativeai.face \
           creativeai.pdf creativeai.ocr \
           creativeai.results creativeai.docfusion.results \
+          creativeai.video-generation creativeai.video-generation.results \
+          creativeai.image-generation creativeai.image-generation.results \
           creativeai.audio.dlq creativeai.video.dlq creativeai.face.dlq \
           creativeai.pdf.dlq creativeai.ocr.dlq \
-          creativeai.results.dlq creativeai.docfusion.results.dlq; do
+          creativeai.results.dlq creativeai.docfusion.results.dlq \
+          creativeai.video-generation.dlq creativeai.video-generation.results.dlq \
+          creativeai.image-generation.dlq creativeai.image-generation.results.dlq; do
           rpk topic create $$TOPIC --brokers $$BROKER \
             --partitions 3 --replicas 1 2>/dev/null || true
         done
         # DLQ : rétention longue (7j) pour analyse post-mortem
         for DLQ in creativeai.audio.dlq creativeai.video.dlq creativeai.face.dlq \
                    creativeai.pdf.dlq creativeai.ocr.dlq \
-                   creativeai.results.dlq creativeai.docfusion.results.dlq; do
+                   creativeai.results.dlq creativeai.docfusion.results.dlq \
+                   creativeai.video-generation.dlq creativeai.video-generation.results.dlq \
+                   creativeai.image-generation.dlq creativeai.image-generation.results.dlq; do
           rpk topic alter-config $$DLQ \
             --set retention.ms=604800000 \
             --brokers $$BROKER 2>/dev/null || true
@@ -511,11 +605,21 @@ services:
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # LlmGateway.decryptKey ne retombe sur ces variables d'env que si la cle
+      # du provider en base est VIDE. Les providers DeepSeek de la prod ont une
+      # cle chiffree avec une cle ENCRYPTION_KEY differente : sans ces variables,
+      # decryptKey leve une exception "Decryption error" et tout appel LLM
+      # (generation de storyboard, chat agent) echoue en 409.
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OLLAMA_BASE_URL: http://ollama:11434/v1
       DEFAULT_MODEL: llama-3.1-8b-instant
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       MINIO_URL: http://minio:9000
-      MINIO_PUBLIC_URL: https://minio.labibpro.store
+      # Doit être le MÊME hôte que pour generation-service : agent-team reconnaît
+      # les URLs MinIO par prefixe (ChannelSenderService.isMinioUrl) et réécrit
+      # l'hôte pour Instagram (resolvePublicImageUrl). Deux valeurs différentes =
+      # publication Facebook/Instagram cassée.
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9400}
       MINIO_ACCESS_KEY: creativeai
       MINIO_SECRET_KEY: creativeai123
       FACEBOOK_POLLING_ENABLED: ${FACEBOOK_POLLING_ENABLED:-true}
@@ -537,6 +641,51 @@ services:
         condition: service_started
     volumes:
       - ./backend-java/agent-team-service/target/agent-team-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
+    restart: unless-stopped
+
+  # ─── Generation Service (orchestrateur vidéo/image + publication sociale) ───
+
+  generation-service:
+    build:
+      context: .
+      dockerfile: backend-java/Dockerfile
+      target: generation-service
+    container_name: creativeai-generation
+    ports:
+      - "127.0.0.1:8088:8088"
+    environment:
+      SERVER_PORT: 8088
+      DB_HOST: postgres
+      DB_USER: creativeai
+      DB_PASSWORD: creativeai123
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
+      MINIO_URL: http://minio:9000
+      # Endpoint signe pour les URLs presignees : doit etre joignable depuis le
+      # navigateur et les API de Meta. En local, MinIO est expose sur 9400.
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9400}
+      MINIO_ACCESS_KEY: creativeai
+      MINIO_SECRET_KEY: creativeai123
+      VIDEO_GENERATION_INPUT_TOPIC: creativeai.video-generation
+      VIDEO_GENERATION_RESULT_TOPIC: creativeai.video-generation.results
+      IMAGE_GENERATION_INPUT_TOPIC: creativeai.image-generation
+      IMAGE_GENERATION_RESULT_TOPIC: creativeai.image-generation.results
+      # Publication sociale : désactivée par défaut, Facebook/Instagram sont
+      # delegués a agent-team-service qui détient les credentials Meta.
+      SOCIAL_PUBLISH_ENABLED: ${SOCIAL_PUBLISH_ENABLED:-false}
+      AGENT_TEAM_BASE_URL: http://agent-team-service:8087
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_started
+      minio:
+        condition: service_started
+      agent-team-service:
+        condition: service_started
+    volumes:
+      - ./backend-java/generation-service/target/generation-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     restart: unless-stopped
 
   # ─── Telegram MCP Service ───────────────────────────────────────────────────

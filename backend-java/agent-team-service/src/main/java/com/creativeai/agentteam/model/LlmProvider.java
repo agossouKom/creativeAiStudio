@@ -23,6 +23,10 @@ public class LlmProvider extends BaseEntity {
     @Column(name = "user_id", length = 100)
     private String userId;
 
+    /** Provider partagé par les agents d'une équipe ; clé chiffrée comme les autres scopes. */
+    @Column(name = "team_id", length = 36)
+    private String teamId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private LlmType type;

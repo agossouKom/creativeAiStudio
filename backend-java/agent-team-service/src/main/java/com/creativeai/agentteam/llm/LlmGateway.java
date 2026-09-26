@@ -4,6 +4,7 @@ import com.creativeai.agentteam.model.Agent;
 import com.creativeai.agentteam.model.LlmProvider;
 import com.creativeai.agentteam.model.enums.LlmType;
 import com.creativeai.agentteam.repository.AgentRepository;
+import com.creativeai.agentteam.repository.AgentTeamRepository;
 import com.creativeai.agentteam.repository.LlmProviderRepository;
 import com.creativeai.agentteam.service.EncryptionService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -32,6 +33,7 @@ public class LlmGateway {
 
     private final LlmProviderRepository llmRepo;
     private final AgentRepository       agentRepo;
+    private final AgentTeamRepository   teamRepo;
     private final EncryptionService     encryptionService;
     private final WebClient.Builder     webClientBuilder;
     private final ObjectMapper          objectMapper;
@@ -43,6 +45,7 @@ public class LlmGateway {
     @Value("${agent.default-model}")   private String defaultModel;
     @Value("${agent.admin-user-id:}")  private String adminUserId;
     @Value("${GROQ_API_KEY:}")         private String groqApiKey;
+    @Value("${DEEPSEEK_API_KEY:}")     private String deepseekApiKey;
 
     private static final Pattern RETRY_AFTER_PATTERN =
         Pattern.compile("(?:try again|Please retry) in ([\\d.]+)s", Pattern.CASE_INSENSITIVE);
@@ -103,6 +106,31 @@ public class LlmGateway {
         }
         String lastMsg = lastErrors.isEmpty() ? "429" : lastErrors.get(lastErrors.size() - 1);
         return friendlyError(lastMsg);
+    }
+
+    public String completeText(String agentId, String systemPrompt, String userPrompt) {
+        List<ChatMessage> messages = List.of(
+            new ChatMessage("system", systemPrompt),
+            new ChatMessage("user", userPrompt));
+        List<LlmProvider> candidates = resolveProviderCandidates(agentId);
+        List<String> errors = new ArrayList<>();
+        for (LlmProvider provider : candidates) {
+            try {
+                String response = provider.getType() == LlmType.ANTHROPIC
+                    ? chatAnthropic(provider, messages, agentId)
+                    : chatOpenAiCompat(provider, messages, agentId);
+                if (response == null || response.isBlank()) {
+                    throw new IllegalStateException("LLM provider returned an empty response");
+                }
+                return response;
+            } catch (Exception e) {
+                String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                recordProviderFailure(provider, agentId, message);
+                errors.add(providerLabel(provider) + ": " + message);
+            }
+        }
+        throw new IllegalStateException(
+            "Tous les providers LLM configurés ont échoué: " + String.join(" | ", errors));
     }
 
     private void recordProviderFailure(LlmProvider provider, String agentId, String msg) {
@@ -451,9 +479,10 @@ public class LlmGateway {
      * Résout le provider LLM utilisé pour un agent.
      * Ordre de résolution :
      *   1. Providers rattachés à l'agent (primary puis backups)
-     *   2. Providers du compte de l'agent (ownerId = email JWT)
-     *   3. Providers du compte admin → provider par défaut pour tous les comptes
-     *   4. Fallback : GROQ_API_KEY de l'environnement
+     *   2. Providers de l'équipe de l'agent
+     *   3. Providers du compte de l'agent (ownerId = email JWT)
+     *   4. Providers du compte admin → provider par défaut pour tous les comptes
+     *   5. Fallback : GROQ_API_KEY de l'environnement
      */
     public LlmProvider resolveProvider(String agentId) {
         return resolveProviderCandidates(agentId).get(0);
@@ -485,12 +514,22 @@ public class LlmGateway {
         // 1. Providers de l'agent (primary puis backups)
         candidates.addAll(llmRepo.findByAgentIdAndDeletedFalseOrderByPrimaryDesc(agentId));
 
-        // 2. Providers du compte utilisateur (agent.ownerId)
+        // 2. Providers de l'équipe, uniquement si l'agent appartient bien au propriétaire.
+        if (ownerId != null && !ownerId.isBlank()) {
+            agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, ownerId)
+                .map(Agent::getTeamId)
+                .filter(teamId -> teamId != null && !teamId.isBlank())
+                .filter(teamId -> teamRepo.findByIdAndOwnerIdAndDeletedFalse(teamId, ownerId).isPresent())
+                .ifPresent(teamId -> candidates.addAll(
+                    llmRepo.findByTeamIdAndDeletedFalseOrderByPrimaryDesc(teamId)));
+        }
+
+        // 3. Providers du compte utilisateur (agent.ownerId)
         if (ownerId != null && !ownerId.isBlank()) {
             candidates.addAll(llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(ownerId));
         }
 
-        // 3. Providers du compte admin → provider par défaut pour tous les comptes
+        // 4. Providers du compte admin → provider par défaut pour tous les comptes
         if (adminUserId != null && !adminUserId.isBlank() && !adminUserId.equals(ownerId) && candidates.isEmpty()) {
             List<LlmProvider> adminProviders = llmRepo.findByUserIdAndDeletedFalseOrderByPrimaryDesc(adminUserId);
             if (!adminProviders.isEmpty()) {
@@ -499,7 +538,7 @@ public class LlmGateway {
             }
         }
 
-        // 4. Fallback GROQ env
+        // 5. Fallback GROQ env
         if (candidates.isEmpty()) {
             candidates.add(buildGroqFallback(agentId));
         }
@@ -531,9 +570,35 @@ public class LlmGateway {
 
     private String decryptKey(LlmProvider p) {
         if (p.getEncryptedApiKey() == null || p.getEncryptedApiKey().isBlank()) {
-            return (p.getType() == LlmType.GROQ && groqApiKey != null) ? groqApiKey : "";
+            return envKeyFor(p);
         }
-        return encryptionService.decrypt(p.getEncryptedApiKey());
+        try {
+            return encryptionService.decrypt(p.getEncryptedApiKey());
+        } catch (RuntimeException e) {
+            // La cle en base peut avoir ete chiffree avec une ancienne
+            // ENCRYPTION_KEY (cle d'un autre environnement, ou rotation). Sans
+            // repli, la decryption echoue et tout appel LLM de l'agent tombe en
+            // 409 : on tente la variable d'environnement avant d'abandonner.
+            String fromEnv = envKeyFor(p);
+            if (!fromEnv.isEmpty()) {
+                log.warn("Cle chiffree illisible pour le provider {} ({}) : repli sur la variable d'environnement", p.getType(), p.getDisplayName());
+                return fromEnv;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Cle d'API fournie par l'environnement pour ce type de provider, ou "" si
+     * aucune n'est configuree. Evite de renvoyer une cle nulle.
+     */
+    private String envKeyFor(LlmProvider p) {
+        String key = switch (p.getType()) {
+            case GROQ -> groqApiKey;
+            case DEEPSEEK -> deepseekApiKey;
+            default -> null;
+        };
+        return key != null ? key : "";
     }
 
     /**

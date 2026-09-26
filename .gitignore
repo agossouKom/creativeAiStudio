@@ -32,3 +32,10 @@ logs/
 # Heavy 3D media assets (too large for GitHub, >100MB per-file limit)
 footBall/mixamo/
 footBall/supporters/
+
+# Artefact d execution du watchdog (PID local)
+.healthcheck.pid
+
+# Python
+__pycache__/
+*.py[cod]

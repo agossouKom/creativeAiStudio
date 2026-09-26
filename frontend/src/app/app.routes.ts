@@ -23,6 +23,7 @@ import { CvWorkspaceComponent }     from './features/agentique/cv-workspace.comp
 import { CardBuilderComponent }     from './features/card-builder/card-builder.component';
 import { AiTeamsComponent }         from './features/agentique/ai-teams.component';
 import { WorkspaceComponent }       from './features/agentique/workspace.component';
+import { GenerationStudioComponent } from './features/agentique/generation-studio.component';
 import { GamesHubComponent }        from './features/games/games-hub.component';
 import { Game2048Component }        from './features/games/game-2048.component';
 import { GameTetrisComponent }      from './features/games/game-tetris.component';
@@ -69,6 +70,7 @@ export const routes: Routes = [
   { path: 'agentique/cv-workspace', component: CvWorkspaceComponent },
   { path: 'agentique/teams',        component: AiTeamsComponent },
   { path: 'agentique/workspace',    component: WorkspaceComponent, canActivate: [authGuard] },
+  { path: 'generation/studio',      component: GenerationStudioComponent, canActivate: [authGuard] },
   { path: 'games',            component: GamesHubComponent },
   { path: 'games/2048',       component: Game2048Component },
   { path: 'games/tetris',     component: GameTetrisComponent },

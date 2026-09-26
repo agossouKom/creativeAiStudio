@@ -69,10 +69,10 @@ add_to_json() {
 
 # Tier 1 — Infrastructure de données (bloquant pour tout le reste)
 TIER1=(
-  "postgres|creativeai-postgres|healthy|auth,search,docfusion,rag,agent-team,rxresume,penpot-backend"
+  "postgres|creativeai-postgres|healthy|auth,search,docfusion,rag,agent-team,generation,rxresume,penpot-backend"
   "redis|creativeai-redis|started|gateway,auth,search,agent-team,penpot,rxresume"
-  "redpanda|creativeai-kafka|healthy|search-service,audio-worker,video-worker,face-worker,pdf-worker,ocr-worker,agent-team,docfusion"
-  "minio|creativeai-minio|started|auth,search,docfusion,agent-team,audio-worker,video-worker"
+  "redpanda|creativeai-kafka|healthy|search-service,audio-worker,video-worker,face-worker,pdf-worker,ocr-worker,agent-team,docfusion,generation"
+  "minio|creativeai-minio|started|auth,search,docfusion,agent-team,generation,audio-worker,video-worker"
 )
 
 # Tier 2 — Services Java cœur (bloquant pour gateway et frontend)
@@ -94,6 +94,7 @@ TIER3=(
 # Tier 4 — Services support (optionnels au démarrage)
 TIER4=(
   "kafka-topics-init|creativeai-kafka-init|started|search-workers"
+  "generation-service|creativeai-generation|port:8088|api-gateway,frontend"
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════

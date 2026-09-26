@@ -18,4 +18,9 @@ public interface LlmProviderRepository extends JpaRepository<LlmProvider, String
     List<LlmProvider>     findByUserIdOrderByPrimaryDescCreatedAtDesc(String userId);
     List<LlmProvider>     findByUserIdAndIdAndDeletedFalse(String userId, String id);
     List<LlmProvider>     findByUserIdAndIdAndDeletedTrue(String userId, String id);
+
+    List<LlmProvider>     findByTeamIdAndDeletedFalseOrderByPrimaryDesc(String teamId);
+    List<LlmProvider>     findByTeamIdOrderByPrimaryDescCreatedAtDesc(String teamId);
+    List<LlmProvider>     findByTeamIdAndIdAndDeletedFalse(String teamId, String id);
+    List<LlmProvider>     findByTeamIdAndIdAndDeletedTrue(String teamId, String id);
 }

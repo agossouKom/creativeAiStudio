@@ -16,6 +16,7 @@
         <module>docfusion-service</module>
         <module>rag-service</module>
         <module>agent-team-service</module>
+        <module>generation-service</module>
         <module>telegram-mcp-service</module>
     </modules>
 

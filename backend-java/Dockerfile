@@ -24,6 +24,14 @@ WORKDIR /app
 COPY ./backend-java/agent-team-service/target/*.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
 
+# generation-service consomme les topics de résultats qui peuvent être compressés
+# (snappy) par n'importe quel producteur Kafka : la lib native de snappy-java
+# nécessite une glibc, absente d'eclipse-temurin:*-alpine (musl).
+FROM eclipse-temurin:21-jre-jammy AS generation-service
+WORKDIR /app
+COPY ./backend-java/generation-service/target/*.jar app.jar
+ENTRYPOINT ["java", "-jar", "app.jar"]
+
 FROM eclipse-temurin:21-jre-alpine AS telegram-mcp-service
 WORKDIR /app
 COPY ./backend-java/telegram-mcp-service/target/*.jar app.jar
