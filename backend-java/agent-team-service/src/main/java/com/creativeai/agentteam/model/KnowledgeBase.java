@@ -1,5 +1,6 @@
 package com.creativeai.agentteam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -15,6 +16,7 @@ public class KnowledgeBase extends BaseEntity {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agent_id", nullable = false, unique = true)
+    @JsonIgnore
     private Agent agent;
 
     @Column(nullable = false, length = 200)

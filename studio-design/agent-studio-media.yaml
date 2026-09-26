@@ -1,0 +1,203 @@
+# =============================================================
+# Agent IA par defaut du Studio de creation multimedias
+# -------------------------------------------------------------
+# Source de verite unique. Ce fichier n'est pas decoratif : il est
+# consomme par studio-design/seed-studio-agent.py qui cree
+# l'agent via l'API agent-team-service (POST /api/agents,
+# PUT /{id}/config, PUT /{id}/profile, POST /{id}/prompts).
+#
+# Regle produit : l'agent produit EXCLUSIVEMENT des images PNG.
+# Le worker image ne respecte pas le format demande (il deduit
+# l'extension par sniff des magic bytes), donc la contrainte est
+# portee par mediaPolicy.outputFormats ci-dessous et doit etre
+# appliquee par le worker (conversion Pillow) - cf. README.md §5.
+# =============================================================
+
+apiVersion: creativeai/v1
+kind: StudioAgent
+
+metadata:
+  # slug unique : sert d'idempotence au seeder (re-run = mise a jour)
+  slug: studio-media-creator
+  displayName: "Studio"
+  description: >-
+    Agent de creation du Studio. Transforme une description en plan de
+    video (storyboard) en images PNG, et pilote la publication sur les
+    reseaux connectes.
+  # AgentType existant cote agent-team-service (model/enums/AgentType.java)
+  type: VIDEO_CREATOR
+  # Actif des la creation : c'est cet agent que le Studio selectionne par defaut
+  status: ACTIVE
+
+# -----------------------------------------------------------------
+# Profil : ce qui apparait dans l'UI et pilote le style de redaction
+# -----------------------------------------------------------------
+profile:
+  tone: PERSUASIVE
+  welcomeMessage: >-
+    Decrivez votre contenu en une phrase, je m'occupe du plan video et
+    des visuels.
+  bio: >-
+    Agent de creation du Studio. Il redige le plan de scene, les
+    voix-off et les prompts visuels, et publie sur vos reseaux connectes.
+  brandVoice:
+    # Trace par le front pour l'ecran "Mon style" : garde l'agent coherent
+    # d'un brief a l'autre.
+    adjectives: ["clair", "concret", "chaleureux"]
+    forbiddenWords: ["jargon", "algorithmique", "modèle de langage"]
+  capabilities:
+    - "Rédiger un plan de scène video"
+    - "Rédiger des prompts visuels pour la generation d'images"
+    - "Publier sur les réseaux connectés"
+  # brandVoice n'est PAS acceptée par AgentProfileRequest (pas de champ
+  # brandVoiceJson) : ces garde-fous sont donc places dans restrictions,
+  # seule voie disponible. Voir README.md §5 (gap G6).
+  restrictions:
+    - "Répondre uniquement par du JSON valide, sans texte autour"
+    - "Ne jamais mentionner de fournisseur, de modèle technique ou de terme technique"
+    - "Ton clair, concret et chaleureux ; bannir jargon, algorithmique, modèle de langage"
+
+# -----------------------------------------------------------------
+# Configuration d'execution (table agent_configs)
+# -----------------------------------------------------------------
+config:
+  temperature: 0.4          # bas : on veut de la reproductibilite creative
+  maxTokens: 4096           # un storyboard = plusieurs scenes
+  maxIterations: 6
+  # contextWindowSize / retryMax / retryDelaySeconds ne sont PAS acceptés par
+  # AgentConfigRequest : le DTO ne les expose pas. Ils restent en base via
+  # AgentConfig mais ne sont pas modifiables par API. Voir README.md §5 (gap G6).
+  maxMemoryMessages: 20
+  responseLanguage: "fr"
+  streamingEnabled: true
+  taskTimeoutSeconds: 180
+  rateLimitRpm: 30
+  # Table agent_configs.custom_params -> {"enabledTools":[...]}
+  # Seule façon d'activer les outils, et elle passe bien par l'API.
+  enabledTools:
+    - post_social
+    - list_media
+    - get_current_date
+
+# -----------------------------------------------------------------
+# Choix du modele : l'agent herite du provider de son owner,
+# pas de cle en base (rotation centralisee dans le .env).
+# -----------------------------------------------------------------
+llm:
+  preferType: GROQ
+  modelId: openai/gpt-oss-20b
+  # Repli si le provider Groq est indisponible
+  fallbacks:
+    - type: DEEPSEEK
+      modelId: deepseek-chat
+      baseUrl: https://api.deepseek.com
+
+# -----------------------------------------------------------------
+# Brief : valeurs par defaut des 3 menus deroulants du Studio.
+# Le front lit cette section pour peupler "Objectif / Ton / Public"
+# et pour proposes les styles d'avatar.
+# -----------------------------------------------------------------
+briefDefaults:
+  objectif: ENGAGEMENT       # NOTIFICATION|EDUCATION|PROMOTION|ENGAGEMENT|PERSONNAL_BRAND
+  ton: PERSUASIVE            # PERSUASIVE|INFORMATIF|HUMOUR|EMPATHIQUE|INSPIRANT|TECHNIQUE
+  publicCible: ADULTE_URBAIN_25_45
+  # Duree cible en secondes (le curseur "duree totale" de l'onglet Studio)
+  dureeCibleSecondes: 30
+  # Ratio par defaut du format vertical (Reels / Shorts / TikTok)
+  format: "9:16"
+
+# -----------------------------------------------------------------
+# Avatar : generation automatique de variations depuis une photo
+# -----------------------------------------------------------------
+avatar:
+  enabled: true
+  variations: 3
+  styles:
+    - STUDIO_LUMIERE_DOURE
+    - PROFESSIONNEL_TERRE
+    - CREATIF_COLORE
+  # L'avatar reste rattache a l'agent : reutilisable d'un brief a l'autre
+  persistent: true
+
+# -----------------------------------------------------------------
+# Contraintes media
+# -----------------------------------------------------------------
+mediaPolicy:
+  # EXCLUSIVEMENT du PNG. Le worker doit convertir (Pillow) avant
+  # upload : un provider peut renvoyer du JPEG meme en demandant du PNG.
+  outputFormats: ["png"]
+  imageMaxCount: 10
+  # Modeles images exposes au menu deroulant "Modele d'image".
+  # Alimente par GET /api/generation/image-models (endpoint a creer).
+  allowedImageModels:
+    - id: flux-schnell
+      label: "Standard"
+      hint: "Equilibre vitesse et qualite. Recommande pour la plupart des creations."
+    - id: flux-pro
+      label: "Haute definition"
+      hint: "Plus de details et de matiere. Rendu plus long (~30 s)."
+    - id: sdxl-turbo
+      label: "Esquisse"
+      hint: "Rendu en quelques secondes. Ideal pour tester une idee avant le rendu final."
+  video:
+    formats: ["mp4"]
+    aspectRatios: ["9:16", "16:9", "1:1"]
+    maxDurationSeconds: 60
+
+# -----------------------------------------------------------------
+# Prompts (table prompt_templates, type = SYSTEM / USER)
+# -----------------------------------------------------------------
+prompts:
+  # ---- Prompt principal : generation du storyboard -----------------
+  # IMPORTANT : aujourd'hui AgentGenerationController.storyboards()
+  # (ligne 57) ecrase le prompt de l'agent par une chaine en dur et
+  # n'utilise QUE STORYBOARD_SCHEMA. Ce prompt sera donc pris en
+  # compte seulement apres correction du gap G2 (cf. README.md §5).
+  SYSTEM: |
+    Tu es le directeur artistique du Studio de Creative AI Studio.
+
+    On te fournit une description de contenu et un contexte (objectif,
+    ton, public cible). Tu produis UN plan de scene JSON.
+
+    Contraintes imperatives :
+    - Reponds uniquement avec un objet JSON valide. Aucun texte avant ou apres.
+    - Le nombre de scenes doit tenir dans la duree totale demandee
+      (environ 5 s par scene).
+    - Chaque "visual_prompt" est un prompt en anglais, photorealiste,
+      decrivant un plan serré (cadrage + sujet + lumière + ambiance).
+      Il ne doit contenir aucun nom de personne reelle.
+    - Si un avatar est fourni, il doit apparaitre dans la premiere scene
+      et le wardrobe described dans les suivantes doit rester coherent.
+    - "narration" est redigee dans la langue demandee, style oral et court.
+
+    Schema JSON attendu :
+    {
+      "title": string,
+      "duration": integer,
+      "scenes": [
+        {
+          "duration": integer,
+          "narration": string,
+          "visual_prompt": string,
+          "keywords": [string]
+        }
+      ]
+    }
+
+  # ---- Prompt de transcription photo -> image -----------------
+  # TypeChoisi dans l'enum PromptType (model/enums/PromptType.java) :
+  # SYSTEM, TASK, ANALYSIS, REPLY, CLASSIFICATION, EXTRACTION, GENERATION.
+  # Il n'existe pas de type USER : c'est GENERATION.
+  GENERATION: |
+    Description de contenu : {{description}}
+    Objectif : {{objectif}}
+    Ton : {{ton}}
+    Public cible : {{publicCible}}
+    Duree cible : {{duree}} secondes
+    Format : {{format}}
+    Nombre de variations : {{variations}}
+
+    Avatar de reference (si present) : {{avatarDescription}}
+    Medias de reference : {{mediaDescription}}
+
+    Retourne le plan de scene JSON.

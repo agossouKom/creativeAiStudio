@@ -1,5 +1,6 @@
 package com.creativeai.agentteam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.creativeai.agentteam.model.enums.AgentStatus;
 import com.creativeai.agentteam.model.enums.AgentType;
 import jakarta.persistence.*;
@@ -58,6 +59,12 @@ public class Agent extends BaseEntity {
     private String extraConfig;
 
     // Relations
+    // JsonIgnore : Agent et AgentConfig se referencent mutuellement
+    // (config->agent, agent->config). Sans ca, serialiser une entite qui
+    // porte une de ces relations part en recursion infinie et renvoie un
+    // JSON coupe. Symptome observe sur GET /api/agents/{id}/prompts, qui
+    // renvoyait 600 Ko de JSON invalide avant correction.
+    @JsonIgnore
     @OneToOne(mappedBy = "agent", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private AgentConfig config;
 

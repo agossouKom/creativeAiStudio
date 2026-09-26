@@ -1,5 +1,6 @@
 package com.creativeai.agentteam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.creativeai.agentteam.model.enums.ChannelStatus;
 import com.creativeai.agentteam.model.enums.ChannelType;
 import com.creativeai.agentteam.model.enums.PlatformType;
@@ -20,6 +21,7 @@ public class Channel extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agent_id", nullable = false)
+    @JsonIgnore
     private Agent agent;
 
     @Enumerated(EnumType.STRING)

@@ -1,5 +1,6 @@
 package com.creativeai.agentteam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.creativeai.agentteam.model.enums.LlmType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnTransformer;
@@ -17,6 +18,7 @@ public class LlmProvider extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agent_id")
+    @JsonIgnore
     private Agent agent;
 
     /** Provider rattaché au compte utilisateur (userId = email JWT). agentId est alors null. */

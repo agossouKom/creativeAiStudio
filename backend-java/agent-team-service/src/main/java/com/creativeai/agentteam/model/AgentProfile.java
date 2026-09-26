@@ -1,5 +1,6 @@
 package com.creativeai.agentteam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.creativeai.agentteam.model.enums.ToneStyle;
 import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnTransformer;
@@ -14,6 +15,7 @@ public class AgentProfile extends BaseEntity {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agent_id", nullable = false, unique = true)
+    @JsonIgnore
     private Agent agent;
 
     @Column(name = "display_name", nullable = false, length = 100)

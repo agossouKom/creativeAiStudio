@@ -1,5 +1,6 @@
 package com.creativeai.agentteam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.creativeai.agentteam.model.enums.ToneStyle;
 import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnTransformer;
@@ -12,6 +13,8 @@ import lombok.*;
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class AgentConfig extends BaseEntity {
 
+    // @JsonIgnore : fermeture de la boucle Agent <-> AgentConfig, cf. Agent.config
+    @JsonIgnore
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agent_id", nullable = false, unique = true)
     private Agent agent;

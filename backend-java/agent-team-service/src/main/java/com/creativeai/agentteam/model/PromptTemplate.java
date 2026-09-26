@@ -1,5 +1,6 @@
 package com.creativeai.agentteam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.creativeai.agentteam.model.enums.PromptType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnTransformer;
@@ -18,6 +19,7 @@ public class PromptTemplate extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agent_id", nullable = false)
+    @JsonIgnore
     private Agent agent;
 
     @Column(nullable = false, length = 150)

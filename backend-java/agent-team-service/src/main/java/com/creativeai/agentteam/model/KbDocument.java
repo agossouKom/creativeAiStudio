@@ -1,5 +1,6 @@
 package com.creativeai.agentteam.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -17,6 +18,7 @@ public class KbDocument extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "knowledge_base_id", nullable = false)
+    @JsonIgnore
     private KnowledgeBase knowledgeBase;
 
     @Column(nullable = false, length = 300)

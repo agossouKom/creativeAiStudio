@@ -1,0 +1,210 @@
+{
+  "$comment": "Structures de données du Studio. Clé = objet métier, 'mock' = exemple réaliste, 'etatActuel' = ce qui existe déjà en base. Les objets marqués 'NOUVEAU' n'ont pas de table : c'est le travail à faire.",
+
+  "studioBrief": {
+    "description": "Persistance du brief de création (exigence : la config reste jusqu'à modification)",
+    "persistance": "localStorage par utilisateur,Fallback sur le profil cloud si device partagé",
+    "mock": {
+      "description": "Une masterclass de 30 s sur les procedes de notre usine, tournee dans un atelier",
+      "objectif": "ENGAGEMENT",
+      "ton": "INFORMATIF",
+      "publicCible": "ADULTE_URBAIN_25_45",
+      "dureeCibleSecondes": 30,
+      "format": "9:16",
+      "langue": "fr",
+      "avatarId": "av_01H8XK2M9Q",
+      "sourceSequences": "BIBLIOTHEQUE",
+      "sourceMedia": "PEXELS",
+      "clipDurationSeconds": 5,
+      "videoCount": 1,
+      "modeleImageId": "flux-schnell",
+      "musique": { "id": "mus_energie", "volume": 0.12 },
+      "sousTitres": true,
+      "avatarId": false
+    },
+    "enumérations": {
+      "objectif": ["NOTIFICATION", "EDUCATION", "PROMOTION", "ENGAGEMENT", "PERSONNAL_BRAND"],
+      "ton": ["PERSUASIVE", "INFORMATIF", "HUMOUR", "EMPATHIQUE", "INSPIRANT", "TECHNIQUE"],
+      "publicCible": ["ADULTE_URBAIN_25_45", "ETUDIANT", "PROFESSIONNEL", "SENIOR", "FAMILLE", "TOUS_PUBLIC"],
+      "format": ["9:16", "16:9", "1:1"],
+      "sourceSequences": ["UPLOAD", "BIBLIOTHEQUE"]
+    },
+    "note": "aucun endpoint requis : localStorage. Volontairement, pour ne pas créer une table de plus.",
+    "etatActuel": "AUCUN — le studio actuel ne persiste rien, chaque reload repart à zéro"
+  },
+
+  "avatar": {
+    "description": "Avatar personnalisé, généré par l'agent à partir d'une photo, réutilisable",
+    "etatActuel": "AUCUN — aucun concept d'avatar, aucun upload dans generation-service",
+    "mock": {
+      "id": "av_01H8XK2M9Q",
+      "agentId": "acc5481e-144f-4306-a96f-9980dd96000f",
+      "nom": "Portrait - studio lumiere douce",
+      "sourcePhotoUrl": "https://minio.labibpro.com/user-uploads/av-src-01H8XK2M9Q.jpg",
+      "variantes": [
+        { "id": "av_v1", "style": "STUDIO_LUMIERE_DOURE", "imageUrl": "https://.../av_v1.png", "retenue": true },
+        { "id": "av_v2", "style": "PROFESSIONNEL_TERRE", "imageUrl": "https://.../av_v2.png", "retenue": false },
+        { "id": "av_v3", "style": "CREATIF_COLORE", "imageUrl": "https://.../av_v3.png", "retenue": false }
+      ],
+      "description": "femme 34 ans, cheveux bruns courts, pull beige, sourire discret",
+      "createdAt": "2026-09-26T12:00:00Z",
+      "modifiable": true
+    },
+    "tableNOUVEAU": "CREATE TABLE media_avatars (id, user_email, agent_id, nom, source_object_key, description, created_at, deleted)"
+  },
+
+  "mediaAsset": {
+    "description": "Un média de la galerie. today il n'existe que comme sortie de job (generation_outputs)",
+    "etatActuel": "PARTIEL — generation_jobs + generation_outputs. Pas d'entité média, donc pas de suppression, de republication ni de tag",
+    "mock": {
+      "id": "job_0cfb418c-15ce-4ff0-8341-5e3d30e27264",
+      "type": "VIDEO",
+      "format": "mp4",
+      "url": "https://minio.labibpro.com/video-generation-results/results/0cfb.../2/video-1.mp4",
+      "previewUrl": "https://.../video-1.mp4",
+      "thumbnailUrl": null,
+      "tailleOctets": 1534551,
+      "dureeSecondes": 30,
+      "dimensions": { "largeur": 720, "hauteur": 1280 },
+      "prompt": "Des dunes de sable sous un ciel etoile",
+      "brief": { "objectif": "ENGAGEMENT", "ton": "PERSUASIVE", "publicCible": "ADULTE_URBAIN_25_45" },
+      "agentId": "acc5481e-144f-4306-a96f-9980dd96000f",
+      "jobId": "0cfb418c-15ce-4ff0-8341-5e3d30e27264",
+      "outputIndex": 0,
+      "createdAt": "2026-09-26T11:23:40Z",
+      "supprime": false,
+      "supprimeAt": null,
+      "publications": [
+        { "platform": "INSTAGRAM", "statut": "PUBLISHED", "permalink": "https://www.instagram.com/reel/DdvVZ27j0lg/", "publishedAt": "2026-09-26T11:23:40Z" }
+      ]
+    },
+    "actionsUI": ["PREVISUALISER", "TELECHARGER", "REPUBLIER", "SUPPRIMER", "RESTAURER"],
+    "tri": "createdAt DESC, deux sections (VIDEOS puis IMAGES) en onglets/sections",
+    "noteMigration": "Vue SQL sur generation_outputs + LEFT JOIN social_publish_requests suffit pour v1. Une table media_assets ne se justifiera qu'au montage (cf. mediaTimeline)"
+  },
+
+  "sequenceSource": {
+    "description": "Origine des séquences : upload personnel ou bibliothèque",
+    "etatActuel": "AUCUN pour l'upload. La bibliothèque est le stock Pexels/Pixabay en dur dans le worker (option 'source')",
+    "mockUpload": {
+      "id": "src_01H8XK3P1R",
+      "type": "UPLOAD",
+      "fichiers": [
+        { "nom": "plan-1.mov", "objectKey": "user-uploads/src_01H8XK3P1R/plan-1.mov", "dureeSecondes": 7.2, "largeur": 3840, "hauteur": 2160, "formatSource": "mov", "transcode": "encours" }
+      ],
+      "transcode": { "statut": "DONE", "sortie": "mp4/h264", "normalise": "720x1280" }
+    },
+    "mockBibliotheque": {
+      "id": "src_pexels",
+      "type": "BIBLIOTHEQUE",
+      "source": "PEXELS",
+      "candidats": [
+        { "id": "px-2933662", "url": "https://.../preview.jpg", "dureeSecondes": 12, "largeur": 3840, "hauteur": 2160, "choisi": true }
+      ],
+      "criteres": { "qualite": "HD", "tri": "plus petite resolution d'abord (evite le 4K telecharge puis rejete)" }
+    }
+  },
+
+  "imageModel": {
+    "description": "Menu déroulant 'Modèle image' — doit exposer uniquement des noms, aucun fournisseur",
+    "etatActuel": "AUCUN endpoint. Aujourd'hui c'est un champ texte libre de 64 caracteres (imageOptions.model) → l'agent peut taper n'importe quoi",
+    "endpointNOUVEAU": "GET /api/generation/image-models",
+    "mock": {
+      "models": [
+        { "id": "flux-schnell", "label": "Standard", "hint": "Equilibre vitesse et qualite. Recommande pour la plupart des creations.", "tailleParDefaut": "1024x1024" },
+        { "id": "flux-pro", "label": "Haute definition", "hint": "Plus de details et de matiere. Rendu plus long (~30 s).", "tailleParDefaut": "1024x1536" },
+        { "id": "sdxl-turbo", "label": "Esquisse", "hint": "Rendu en quelques secondes. Ideal pour tester une idee.", "tailleParDefaut": "1024x1024" }
+      ]
+    },
+    "note": "La source de verite des modeles autorises est agent-studio-media.yaml > mediaPolicy.allowedImageModels"
+  },
+
+  "socialAccount": {
+    "description": "Onglet Réseaux : compte connecté de l'utilisateur",
+    "etatActuel": "EXISTE mais dispersé : table channels (agent-team-service) + 2 onglets dans le Workspace (Canaux / Réseaux), saisie manuelle de jetons, aucun OAuth",
+    "etatActuelEndpoint": "GET/POST /api/agents/{agentId}/channels, POST /{channelId}/connect|disconnect",
+    "mock": {
+      "id": "be035ec5-6d36-40b7-9440-8...",
+      "platform": "INSTAGRAM",
+      "libelle": "@labibpro",
+      "accountId": "17841439090551534",
+      "statut": "CONNECTED",
+      "connecteLe": "2026-08-14T09:12:00Z",
+      "expireLe": "2026-12-25T09:12:00Z",
+      "capacites": { "video": true, "image": true, "reel": true },
+      "avertissement": null
+    },
+    "exigenceUX": "Configuration guidée calquée sur la gestion des équipes d'agents : saisies simples, aide contextuelle, indicateur d'expiration visible",
+    "gaps": [
+      "aucun OAuth : l'utilisateur colle un jeton Meta au format long (EAA...)",
+      "pas de 'Connecter' en 2 clics",
+      "Platformes non supportées renvoyent 409 PLATFORM_NOT_AVAILABLE : l'UI doit le dire honnêtement, pas les cacher"
+    ]
+  },
+
+  "scheduledPublication": {
+    "description": "Onglet Planning : publication programmée",
+    "etatActuel": "AUCUN — il n'existe aucune table de publication planifiée. social_publish_requests n'a que submitted_at/published_at (passé), pas de date future",
+    "preuveAbsence": "generation-service V1__init_generation_schema.sql ne crée que generation_jobs, generation_outputs, social_publish_requests ; aucun @Scheduled n'existe à part TaskSchedulerService (tâches d'agents, pas des posts)",
+    "tableNOUVEAU": "CREATE TABLE scheduled_publications (id, request_id UNIQUE, user_email, agent_id, job_id, execution_version, output_index, platform, caption, scheduled_at TIMESTAMPTZ, timezone, status, attempts, published_at, remote_media_id, remote_permalink, error_code, error_message, created_at, updated_at, deleted)",
+    "statuts": ["PLANIFIE", "EN_COURS", "PUBLIE", "ECHEC", "ANNULE", "SUPPRIME"],
+    "softDelete": "supprimé = flag deleted + deletedAt, restaurable — cohérent avec le reste du schéma (BaseEntity.deleted)",
+    "mock": {
+      "id": "sch_01H8X5T9W2",
+      "media": { "jobId": "0cfb418c-15ce-4ff0-8341-5e3d30e27264", "type": "VIDEO", "url": "https://.../video-1.mp4" },
+      "plateformes": [
+        { "platform": "INSTAGRAM", "statut": "PUBLIE", "permalink": "https://www.instagram.com/reel/DdvVZ27j0lg/" },
+        { "platform": "FACEBOOK", "statut": "PUBLIE", "permalink": "https://www.facebook.com/4641858026132843" }
+      ],
+      "caption": "Nos procedes,...  #industrie #chimie",
+      "scheduleAt": "2026-10-02T08:30:00Z",
+      "timezone": "Europe/Paris",
+      "statut": "PUBLIE",
+      "supprime": false
+    },
+    "note": "Une ligne par (media x plateforme x date). Multi-plateformes = plusieurs lignes, sinon on perd l'état par réseau"
+  },
+
+  "mediaTimeline": {
+    "description": "Onglet Montage : description du montage à rendre",
+    "etatActuel": "AUCUN — c'est la plus grosse pièce manquante. Le worker video ne sait que monter une liste de clips stock encha deciding + voix off + musique, sans ordre ni coupes/transitions décrits par l'utilisateur",
+    "etatActuelPipeline": "local_pipeline.py : storyboard -> Visuels (stock) -> voix off -> sous-titres -> concat -> mixage -> mux. Aucune notion de timeline ni de transition",
+    "mock": {
+      "jobId": "0cfb418c-15ce-4ff0-8341-5e3d30e27264",
+      "format": "9:16",
+      "dureeCibleSecondes": 30,
+      "pistes": [
+        {
+          "type": "VIDEO",
+          "items": [
+            { "ordre": 0, "source": "BIBLIOTHEQUE", "objectKey": "px-2933662", "debut": 0, "duree": 4.5, "transition": "fondu", "recadrage": "remplissage" },
+            { "ordre": 1, "source": "UPLOAD", "objectKey": "user-uploads/plan-2.mp4", "debut": 4.5, "duree": 3.0, "transition": "coupe", "recadrage": "centre" }
+          ]
+        },
+        { "type": "VOIX", "texte": "Nos procedes gurissent 40% d'energie.", "voix": " DeniseNeural", "volume": 1.0 },
+        { "type": "MUSIQUE", "objectKey": "mus_energie.mp3", "volume": 0.12, "boucle": true },
+        { "type": "SOUS_TITRES", "style": "bas, blanc, contour noir", "langue": "fr" }
+      ]
+    },
+    "chargeEstimee": "Le worker doit accepter une timeline en entrée et la rendre (ffmpeg), et la generation-service doit la persister pour réédition. C'est un nouveau mode du worker, pas une option de plus."
+  },
+
+  "generationJob": {
+    "description": " existant — inchangé, mais deux champs à brancher",
+    "etatActuel": "generation_jobs : status QUEUED|PROCESSING|DONE|FAILED, stage texte libre, progress 0-100, options_json rejouées au retry, execution_version",
+    "aCompleter": {
+      "briefJson": "colonne TEXT : objectif, ton, publicCible, duree, format, avatarId. Indispensable pour que la galerie affiche le contexte d'un média sans deviner",
+      "format": "colonne TEXT : png|mp4. Permet de garantir le PNG et de filtrer la galerie"
+    }
+  },
+
+  "userUpload": {
+    "description": "Upload personnel (avatar, séquences)",
+    "etatActuel": "AUCUN dans generation-service. agent-team-service a POST /api/agents/upload-photo, mais c'est la photo de profil d'un agent, pas un média",
+    "endpointNOUVEAU": "POST /api/generation/uploads (multipart, type: avatar|sequence) -> objectKey + presigned url",
+    "controles": {
+      "avatar": "1 image, <= 10 Mo, jpg/png/webp",
+      "sequence": "1..10 videos, <= 200 Mo par fichier, mp4/mov/webm, resolution et duree normalisees a la sortie (le worker fait deja le ratio + ffmpeg pour le stock)"
+    }
+  }
+}
