@@ -70,6 +70,26 @@ git remote add prod root@157.173.114.181:/opt/creativeaistudio.git
 3. `scp` peut échouer (`subsystem request failed on channel 0`) sur ce serveur :
    reconstruire les JARs sur le serveur (`mvn -pl <mod> package -DskipTests`)
    plutôt que de transférer les binaires.
+4. **Le `target/` du serveur n'est pas mis à jour par `git push`.** Les images
+   Java font `COPY backend-java/<module>/target/*.jar app.jar` : un
+   `up -d --build` après un simple `git push` reconstruit une image *neuve*
+   qui empaquette un JAR *vieux* — ici un jar d'il y a 26 h, antérieur à
+   l'ajout de `AuthenticationFilter`. Symptôme trompeur : l'image est
+   fraîche, le `Started ...` est absent, et l'erreur ne parle que du filtre de
+   route. Toujours enchaîner Maven serveur → `build` → `up -d`, dans cet ordre.
+5. **Un nom de filtre de route non résolu casse toute l'API, silencieusement.**
+   Les fabriques sont résolues par le nom que Spring dérive de la classe
+   (`NameUtils.normalizeFilterFactoryName`) : ici `AuthenticationFilter`, pas
+   `Authentication` — l'erreur « Unable to find GatewayFilterFactory with name
+   X » ne dit pas quel nom était le bon, et elle annule le rafraîchissement des
+   routes, donc le contexte, donc le démarrage. Aucun test unitaire ne la voit
+   (les tests appellent la fabrique directement) : c'est couvert par
+   `GatewayRouteFilterNameTest` et `GatewayFilterFactoryRegistrationTest`, qui
+   montent le contexte avec le vrai `application.yml`.
+6. Une image peut démarrer et*n'*exécuter pas le nouveau code. Avant de conclure
+   au déploiement, vérifier une trace propre au nouveau code dans les logs
+   (ex. `[OFFICE] Hôtes de callback autorisés`) et l'empreinte du jar embarqué
+   (`docker exec <c> unzip -l /app/app.jar | grep <Classe>`).
 
 ## Premier déploiement (builds, à refaire à chaque changement de code Java/FS)
 
@@ -104,16 +124,27 @@ docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml 
   telegram-mcp-service api-gateway audio-worker video-worker face-worker pdf-worker ocr-worker frontend
 ```
 
-## Re-déploiement rapide (code seul, sans rebuild d'images)
+## Re-déploiement rapide (changement de code Java)
+
+Le `git push` ne touche pas aux `target/` : sans l'étape Maven, l'image
+reconstruit un jar périmé (piège 4).
 
 ```bash
 # Machine locale
 git push prod main                      # le hook fait le checkout à jour
 # ── puis sur le serveur ──
-cd /opt/creativeaistudio
+cd /opt/creativeaistudio/backend-java && mvn -o clean install -DskipTests && cd ..
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml \
-  up -d <service-modifié>               # recrée si le compose a changé
+  up -d --build <service-modifié>       # recrée si le compose a changé
 ```
+
+Lancer le build sur un seul module pour un redeploy d'un seul service :
+`mvn -o -pl <module> install -DskipTests`. Un `application.yml` monté en
+volume (cas de `api-gateway`) n'a besoin que d'un `restart`, pas d'un rebuild.
+
+Le hook du bare repo fait `git reset --hard` sur le worktree : toute modif
+non commitée **sur le serveur** est perdue. Ne jamais corriger un fichier de
+configuration uniquement en production.
 
 ## Vérifications
 
@@ -122,6 +153,27 @@ docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml 
 docker logs -f creativeai-auth          # OTP visible en log (REGISTRATION/etc.)
 curl -s https://ai.labibpro.com/api/auth/health          # "Auth Service is running"
 curl -s -X POST "https://ai.labibpro.com/api/auth/otp/send?email=vous@labibpro.com"
+```
+
+La gateway met ~75 s à démarrer (chargement lent des classes sur ce disque) :
+un `docker ps` « Up » ne veut pas dire « prêt ». Attendre le health :
+
+```bash
+# 200 = la gateway a résolu ses routes ; 000 = encore en course ou en crash-loop
+curl -s -o /dev/null -w '%{http_code}\n' -m 10 http://127.0.0.1:8480/actuator/health
+docker logs creativeai-gateway | grep -E 'Started ApiGatewayApplication|Application run failed'
+```
+
+Contrôles de sécurité (valeurs attendues entre parenthèses) :
+
+```bash
+B=https://ai.labibpro.com
+curl -s -o /dev/null -w '%{http_code}\n' -X POST $B/api/media/upload      # 401 : JWT exigé
+curl -s -o /dev/null -w '%{http_code}\n' $B/api/rag/documents              # 401
+curl -s -o /dev/null -w '%{http_code}\n' "$B/api/facebook/webhook?hub.mode=subscribe&hub.verify_token=x&hub.challenge=1"  # 503 : secret absent
+# OnlyOffice : la clé est en query param, pas dans le body
+curl -s -X POST "$B/api/office/callback?key=inconnu" -H 'Content-Type: application/json' \
+  -d '{"status":2,"url":"http://onlyoffice/cache/files/x"}'                # {"error":1}
 ```
 
 ## Nginx hôte (déjà configuré)
