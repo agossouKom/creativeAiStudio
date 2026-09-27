@@ -1,6 +1,7 @@
 package com.creativeai.gateway.filter;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,28 +21,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Les fabriques de filtres déclarées dans application.yml sont résolues par
- * leur nom Spring, pas par leur nom de classe : AbstractGatewayFilterFactory
- * dérive ce nom via NameUtils.normalizeFilterFactoryName, qui retire le
- * suffixe « Filter ». Écrire « AuthenticationFilter » dans une route fait
- * donc échouer le démarrage de la gateway avec
- * « Unable to find GatewayFilterFactory with name Authentication » — et comme
- * le symptôme n'apparaît qu'au démarrage du conteneur, aucun test unitaire ne
- * le voit. Ce test verrouille le nom.
+ * Les fabriques de filtres sont résolues par le nom que Spring dérive de la
+ * classe, pas par le nom de la classe. Un nom erroné dans application.yml ne
+ * produit qu'un échec au démarrage du conteneur (« Unable to find
+ * GatewayFilterFactory with name … »), qui annule le contexte applicatif et
+ * met toute l'API en 502 : invisible pour un test unitaire, qui appelle
+ * directement la fabrique. Ce test compare les noms écrits dans le yml aux
+ * noms réels des classes du projet.
  */
 class GatewayRouteFilterNameTest {
 
     private static final String FILTER_PACKAGE = "com.creativeai.gateway.filter";
 
     @Test
-    @DisplayName("tous les noms de filtres des routes sont des noms de fabriques Spring valides")
+    @DisplayName("les noms de filtres du yml correspondent aux fabriques du projet")
     void nomsDeFiltresValides() throws Exception {
         Set<String> nomsReels = nomsDesFabriquesDuProjet();
-        List<String> invalides = new ArrayList<>();
 
+        assertTrue(nomsReels.contains("AuthenticationFilter"),
+            "le scan n'a pas trouvé AuthenticationFilter, ce test ne protège rien : " + nomsReels);
+
+        List<String> invalides = new ArrayList<>();
         for (String nom : nomsDeFiltresUtilisesParLesRoutes()) {
-            // Seules les fabriques maison sont vérifiées : celles de Spring
-            // Cloud Gateway (RequestSize, StripPrefix...) sont hors de portée.
+            // Seules les fabriques de ce projet sont vérifiées : celles de
+            // Spring Cloud Gateway (RequestSize, RewritePath…) sont hors de
+            // portée du scan ci-dessus.
             if (correspondAUneFabriqueDuProjet(nom, nomsReels) && !nomsReels.contains(nom)) {
                 invalides.add(nom);
             }
@@ -49,28 +53,54 @@ class GatewayRouteFilterNameTest {
 
         if (!invalides.isEmpty()) {
             fail("Noms de filtres invalides dans application.yml : " + invalides
-                + " — attendu " + nomsReels + " (le suffixe « Filter » est retiré par Spring)");
+                + " — seules ces fabriques existent : " + nomsReels);
         }
-        assertTrue(!nomsReels.isEmpty(), "aucune fabrique de filtre détectée, le test ne protège rien");
     }
 
     @Test
-    @DisplayName("la route RAG est bien protégée par le filtre d'authentification")
-    void routeRagProtegee() throws Exception {
+    @DisplayName("chaque route protégée utilise bien AuthenticationFilter")
+    void routesProtegeesNommes() throws Exception {
+        List<String> routesAttendues = List.of(
+            "audio-ai", "video-ai", "face-ai", "docfusion-service",
+            "rag-service", "generation-service", "media-upload",
+            "oauth-social-authorize", "file-security");
+
         String yml = lireApplicationYml();
-        int debut = yml.indexOf("- id: rag-service");
-        assertTrue(debut > 0, "route rag-service absente d'application.yml");
+        List<String> manquantes = new ArrayList<>();
+        for (String route : routesAttendues) {
+            if (!routeUtiliseAuthenticationFilter(yml, route)) {
+                manquantes.add(route);
+            }
+        }
+        if (!manquantes.isEmpty()) {
+            fail("routes attendues sans AuthenticationFilter : " + manquantes);
+        }
+    }
+
+    @Test
+    @DisplayName("aucune route ne référence un nom de filtre d'authentification inventé")
+    void pasDeNomInvente() throws Exception {
+        for (String nom : nomsDeFiltresUtilisesParLesRoutes()) {
+            if (nom.toLowerCase().startsWith("auth") && !nom.equals("AuthenticationFilter")) {
+                fail("nom de filtre d'authentification inconnu : " + nom);
+            }
+        }
+    }
+
+    private boolean routeUtiliseAuthenticationFilter(String yml, String routeId) {
+        int debut = yml.indexOf("- id: " + routeId);
+        if (debut < 0) {
+            return false;
+        }
         int fin = yml.indexOf("- id:", debut + 1);
-        String route = yml.substring(debut, fin > 0 ? fin : yml.length());
-        assertTrue(route.contains("- Authentication\n"),
-            "la route rag-service doit garder le filtre Authentication (ingest/DELETE sans JWT)");
+        String route = yml.substring(debut, fin < 0 ? yml.length() : fin);
+        return route.contains("AuthenticationFilter");
     }
 
     private boolean correspondAUneFabriqueDuProjet(String nom, Set<String> nomsReels) {
         for (String reel : nomsReels) {
-            // « AuthenticationFilter » correspondrait à « Authentication » si on
-            // réattachait le suffixe : c'est précisément l'erreur à attraper.
-            if (nom.equalsIgnoreCase(reel) || nom.equalsIgnoreCase(reel + "Filter")
+            if (nom.equalsIgnoreCase(reel)
+                || nom.equalsIgnoreCase(reel + "Filter")
                 || nom.equalsIgnoreCase(reel + "GatewayFilterFactory")) {
                 return true;
             }
@@ -98,7 +128,6 @@ class GatewayRouteFilterNameTest {
     private Set<String> nomsDeFiltresUtilisesParLesRoutes() throws Exception {
         Set<String> noms = new LinkedHashSet<>();
         Object routes = sousCle(lireYaml(), "spring", "cloud", "gateway", "routes");
-
         if (routes instanceof List<?> liste) {
             for (Object route : liste) {
                 if (route instanceof Map<?, ?> r) {
@@ -138,7 +167,7 @@ class GatewayRouteFilterNameTest {
             if (in == null) {
                 fail("application.yml absent du classpath de test");
             }
-            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
