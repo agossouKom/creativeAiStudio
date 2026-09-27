@@ -173,3 +173,18 @@ logging:
 
 services:
   auth-base-url: ${AUTH_SERVICE_BASE_URL:http://auth-service:8081}
+
+# ── OAuth Social Networks ──────────────────────────────────────────────────
+oauth:
+  facebook:
+    app-id: ${FACEBOOK_APP_ID:}
+    app-secret: ${FACEBOOK_APP_SECRET:}
+  linkedin:
+    client-id: ${LINKEDIN_CLIENT_ID:}
+    client-secret: ${LINKEDIN_CLIENT_SECRET:}
+  twitter:
+    client-id: ${TWITTER_CLIENT_ID:}
+    client-secret: ${TWITTER_CLIENT_SECRET:}
+  tiktok:
+    client-key: ${TIKTOK_CLIENT_KEY:}
+    client-secret: ${TIKTOK_CLIENT_SECRET:}

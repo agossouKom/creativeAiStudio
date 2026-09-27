@@ -291,11 +291,29 @@ spring:
             - RewritePath=/api/user/products(?<segment>.*), /api/user/products${segment}
 
         - id: media-upload
-          uri: http://${AUTH_SERVICE_HOST:creativeai-auth}:8081
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
           predicates:
             - Path=/api/media/**
           filters:
             - RewritePath=/api/media/(?<segment>.*), /api/media/${segment}
+
+
+        # OAuth Social Networks (wizard non-technique)
+        - id: oauth-social
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/oauth/social/**
+          filters:
+            - RewritePath=/api/oauth/social/(?<segment>.*), /api/oauth/social/${segment}
+
+
+        # File Security Service (Scan & Sanitize)
+        - id: file-security
+          uri: http://${FILE_SECURITY_HOST:file-security-service}:8090
+          predicates:
+            - Path=/api/security/files/**
+          filters:
+            - RewritePath=/api/security/files/(?<segment>.*), /${segment}
 
         # Agentique IA — agents RAG (chemin /agent/* général — APRÈS les routes spécifiques)
         - id: agent-service

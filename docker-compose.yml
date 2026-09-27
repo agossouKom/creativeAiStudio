@@ -24,8 +24,17 @@ services:
   redis:
     image: redis:7-alpine
     container_name: creativeai-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
     ports:
       - "127.0.0.1:6383:6379" # Libre
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
@@ -675,6 +684,7 @@ services:
       VIDEO_GENERATION_RESULT_TOPIC: creativeai.video-generation.results
       IMAGE_GENERATION_INPUT_TOPIC: creativeai.image-generation
       IMAGE_GENERATION_RESULT_TOPIC: creativeai.image-generation.results
+      IMAGE_PROVIDER_CONFIGURED: ${IMAGE_PROVIDER_CONFIGURED:-false}
       # Publication sociale : désactivée par défaut, Facebook/Instagram sont
       # delegués a agent-team-service qui détient les credentials Meta.
       SOCIAL_PUBLISH_ENABLED: ${SOCIAL_PUBLISH_ENABLED:-false}
@@ -735,7 +745,28 @@ services:
       - api-gateway
     restart: unless-stopped
 
+
+  # ── File Security Microservice (Magic Bytes, Antivirus, Sanitize) ────────
+  file-security-service:
+    build:
+      context: ./file-security-service
+      dockerfile: Dockerfile
+    container_name: creativeai-file-security
+    environment:
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-}
+      - MAX_IMAGE_SIZE_MB=15
+      - MAX_VIDEO_SIZE_MB=500
+      - MAX_DOC_SIZE_MB=50
+    ports:
+      - "127.0.0.1:8090:8090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 volumes:
+  redis_data:
   postgres_data:
   minio_data:
   pgadmin_data:

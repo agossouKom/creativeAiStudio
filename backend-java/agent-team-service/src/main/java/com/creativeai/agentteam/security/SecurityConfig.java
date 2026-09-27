@@ -32,7 +32,12 @@ public class SecurityConfig {
                 .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                 .requestMatchers(
                     "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
-                    "/actuator/health", "/actuator/info"
+                    "/actuator/health", "/actuator/info",
+                    "/api/oauth/social/**",
+                    "/api/media/**",
+                    "/api/facebook/webhook/**",
+                    "/api/telegram/webhook/**",
+                    "/api/whatsapp/webhook/**"
                 ).permitAll()
                 .anyRequest().authenticated()
             )
