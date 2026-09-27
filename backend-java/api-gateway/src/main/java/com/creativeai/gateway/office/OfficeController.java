@@ -1,7 +1,6 @@
 package com.creativeai.gateway.office;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -28,7 +27,6 @@ import java.util.stream.Collectors;
 @Slf4j
 @RestController
 @RequestMapping("/api/office")
-@RequiredArgsConstructor
 public class OfficeController {
 
     private final ReactiveStringRedisTemplate redis;

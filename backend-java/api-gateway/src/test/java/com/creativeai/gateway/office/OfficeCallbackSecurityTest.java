@@ -149,6 +149,18 @@ class OfficeCallbackSecurityTest {
     }
 
     @Test
+    @DisplayName("un seul constructeur injectable, sinon Spring ne démarre pas")
+    void unSeulConstructeur() {
+        // Lombok @RequiredArgsConstructor laissé en place alors qu'un
+        // constructeur explicite est ajouté : deux constructeurs, aucun
+        // @Autowired → Spring lève « No default constructor found » et le
+        // conteneur gateway boucle en crash-restart. Le Symptôme est invisible
+        // aux tests unitaires, qui appellent le constructeur directement.
+        assertEquals(1, OfficeController.class.getConstructors().length,
+            "OfficeController doit exposer un unique constructeur injectable");
+    }
+
+    @Test
     @DisplayName("hôte supplémentaire autorisé explicitement → accepté")
     void hoteSurchargeable() {
         // Un OnlyOffice installé hors du réseau Docker doit rester utilisable,
