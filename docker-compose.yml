@@ -653,6 +653,11 @@ services:
         condition: service_started
       minio:
         condition: service_started
+      # MediaController est fail-closed : sans scanner, les uploads répondent 503.
+      # `service_started` (et non `service_healthy`) ordonne le démarrage sans
+      # coupler la disponibilité des uploads à celle du scanner.
+      file-security-service:
+        condition: service_started
     volumes:
       - ./backend-java/agent-team-service/target/agent-team-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     restart: unless-stopped

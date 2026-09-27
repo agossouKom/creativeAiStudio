@@ -89,6 +89,10 @@ TIER3=(
   "face-worker|creativeai-face-ai|started|search"
   "pdf-worker|creativeai-pdf-ai|started|search"
   "ocr-worker|creativeai-ocr-ai|started|search"
+  # Scanner antivirus. Non bloquant pour le démarrage (les uploads répondent
+  # 503, pas 200), mais à surveiller : c'est un point de défaillance unique
+  # pour tous les uploads, et MediaController est volontairement fail-closed.
+  "file-security-service|creativeai-file-security|started|agent-team"
 )
 
 # Tier 4 — Services support (optionnels au démarrage)

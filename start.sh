@@ -78,7 +78,7 @@ INFRA_SERVICES=(postgres redis redpanda minio otel-collector jaeger prometheus g
 INIT_SERVICES=(kafka-topics-init)
 CORE_SERVICES=(auth-service api-gateway)
 APP_SERVICES=(agent-team-service generation-service rag-service search-service docfusion-service)
-AI_WORKERS=(audio-worker video-worker face-worker pdf-worker ocr-worker video-generation-worker image-generation-worker)
+AI_WORKERS=(audio-worker video-worker face-worker pdf-worker ocr-worker video-generation-worker image-generation-worker file-security-service)
 SUPPORT_SERVICES=(gotenberg onlyoffice rxresume penpot-backend penpot-exporter penpot-frontend penpot-mcp telegram-mcp-service ollama)
 FRONT_SERVICES=(frontend)
 
@@ -99,6 +99,7 @@ declare -A SERVICE_URLS=(
   [penpot-frontend]="http://localhost:9090"
   [gotenberg]="http://localhost:3200"
   [telegram-mcp-service]="http://localhost:8092"
+  [file-security-service]="http://localhost:8090"
 )
 
 # ── Vérification prérequis ─────────────────────────────────────

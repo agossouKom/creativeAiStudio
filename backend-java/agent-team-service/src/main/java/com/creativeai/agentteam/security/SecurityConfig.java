@@ -33,8 +33,12 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
                     "/actuator/health", "/actuator/info",
-                    "/api/oauth/social/**",
-                    "/api/media/**",
+                    // Callback OAuth : appelé par la plateforme via une redirection navigateur,
+                    // sans JWT. La sécurité est portée par le `state` à usage unique lié à
+                    // l'utilisateur qui a démarré le flow — PAS par un permitAll large.
+                    "/api/oauth/social/*/callback",
+                    // Webhooks entrants : authentifiés par leur propre jeton
+                    // (verify_token Meta, secret Telegram/WhatsApp) dans le handler.
                     "/api/facebook/webhook/**",
                     "/api/telegram/webhook/**",
                     "/api/whatsapp/webhook/**"

@@ -2,6 +2,7 @@
 # Deploy a backend service: build JAR then rebuild Docker image.
 # Usage: ./deploy.sh <service>
 #   service: agent-team | generation | api-gateway | auth | search | rag | docfusion
+#            | file-security | frontend
 set -euo pipefail
 
 SERVICE=${1:-agent-team}
@@ -32,6 +33,14 @@ case "$SERVICE" in
     MODULE="backend-java/docfusion-service"
     CONTAINER="docfusion-service"
     ;;
+  # Worker Python : pas de JAR, on reconstruit directement l'image.
+  file-security)
+    echo "==> Building file-security-service image..."
+    cd "$ROOT"
+    docker compose up -d --build --force-recreate --no-deps file-security-service
+    echo "✅ file-security-service deployed"
+    exit 0
+    ;;
   frontend)
     echo "==> Building Angular frontend..."
     cd "$ROOT/frontend"
@@ -44,7 +53,7 @@ case "$SERVICE" in
     ;;
   *)
     echo "Unknown service: $SERVICE"
-    echo "Usage: $0 agent-team|generation|api-gateway|auth|search|docfusion|frontend"
+    echo "Usage: $0 agent-team|generation|api-gateway|auth|search|docfusion|file-security|frontend"
     exit 1
     ;;
 esac

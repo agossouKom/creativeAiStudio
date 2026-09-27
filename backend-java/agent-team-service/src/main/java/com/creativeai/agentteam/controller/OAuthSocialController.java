@@ -4,11 +4,13 @@ import com.creativeai.agentteam.dto.request.ChannelRequest;
 import com.creativeai.agentteam.model.enums.ChannelStatus;
 import com.creativeai.agentteam.model.enums.ChannelType;
 import com.creativeai.agentteam.model.enums.PlatformType;
+import com.creativeai.agentteam.model.Agent;
 import com.creativeai.agentteam.model.Channel;
 import com.creativeai.agentteam.repository.AgentRepository;
 import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
+import com.creativeai.agentteam.service.OAuthStateStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,7 +19,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
@@ -26,6 +30,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.*;
 
 /**
@@ -33,15 +38,17 @@ import java.util.*;
  *
  * Flow complet sans copier-coller de tokens :
  *   1. GET  /api/oauth/social/{platform}/authorize?agentId=xxx  → URL OAuth à ouvrir
+ *      (AUTHENTIFIÉ : l'agent doit appartenir à l'utilisateur, l'état est lié à lui)
  *   2. L'utilisateur clique, s'authentifie sur la plateforme
  *   3. La plateforme redirige vers GET /api/oauth/social/{platform}/callback?code=...&state=...
+ *      (public par nécessité : c'est le `state` opaque à usage unique qui fait foi)
  *   4. Le backend échange le code, chiffre les tokens, crée/met à jour le Channel
  *   5. Redirection vers le frontend (page de succès ou d'erreur)
  *
  * Plateformes supportées :
  *   - FACEBOOK / INSTAGRAM : Meta OAuth (Graph API v19)
  *   - LINKEDIN             : LinkedIn OAuth 2.0
- *   - TWITTER_X            : Twitter OAuth 2.0 PKCE
+ *   - TWITTER_X            : Twitter OAuth 2.0 PKCE (S256)
  *   - TIKTOK               : TikTok OAuth 2.0
  *   - YOUTUBE              : Google OAuth 2.0 (YouTube Data API v3)
  */
@@ -56,6 +63,7 @@ public class OAuthSocialController {
     private final ChannelRepository channelRepo;
     private final AgentRepository agentRepo;
     private final EncryptionService encryptionService;
+    private final OAuthStateStore stateStore;
     private final ObjectMapper objectMapper;
 
     // ── Config ───────────────────────────────────────────────────────────────
@@ -96,17 +104,24 @@ public class OAuthSocialController {
     @Value("${GMAIL_CLIENT_SECRET:}")
     private String googleClientSecret;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate = buildRestTemplate();
 
-    // ── État OAuth temporaire (state → agentId:userId) — Redis-backed ────────
-    // Utilise une map en mémoire pour la démo ; en prod → RedisTemplate TTL 10min
-    private final Map<String, String> oauthStateStore = new java.util.concurrent.ConcurrentHashMap<>();
+    /**
+     * Les échanges de tokens partent vers des API tierces : sans timeout, une
+     * plateforme qui ne répond pas immobilise les threads du pool Tomcat et
+     * l'endpoint `/callback` finit par répondre 503 au navigateur de l'utilisateur.
+     */
+    private static RestTemplate buildRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofSeconds(15));
+        return new RestTemplate(factory);
+    }
 
     // ── Constantes ───────────────────────────────────────────────────────────
 
     private static final String FB_AUTH_URL   = "https://www.facebook.com/v19.0/dialog/oauth";
     private static final String FB_TOKEN_URL  = "https://graph.facebook.com/v19.0/oauth/access_token";
-    private static final String FB_ME_URL     = "https://graph.facebook.com/v19.0/me";
     private static final String FB_PAGES_URL  = "https://graph.facebook.com/v19.0/me/accounts";
 
     private static final String LI_AUTH_URL   = "https://www.linkedin.com/oauth/v2/authorization";
@@ -124,8 +139,11 @@ public class OAuthSocialController {
     private static final String YT_TOKEN_URL  = "https://oauth2.googleapis.com/token";
     private static final String YT_ME_URL     = "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true";
 
+    private static final Set<String> SUPPORTED_PLATFORMS =
+        Set.of("FACEBOOK", "INSTAGRAM", "LINKEDIN", "TWITTER_X", "TIKTOK", "YOUTUBE");
+
     // ═════════════════════════════════════════════════════════════════════════
-    //  STEP 1 — Générer l'URL d'autorisation OAuth
+    //  STEP 1 — Générer l'URL d'autorisation OAuth (AUTHENTIFIÉ)
     // ═════════════════════════════════════════════════════════════════════════
 
     @Operation(
@@ -134,33 +152,73 @@ public class OAuthSocialController {
             Retourne l'URL à ouvrir dans le navigateur pour authoriser la connexion.
             L'utilisateur n'a rien à copier-coller : cliquer sur le lien suffit.
 
+            Requiert un JWT valide et un `agentId` appartenant à l'utilisateur.
+
             **Plateformes** : FACEBOOK, INSTAGRAM, LINKEDIN, TWITTER_X, TIKTOK, YOUTUBE
             """
     )
     @GetMapping("/{platform}/authorize")
     public ResponseEntity<Map<String, Object>> getAuthUrl(
-            @AuthenticationPrincipal String userId,
+            Authentication authentication,
             @PathVariable String platform,
-            @RequestParam String agentId,
+            @RequestParam(required = false) String agentId,
             @RequestParam(required = false) String channelId) {
 
-        String effectiveUserId = (userId != null && !userId.isBlank())
-            ? userId
-            : agentRepo.findById(agentId).map(a -> a.getOwnerId()).orElse("default-user");
+        // 1. Authentification obligatoire — plus de repli sur l'owner de l'agent.
+        String userId = authenticatedUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("error", "Authentification requise pour démarrer une connexion OAuth"));
+        }
+        if (agentId == null || agentId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "agentId est obligatoire"));
+        }
 
-        String state = UUID.randomUUID().toString();
-        // Stocker state → userId:agentId[:channelId]
-        String stateValue = effectiveUserId + ":" + agentId + (channelId != null ? ":" + channelId : "");
-        oauthStateStore.put(state, stateValue);
+        // 2. Plateforme supportée (validée avant de consommer quoi que ce soit).
+        String platformUpper;
+        try {
+            platformUpper = requireSupportedPlatform(platform);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
 
-        String authUrl;
+        // 3. L'agent doit appartenir à l'utilisateur authentifié : sans cette
+        //    vérification, un utilisateur authentifié pourrait démarrer un flow sur
+        //    l'agent d'un autre et y rattacher un canal.
+        Agent agent = agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, userId).orElse(null);
+        if (agent == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("error", "Agent introuvable ou non autorisé pour cet utilisateur"));
+        }
+
+        // 4. Si un canal est fourni, il doit appartenir à cet agent.
+        String effectiveChannelId = (channelId != null && !channelId.isBlank()) ? channelId : null;
+        if (effectiveChannelId != null
+            && channelRepo.findByIdAndAgentIdAndDeletedFalse(effectiveChannelId, agentId).isEmpty()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("error", "Canal introuvable ou non autorisé pour cet agent"));
+        }
+
+        // 5. Émission d'un état opaque, imprévisible, à usage unique, borné dans le
+        //    temps et lié à (utilisateur, agent, canal, plateforme).
+        OAuthStateStore.Issued issued;
+        try {
+            issued = stateStore.issue(userId, agentId, effectiveChannelId, platformUpper);
+        } catch (IllegalStateException e) {
+            log.warn("[OAUTH] Émission d'état refusée : {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of("error", "Trop de connexions OAuth en cours, réessayez dans un instant"));
+        }
+
+        String state = issued.state();
         String callbackUri = publicUrl + "/api/oauth/social/" + platform.toLowerCase() + "/callback";
 
+        String authUrl;
         try {
-            authUrl = switch (platform.toUpperCase()) {
-                case "FACEBOOK", "INSTAGRAM" -> buildFbAuthUrl(callbackUri, state, platform.toUpperCase());
+            authUrl = switch (platformUpper) {
+                case "FACEBOOK", "INSTAGRAM" -> buildFbAuthUrl(callbackUri, state, platformUpper);
                 case "LINKEDIN"   -> buildLinkedinAuthUrl(callbackUri, state);
-                case "TWITTER_X"  -> buildTwitterAuthUrl(callbackUri, state);
+                case "TWITTER_X"  -> buildTwitterAuthUrl(callbackUri, state, issued.codeVerifier());
                 case "TIKTOK"     -> buildTiktokAuthUrl(callbackUri, state);
                 case "YOUTUBE"    -> buildYoutubeAuthUrl(callbackUri, state);
                 default -> throw new IllegalArgumentException("Plateforme non supportée : " + platform);
@@ -170,21 +228,25 @@ public class OAuthSocialController {
         }
 
         // Vérifier si les clés sont configurées
-        boolean configured = isPlatformConfigured(platform.toUpperCase());
+        boolean configured = isPlatformConfigured(platformUpper);
 
         return ResponseEntity.ok(Map.of(
-            "platform",    platform.toUpperCase(),
+            "platform",    platformUpper,
             "authUrl",     authUrl,
             "state",       state,
             "configured",  configured,
+            "expiresInSeconds", stateStore.ttl().toSeconds(),
             "message",     configured
                 ? "Cliquez sur authUrl pour connecter votre compte"
-                : "Clés OAuth non configurées pour " + platform + " — voir CONFIGURATION.md"
+                : "Clés OAuth non configurées pour " + platformUpper + " — voir CONFIGURATION.md"
         ));
     }
 
     // ═════════════════════════════════════════════════════════════════════════
     //  STEP 2 — Callback OAuth (la plateforme redirige ici après autorisation)
+    //
+    //  Public par nécessité (redirection navigateur). La sécurité tient au `state` :
+    //  opaque, à usage unique, expiré et lié à l'utilisateur initiateur.
     // ═════════════════════════════════════════════════════════════════════════
 
     // ── Facebook / Instagram ─────────────────────────────────────────────────
@@ -252,8 +314,20 @@ public class OAuthSocialController {
     @Operation(summary = "Lister les plateformes sociales connectées pour un agent")
     @GetMapping("/status/{agentId}")
     public ResponseEntity<List<Map<String, Object>>> platformStatus(
-            @AuthenticationPrincipal String userId,
+            Authentication authentication,
             @PathVariable String agentId) {
+
+        // Même règle d'ownership que /authorize : sinon un utilisateur authentifié
+        // pourrait énumérer les comptes connectés sur l'agent d'un autre.
+        String userId = authenticatedUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(List.of(Map.of("error", "Authentification requise")));
+        }
+        if (agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, userId).isEmpty()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(List.of(Map.of("error", "Agent introuvable ou non autorisé")));
+        }
 
         List<Channel> channels = channelRepo.findByAgentIdAndDeletedFalse(agentId)
             .stream()
@@ -281,6 +355,41 @@ public class OAuthSocialController {
     //  Helpers — Construction des URLs OAuth
     // ═════════════════════════════════════════════════════════════════════════
 
+    private String requireSupportedPlatform(String platform) {
+        if (platform == null || platform.isBlank()) {
+            throw new IllegalArgumentException("Plateforme manquante");
+        }
+        String normalized = platform.toUpperCase();
+        if (!SUPPORTED_PLATFORMS.contains(normalized)) {
+            throw new IllegalArgumentException("Plateforme non supportée : " + platform);
+        }
+        return normalized;
+    }
+
+    /**
+     * Identifiant de l'appelant, ou {@code null} s'il n'est pas authentifié.
+     *
+     * <p>Attention : {@code @AuthenticationPrincipal String} ne suffit pas. Le filtre
+     * d'anonymat de Spring Security installe un {@code AnonymousAuthenticationToken}
+     * dont le principal est la chaîne {@code "anonymousUser"}, qui est injectée sans
+     * être nulle ni vide. Un test {@code userId == null} laisse donc passer un
+     * appelant anonyme comme si c'était un utilisateur : il faut regarder le type
+     * d'authentification.
+     */
+    private static String authenticatedUserId(Authentication authentication) {
+        if (authentication == null
+            || !authentication.isAuthenticated()
+            || authentication instanceof AnonymousAuthenticationToken) {
+            return null;
+        }
+        Object principal = authentication.getPrincipal();
+        if (principal == null) {
+            return null;
+        }
+        String userId = principal.toString();
+        return userId.isBlank() ? null : userId;
+    }
+
     private String buildFbAuthUrl(String callbackUri, String state, String platform) {
         String scope = "INSTAGRAM".equals(platform)
             ? "pages_show_list,instagram_basic,instagram_content_publish,instagram_manage_comments,pages_read_engagement"
@@ -304,10 +413,10 @@ public class OAuthSocialController {
             .build(false).toUriString();
     }
 
-    private String buildTwitterAuthUrl(String callbackUri, String state) {
-        // PKCE — code_verifier stocké en state pour la démo ; en prod → Redis
-        String codeChallenge = Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(state.getBytes(StandardCharsets.UTF_8));
+    private String buildTwitterAuthUrl(String callbackUri, String state, String codeVerifier) {
+        // PKCE S256 — le vérificateur aléatoire ne quitte JAMAIS le serveur : il est
+        // conservé dans l'état OAuth et rejoué uniquement lors de l'échange du code.
+        String codeChallenge = OAuthStateStore.s256Challenge(codeVerifier);
         return UriComponentsBuilder.fromHttpUrl(TW_AUTH_URL)
             .queryParam("response_type",         "code")
             .queryParam("client_id",             twitterClientId.isBlank() ? "YOUR_TW_CLIENT_ID" : twitterClientId)
@@ -315,7 +424,7 @@ public class OAuthSocialController {
             .queryParam("state",                 state)
             .queryParam("scope",                 "tweet.read tweet.write users.read offline.access")
             .queryParam("code_challenge",        codeChallenge)
-            .queryParam("code_challenge_method", "plain")
+            .queryParam("code_challenge_method", "S256")
             .build(false).toUriString();
     }
 
@@ -349,33 +458,45 @@ public class OAuthSocialController {
         String redirectBase = frontendUrl + "/agentique/reseaux";
 
         // Erreur renvoyée par la plateforme
-        if (error != null || code == null) {
+        if (error != null || code == null || code.isBlank()) {
             String msg = error != null ? error : "no_code";
             log.warn("[OAUTH_{}] Callback erreur: {}", platform, msg);
             return redirect(redirectBase + "?oauth_error=" + encode(msg) + "&platform=" + platform);
         }
 
-        // Récupérer state
-        String stateValue = oauthStateStore.remove(state);
-        if (stateValue == null) {
-            log.warn("[OAUTH_{}] State inconnu: {}", platform, state);
+        // Consommer l'état : à usage unique, il disparaît du store à cet appel.
+        // Un state absent = rejeu, expiration, ou simple forçage d'une URL de
+        // callback : dans les trois cas on refuse, l'agent n'est jamais touché.
+        OAuthStateStore.Entry entry = stateStore.consume(state).orElse(null);
+        if (entry == null) {
+            log.warn("[OAUTH_{}] State absent, expiré ou déjà utilisé : {}", platform, state);
             return redirect(redirectBase + "?oauth_error=invalid_state&platform=" + platform);
         }
 
-        String[] parts  = stateValue.split(":");
-        String userId   = parts[0];
-        String agentId  = parts[1];
-        String channelId = parts.length > 2 ? parts[2] : null;
+        // L'état est lié à la plateforme qui l'a émis : un state Facebook ne peut pas
+        // être consommé sur le callback Twitter (sinon tokens d'une plateforme
+        // accepted pour une autre).
+        if (!entry.platform().equals(platform)) {
+            log.warn("[OAUTH_{}] State émis pour {} présenté sur le callback {}",
+                platform, entry.platform(), platform);
+            return redirect(redirectBase + "?oauth_error=invalid_state&platform=" + platform);
+        }
+
+        String userId    = entry.userId();
+        String agentId   = entry.agentId();
+        String channelId = entry.channelId();
 
         try {
             String callbackUri = publicUrl + "/api/oauth/social/" + platform.toLowerCase() + "/callback";
-            Map<String, Object> credentials = exchangeCodeForCredentials(platform, code, callbackUri, state);
+            Map<String, Object> credentials =
+                exchangeCodeForCredentials(platform, code, callbackUri, entry.codeVerifier());
             String accountName = (String) credentials.getOrDefault("accountName", platform + " Account");
             String accountId   = (String) credentials.getOrDefault("accountId", "");
             String credsJson   = objectMapper.writeValueAsString(credentials);
 
             if (channelId != null && !channelId.isBlank()) {
-                // Mettre à jour un canal existant
+                // Mettre à jour un canal existant (createChannel/connect revalident
+                // l'ownership de l'agent via resolveAgent).
                 Channel ch = channelRepo.findById(channelId)
                     .filter(c -> c.getAgent().getId().equals(agentId))
                     .orElse(null);
@@ -409,8 +530,11 @@ public class OAuthSocialController {
             return redirect(redirectBase + "?oauth_success=true&platform=" + platform + "&account=" + encode(accountName));
 
         } catch (Exception e) {
-            log.error("[OAUTH_{}] Erreur échange code: {}", platform, e.getMessage(), e);
-            return redirect(redirectBase + "?oauth_error=" + encode(e.getMessage()) + "&platform=" + platform);
+            // Le détail technique reste dans les logs : `e.getMessage()` peut contenir
+            // des URLs d'API, des noms de colonnes ou des détails du fournisseur,
+            // qui n'ont rien à faire dans l'URL redirigée vers le navigateur.
+            log.error("[OAUTH_{}] Erreur échange code pour l'agent {} : {}", platform, agentId, e.getMessage(), e);
+            return redirect(redirectBase + "?oauth_error=exchange_failed&platform=" + platform);
         }
     }
 
@@ -419,11 +543,11 @@ public class OAuthSocialController {
     // ═════════════════════════════════════════════════════════════════════════
 
     private Map<String, Object> exchangeCodeForCredentials(String platform, String code,
-                                                            String callbackUri, String state) throws Exception {
+                                                            String callbackUri, String codeVerifier) throws Exception {
         return switch (platform) {
             case "FACEBOOK", "INSTAGRAM" -> exchangeFbCode(platform, code, callbackUri);
             case "LINKEDIN"  -> exchangeLinkedinCode(code, callbackUri);
-            case "TWITTER_X" -> exchangeTwitterCode(code, callbackUri, state);
+            case "TWITTER_X" -> exchangeTwitterCode(code, callbackUri, codeVerifier);
             case "TIKTOK"    -> exchangeTiktokCode(code, callbackUri);
             case "YOUTUBE"   -> exchangeYoutubeCode(code, callbackUri);
             default -> throw new IllegalArgumentException("Plateforme non supportée: " + platform);
@@ -532,9 +656,10 @@ public class OAuthSocialController {
         return creds;
     }
 
-    private Map<String, Object> exchangeTwitterCode(String code, String callbackUri, String state) throws Exception {
-        // PKCE — code_verifier = state (démo simplifiée)
-        String codeVerifier = state;
+    private Map<String, Object> exchangeTwitterCode(String code, String callbackUri, String codeVerifier) throws Exception {
+        if (codeVerifier == null || codeVerifier.isBlank()) {
+            throw new IllegalStateException("Vérificateur PKCE absent pour l'échange Twitter");
+        }
 
         String credentials = Base64.getEncoder().encodeToString(
             (twitterClientId + ":" + twitterClientSecret).getBytes(StandardCharsets.UTF_8));

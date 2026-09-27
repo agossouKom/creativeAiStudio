@@ -290,30 +290,51 @@ spring:
           filters:
             - RewritePath=/api/user/products(?<segment>.*), /api/user/products${segment}
 
+        # Upload de médias — authentifié : un upload sans JWT est refusé à la
+        # gateway (et une seconde fois par SecurityConfig côté agent-team).
         - id: media-upload
           uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
           predicates:
             - Path=/api/media/**
           filters:
             - RewritePath=/api/media/(?<segment>.*), /api/media/${segment}
+            - name: Authentication
 
 
         # OAuth Social Networks (wizard non-technique)
-        - id: oauth-social
+        #
+        # Deux routes distinctes, et c'est volontaire :
+        #  - /authorize et /status sont appelés par le frontend porteur du JWT ;
+        #  - /callback est une redirection navigateur de la plateforme, sans
+        #    Authorization. Lui mettre le filtre renverrait 401 et casserait
+        #    toute connexion. Sa sécurité tient au `state` opaque à usage unique
+        #    (OAuthStateStore), pas à un permitAll de préfixe.
+        - id: oauth-social-authorize
           uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
           predicates:
-            - Path=/api/oauth/social/**
+            - Path=/api/oauth/social/*/authorize,/api/oauth/social/status/**
+          filters:
+            - RewritePath=/api/oauth/social/(?<segment>.*), /api/oauth/social/${segment}
+            - name: Authentication
+
+        - id: oauth-social-callback
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/oauth/social/*/callback
           filters:
             - RewritePath=/api/oauth/social/(?<segment>.*), /api/oauth/social/${segment}
 
 
-        # File Security Service (Scan & Sanitize)
+        # File Security Service (Scan & Sanitize) — jamais accessible sans JWT :
+        # le scan est un service interne, l'exposer reviendrait à offrir à
+        # quiconque un oracle de détection et un relais de fichiers.
         - id: file-security
           uri: http://${FILE_SECURITY_HOST:file-security-service}:8090
           predicates:
             - Path=/api/security/files/**
           filters:
             - RewritePath=/api/security/files/(?<segment>.*), /${segment}
+            - name: Authentication
 
         # Agentique IA — agents RAG (chemin /agent/* général — APRÈS les routes spécifiques)
         - id: agent-service
