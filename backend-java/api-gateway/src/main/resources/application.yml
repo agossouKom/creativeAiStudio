@@ -74,7 +74,7 @@ spring:
           predicates:
             - Path=/api/search/**
           filters:
-            # - AuthenticationFilter
+            # - Authentication   (nom Spring = classe sans le suffixe « Filter »)
             - RewritePath=/api/search/(?<segment>.*), /search/${segment}
 
         # AI Audio Worker (Python)
@@ -83,7 +83,7 @@ spring:
           predicates:
             - Path=/api/ai/audio/**
           filters:
-            - AuthenticationFilter
+            - Authentication
 
         # AI Video Worker (Python)
         - id: video-ai
@@ -91,7 +91,7 @@ spring:
           predicates:
             - Path=/api/ai/video/**
           filters:
-            - AuthenticationFilter
+            - Authentication
 
         # AI Face Worker (Python)
         - id: face-ai
@@ -99,7 +99,7 @@ spring:
           predicates:
             - Path=/api/ai/face/**
           filters:
-            - AuthenticationFilter
+            - Authentication
 
         # DocFusion Service (uploads protégés JWT — l'UI requiert déjà la connexion)
         - id: docfusion-service
@@ -107,7 +107,7 @@ spring:
           predicates:
             - Path=/api/docfusion/**
           filters:
-            - AuthenticationFilter
+            - Authentication
             - RewritePath=/api/docfusion/(?<segment>.*), /docfusion/${segment}
 
         # RAG Service
@@ -119,7 +119,7 @@ spring:
             # Sans ce filtre, /api/rag/ingest acceptait n'importe quel upload
             # et DELETE /api/rag/documents vidait toute la base de connaissance,
             # le tout sans jeton et depuis l'Internet public.
-            - AuthenticationFilter
+            - Authentication
             - RewritePath=/api/rag/(?<segment>.*), /rag/${segment}
 
         # OCR Worker (Groq Vision → Tesseract fallback)
@@ -166,7 +166,7 @@ spring:
           predicates:
             - Path=/api/generation/**
           filters:
-            - AuthenticationFilter
+            - Authentication
             - RewritePath=/api/generation/(?<segment>.*), /api/generation/${segment}
 
         # ── Agent Team Service — DOIT être AVANT les routes agent génériques ──────
