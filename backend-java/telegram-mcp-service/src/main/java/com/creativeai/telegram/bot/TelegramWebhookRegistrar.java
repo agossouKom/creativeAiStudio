@@ -43,16 +43,29 @@ public class TelegramWebhookRegistrar {
         }
 
         String webhookUrl = props.telegram().webhookUrl();
+        String secret     = props.telegram().webhookSecret();
+
         if (webhookUrl != null && !webhookUrl.isBlank()) {
-            registerWebhook(token, webhookUrl);
+            // Enregistrer un webhook sans secret alors que le contrôleur est
+            // fail-closed, c'est créer un endpoint que Telegram lui-même ne peut
+            // plus appeler (toutes ses POST recevraient un 503). Mieux vaut ne pas
+            // enregistrer et laisser le long-polling prendre le relais.
+            if (secret == null || secret.isBlank()) {
+                log.error("[WEBHOOK] TELEGRAM_WEBHOOK_URL est défini mais TELEGRAM_WEBHOOK_SECRET "
+                    + "est vide — webhook NON enregistré. Le contrôleur étant fail-closed, "
+                    + "Telegram ne pourrait pas l'atteindre. Repli sur le long-polling. "
+                    + "Définir TELEGRAM_WEBHOOK_SECRET (Telegram n'accepte que [A-Za-z0-9_-]{1,256}).");
+                deleteWebhook(token);
+                return;
+            }
+            registerWebhook(token, webhookUrl, secret);
         } else {
             deleteWebhook(token);
         }
     }
 
-    private void registerWebhook(String token, String webhookUrl) {
+    private void registerWebhook(String token, String webhookUrl, String secret) {
         try {
-            String secret = props.telegram().webhookSecret();
             String bodyJson = buildSetWebhookBody(webhookUrl, secret);
 
             HttpRequest req = HttpRequest.newBuilder()
@@ -88,9 +101,8 @@ public class TelegramWebhookRegistrar {
         sb.append("\"url\":\"").append(webhookUrl).append("\"");
         sb.append(",\"allowed_updates\":[\"message\",\"edited_message\",\"callback_query\"]");
         sb.append(",\"max_connections\":40");
-        if (secret != null && !secret.isBlank()) {
-            sb.append(",\"secret_token\":\"").append(secret).append("\"");
-        }
+        // Toujours présent : l'appelant garantit déjà que secret n'est pas vide.
+        sb.append(",\"secret_token\":\"").append(secret).append("\"");
         sb.append("}");
         return sb.toString();
     }

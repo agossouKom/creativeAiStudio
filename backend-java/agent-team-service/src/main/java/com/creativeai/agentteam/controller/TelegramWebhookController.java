@@ -3,13 +3,13 @@ package com.creativeai.agentteam.controller;
 import com.creativeai.agentteam.dto.request.CreateTaskRequest;
 import com.creativeai.agentteam.model.enums.TaskSource;
 import com.creativeai.agentteam.model.enums.TaskType;
+import com.creativeai.agentteam.security.WebhookVerifier;
 import com.creativeai.agentteam.service.TaskService;
 import com.creativeai.agentteam.util.MessagingTaskParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,9 +29,7 @@ public class TelegramWebhookController {
 
     private final TaskService   taskService;
     private final ObjectMapper  objectMapper;
-
-    @Value("${telegram.webhook-secret:}")
-    private String webhookSecret;
+    private final WebhookVerifier verifier;
 
     @PostMapping("/{userId}")
     public ResponseEntity<String> receive(
@@ -39,10 +37,15 @@ public class TelegramWebhookController {
             @RequestHeader(value = "X-Telegram-Bot-Api-Secret-Token", required = false) String secret,
             @RequestBody String payload) {
 
-        // Vérification optionnelle du secret
-        if (!webhookSecret.isBlank() && !webhookSecret.equals(secret)) {
-            log.warn("[TELEGRAM] Secret token invalide pour userId={}", userId);
-            return ResponseEntity.status(403).body("Forbidden");
+        // Avant : `if (!webhookSecret.isBlank() && ...)`. Avec la variable vide —
+        // ce qui était le cas, le compose ne la passait pas — la condition était
+        // fausse et la requête passait. Vérifier « si le secret est configuré »
+        // revient à dire « accepte si personne ne peut vérifier », donc à ne pas
+        // vérifier. Un secret absent désactive désormais l'endpoint.
+        ResponseEntity<String> refusal =
+            verifier.refusalFor(verifier.checkTelegramSecret(secret), "telegram/webhook");
+        if (refusal != null) {
+            return refusal;
         }
 
         try {

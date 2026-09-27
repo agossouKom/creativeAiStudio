@@ -8,19 +8,15 @@ import com.creativeai.agentteam.model.enums.Priority;
 import com.creativeai.agentteam.model.enums.TaskSource;
 import com.creativeai.agentteam.model.enums.TaskType;
 import com.creativeai.agentteam.repository.ChannelRepository;
+import com.creativeai.agentteam.security.WebhookVerifier;
 import com.creativeai.agentteam.service.TaskService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.util.HexFormat;
 import java.util.Optional;
 
 /**
@@ -45,12 +41,7 @@ public class FacebookWebhookController {
     private final ChannelRepository channelRepo;
     private final TaskService       taskService;
     private final ObjectMapper      objectMapper;
-
-    @Value("${facebook.verify-token:creativeai-facebook-verify}")
-    private String verifyToken;
-
-    @Value("${facebook.app-secret:}")
-    private String appSecret;
+    private final WebhookVerifier   verifier;
 
     // ── Vérification Meta (handshake) ─────────────────────────────────────────
 
@@ -60,9 +51,14 @@ public class FacebookWebhookController {
             @RequestParam("hub.verify_token") String token,
             @RequestParam("hub.challenge")    String challenge) {
 
-        if ("subscribe".equals(mode) && verifyToken.equals(token)) {
+        WebhookVerifier.Verdict verdict = verifier.checkFacebookToken(token);
+        if (verdict == WebhookVerifier.Verdict.OK && "subscribe".equals(mode)) {
             log.info("[FACEBOOK_WEBHOOK] Webhook vérifié");
             return ResponseEntity.ok(challenge);
+        }
+        if (verdict == WebhookVerifier.Verdict.NOT_CONFIGURED) {
+            log.error("[FACEBOOK_WEBHOOK] FACEBOOK_VERIFY_TOKEN absent — handshake impossible");
+            return ResponseEntity.status(503).body("Webhook non configuré");
         }
         log.warn("[FACEBOOK_WEBHOOK] Vérification échouée — token invalide");
         return ResponseEntity.status(403).body("Forbidden");
@@ -75,12 +71,10 @@ public class FacebookWebhookController {
             @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature,
             @RequestBody String payload) {
 
-        // Valider la signature si le app-secret est configuré
-        if (appSecret != null && !appSecret.isBlank()) {
-            if (!isSignatureValid(payload, signature)) {
-                log.warn("[FACEBOOK_WEBHOOK] Signature invalide — requête rejetée");
-                return ResponseEntity.status(401).body("Invalid signature");
-            }
+        ResponseEntity<String> refusal = verifier.refusalFor(verifier.checkFacebookSignature(payload, signature),
+            "facebook/webhook");
+        if (refusal != null) {
+            return refusal;
         }
 
         try {
@@ -166,12 +160,13 @@ public class FacebookWebhookController {
         }
 
         String expected = extractVerifyToken(channelOpt.get().getConfig());
-        if ("subscribe".equals(mode) && token.equals(expected)) {
+        WebhookVerifier.Verdict verdict = verifier.checkToken(token, expected);
+        if (verdict == WebhookVerifier.Verdict.OK && "subscribe".equals(mode)) {
             log.info("[FB_WEBHOOK_CH] Webhook vérifié pour canal={}", channelId);
             return ResponseEntity.ok(challenge);
         }
-        log.warn("[FB_WEBHOOK_CH] Vérification échouée pour canal={} — token invalide", channelId);
-        return ResponseEntity.status(403).body("Forbidden");
+        ResponseEntity<String> refusal = verifier.refusalFor(verdict, "facebook/webhook/" + channelId);
+        return refusal != null ? refusal : ResponseEntity.status(403).body("Forbidden");
     }
 
     @PostMapping("/{channelId}")
@@ -187,14 +182,15 @@ public class FacebookWebhookController {
 
         Channel channel = channelOpt.get();
 
-        // Valider la signature avec l'appSecret du canal (depuis credentials chiffrées)
-        // Si absent, on accepte quand même (dégradé)
-        String channelAppSecret = extractAppSecretFromCredentials(channel);
-        if (channelAppSecret != null && !channelAppSecret.isBlank()) {
-            if (!isSignatureValidWith(payload, signature, channelAppSecret)) {
-                log.warn("[FB_WEBHOOK_CH] Signature invalide pour canal={}", channelId);
-                return ResponseEntity.status(401).body("Invalid signature");
-            }
+        // Signature vérifiée avec le secret de l'application Meta. Avant, un
+        // canal sans appSecret en clair était accepté SANS vérification : il
+        // suffisait d'écrire /api/facebook/webhook/{id} d'un canal existant
+        // pour injecter des tâches de réponse au nom de son propriétaire.
+        ResponseEntity<String> refusal = verifier.refusalFor(
+            verifier.checkMetaSignature(payload, signature, extractAppSecretFromCredentials(channel)),
+            "facebook/webhook/" + channelId);
+        if (refusal != null) {
+            return refusal;
         }
 
         try {
@@ -234,47 +230,36 @@ public class FacebookWebhookController {
         }
     }
 
-    // ── Validation signature HMAC-SHA256 ──────────────────────────────────────
-
-    private boolean isSignatureValid(String payload, String signature) {
-        if (appSecret == null || appSecret.isBlank()) return true;
-        return isSignatureValidWith(payload, signature, appSecret);
-    }
-
-    private boolean isSignatureValidWith(String payload, String signature, String secret) {
-        if (signature == null || !signature.startsWith("sha256=")) return false;
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] expected = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
-            String expectedHex = HexFormat.of().formatHex(expected);
-            return ("sha256=" + expectedHex).equals(signature);
-        } catch (Exception e) {
-            log.error("[FACEBOOK_WEBHOOK] Erreur validation signature: {}", e.getMessage());
-            return false;
-        }
-    }
+    // ── Extraction de configuration du canal ──────────────────────────────────
 
     private String extractVerifyToken(String config) {
         if (config == null || config.isBlank()) return null;
         try {
             return objectMapper.readTree(config).path("verifyToken").asText(null);
         } catch (Exception e) {
+            // Une config illisible rend le canal INDÉFINIMENT non vérifiable :
+            // checkToken reçoit un null → NOT_CONFIGURED → endpoint désactivé.
+            log.warn("[FB_WEBHOOK_CH] config de canal illisible, verifyToken indisponible : {}", e.getMessage());
             return null;
         }
     }
 
     private String extractAppSecretFromCredentials(Channel channel) {
-        if (channel.getEncryptedCredentials() == null) return null;
-        try {
-            // Note: décrypter ici nécessiterait EncryptionService — on l'injecte pas dans ce controller
-            // pour ne pas alourdir la dépendance. L'appSecret peut aussi être en clair dans config.
-            String config = channel.getConfig();
-            if (config == null) return null;
-            return objectMapper.readTree(config).path("appSecret").asText(null);
-        } catch (Exception e) {
-            return null;
+        // Il n'existe PAS de secret par canal dans le modèle de données, et il
+        // n'en faut pas : X-Hub-Signature-256 est toujours signé avec le secret
+        // de l'APPLICATION Meta propriétaire de l'abonnement, jamais avec le
+        // token de page du canal. `ChannelSenderService.renewFacebookToken()`
+        // reçoit un appSecret mais ne le persiste pas (seuls accessToken et
+        // pageId sont chiffrés) ; lire `config.appSecret` ne trouvait donc
+        // jamais rien et désactivait à tort tous les callbacks par canal.
+        //
+        // Conséquence assumée : plusieurs applications Meta distinctes sur la
+        // même instance ne sont pas distinguées. Si ce cas apparaît, il faudra
+        // un secret par application (table de correspondance), pas par canal.
+        if (channel == null || channel.getConfig() == null || channel.getConfig().isBlank()) {
+            log.debug("[FB_WEBHOOK_CH] canal sans config — appSecret global utilisé");
         }
+        return verifier.getFacebookAppSecret();
     }
 
     private void handleNewComment(String postId, String commentId, String commentText,

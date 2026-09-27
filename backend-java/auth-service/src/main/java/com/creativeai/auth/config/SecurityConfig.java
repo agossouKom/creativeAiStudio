@@ -50,7 +50,11 @@ public class SecurityConfig {
                 .requestMatchers("/login", "/register", "/register/verify", "/google", "/health", "/logout").permitAll()
                 .requestMatchers("/check-email").permitAll()
                 .requestMatchers("/auth/**", "/otp/**", "/error").permitAll()
-                .requestMatchers("/gmail/auth/url", "/gmail/callback").permitAll()
+                // /gmail/auth/url est retiré : il décide à quel compte les tokens
+                // Gmail seront rattachés, donc il exige le JWT. Seul le callback
+                // reste public (redirection navigateur de Google) — et son state
+                // opaque à usage unique fait l'ancrage de sécurité.
+                .requestMatchers("/gmail/callback").permitAll()
                 .requestMatchers("/api/resultats/front", "/api/pubs/front", "/api/promotions/front", "/api/produits/front", "/api/social-links/active").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/auth/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // Agent & credentials & user data routes — require authentication

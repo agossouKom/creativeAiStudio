@@ -140,6 +140,9 @@ services:
       REDIS_HOST: redis
       JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      # Hôtes acceptés pour l'URL de sortie du callback OnlyOffice (anti-SSRF).
+      # 'onlyoffice' = service du réseau Docker. Voir AUDIT-2026-09-27.md.
+      OFFICE_CALLBACK_ALLOWED_HOSTS: ${OFFICE_CALLBACK_ALLOWED_HOSTS:-onlyoffice}
     volumes:
       # Monter l'application.yml mis à jour (avec route /api/rag/**) — priorité sur le JAR
       - ./backend-java/api-gateway/src/main/resources/application.yml:/app/application.yml:ro
@@ -641,6 +644,15 @@ services:
       INSTAGRAM_POLLING_ENABLED: ${INSTAGRAM_POLLING_ENABLED:-true}
       INSTAGRAM_POLL_DELAY_MS: ${INSTAGRAM_POLL_DELAY_MS:-60000}
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+      # Secrets webhook. Absents = endpoint REFUSÉ (fail-closed, 503) : c'est
+      # volontaire. Avant, un secret manquant signifiait « signature non
+      # vérifiée, requête acceptée » — l'arrêt d'un conteneur suffisait à
+      # ouvrir la porte. Voir WebhookVerifier.
+      # Telegram : n'accepte que [A-Za-z0-9_-]{1,256} chez setWebhook.
+      FACEBOOK_VERIFY_TOKEN: ${FACEBOOK_VERIFY_TOKEN:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:8480}
     depends_on:
       postgres:

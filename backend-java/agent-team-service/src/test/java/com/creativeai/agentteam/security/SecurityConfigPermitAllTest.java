@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
@@ -41,10 +42,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(controllers = {MediaController.class, OAuthSocialController.class,
     FacebookWebhookController.class})
-@Import({SecurityConfig.class, JwtAuthFilter.class})
+@Import({SecurityConfig.class, JwtAuthFilter.class, WebhookVerifier.class})
 class SecurityConfigPermitAllTest {
 
     @Autowired private MockMvc mockMvc;
+    @Autowired private WebhookVerifier webhookVerifier;
 
     @MockBean private JwtService jwtService;
     @MockBean private MinioService minioService;
@@ -141,7 +143,18 @@ class SecurityConfigPermitAllTest {
     void webhookFacebookRestePublicEtSeValideLuiMeme() throws Exception {
         // Public, mais pas aveugle : c'est le verify_token Meta qui décide, et il
         // est comparé dans le handler puisque le filtre JWT ne s'applique pas.
-        // Le 403 vient du handler (token incorrect), pas de la chaîne de filtres.
+        // Aucun FACEBOOK_VERIFY_TOKEN dans ce contexte → le handler refuse en
+        // fail-closed. Le statut vient bien du handler, pas de la chaîne de
+        // filtres : un 403 de la chaîne aurait signifié que le filtre s'applique.
+        mockMvc.perform(get("/api/facebook/webhook")
+                .param("hub.mode", "subscribe")
+                .param("hub.verify_token", "jeton-incorrect")
+                .param("hub.challenge", "42"))
+            .andExpect(status().isServiceUnavailable());
+
+        // Avec un verify_token configuré, un jeton erroné donne un 403 : la
+        // requête traverse bien le filtre et atteint le contrôleur.
+        ReflectionTestUtils.setField(webhookVerifier, "facebookVerifyToken", "jeton-attendu");
         mockMvc.perform(get("/api/facebook/webhook")
                 .param("hub.mode", "subscribe")
                 .param("hub.verify_token", "jeton-incorrect")

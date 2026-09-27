@@ -134,6 +134,11 @@ services:
         condition: service_started
       minio:
         condition: service_started
+      # Repris ici parce que ce depends_on est un !override : sans cette ligne,
+      # la prod perd la dépendance au scanner et les uploads peuvent être
+      # refusés (fail-closed) parce que le scanner n'est pas encore prêt.
+      file-security-service:
+        condition: service_started
     environment:
       DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
@@ -144,7 +149,20 @@ services:
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:?SPRING_MAIL_PASSWORD requis dans .env}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Secrets webhook : laissés optionnels, mais ABSENTS = webhooks fermés.
+      # Les définir est ce qui active les réceptions Meta/Telegram.
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+      FACEBOOK_VERIFY_TOKEN: ${FACEBOOK_VERIFY_TOKEN:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+
+  # ── Scanner de fichiers ────────────────────────────────────────────────────
+  # Les uploads de agent-team-service sont fail-closed : sans ce service, tout
+  # upload renvoie 503. Il n'est PAS exposé publiquement.
+
+  file-security-service:
+    restart: unless-stopped
 
   # ── Generation Service ─────────────────────────────────────────────────────
   # Publication sociale : activée explicitement dans .env (Facebook/Instagram

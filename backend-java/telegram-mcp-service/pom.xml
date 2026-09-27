@@ -21,6 +21,14 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Spring Security : le service était entièrement ouvert (SecurityConfig vide).
+             La chaîne ferme les endpoints MCP et actuator, et laisse le webhook Telegram
+             public — son secret est exigé par le contrôleur. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <!-- WebClient — Telegram API + agent-team-service calls -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -3,13 +3,13 @@ package com.creativeai.agentteam.controller;
 import com.creativeai.agentteam.dto.request.CreateTaskRequest;
 import com.creativeai.agentteam.model.enums.TaskSource;
 import com.creativeai.agentteam.model.enums.TaskType;
+import com.creativeai.agentteam.security.WebhookVerifier;
 import com.creativeai.agentteam.service.TaskService;
 import com.creativeai.agentteam.util.MessagingTaskParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,9 +32,7 @@ public class WhatsAppWebhookController {
 
     private final TaskService  taskService;
     private final ObjectMapper objectMapper;
-
-    @Value("${whatsapp.verify-token:creativeai-whatsapp-verify}")
-    private String verifyToken;
+    private final WebhookVerifier verifier;
 
     // ── Vérification Meta (handshake) ─────────────────────────────────────────
 
@@ -45,13 +43,13 @@ public class WhatsAppWebhookController {
             @RequestParam("hub.verify_token") String token,
             @RequestParam("hub.challenge") String challenge) {
 
-        if ("subscribe".equals(mode) && verifyToken.equals(token)) {
+        WebhookVerifier.Verdict verdict = verifier.checkWhatsAppToken(token);
+        if (verdict == WebhookVerifier.Verdict.OK && "subscribe".equals(mode)) {
             log.info("[WHATSAPP] Webhook vérifié pour userId={}", userId);
             return ResponseEntity.ok(challenge);
         }
-
-        log.warn("[WHATSAPP] Vérification échouée — token invalide userId={}", userId);
-        return ResponseEntity.status(403).body("Forbidden");
+        ResponseEntity<String> refusal = verifier.refusalFor(verdict, "whatsapp/webhook/" + userId);
+        return refusal != null ? refusal : ResponseEntity.status(403).body("Forbidden");
     }
 
     // ── Réception des messages ────────────────────────────────────────────────
@@ -59,7 +57,19 @@ public class WhatsAppWebhookController {
     @PostMapping("/{userId}")
     public ResponseEntity<String> receive(
             @PathVariable String userId,
+            @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature,
             @RequestBody String payload) {
+
+        // Ce handler n'avait AUCUNE vérification : ni signature, ni secret, ni
+        // jeton. N'importe qui pouvait POSTer un faux message WhatsApp et faire
+        // créer une tâche — pour n'importe quel userId, puisque celui-ci venait
+        // de l'URL. Meta signe ses webhooks WhatsApp comme ceux de Facebook :
+        // la même vérification s'applique.
+        ResponseEntity<String> refusal =
+            verifier.refusalFor(verifier.checkWhatsAppSignature(payload, signature), "whatsapp/webhook");
+        if (refusal != null) {
+            return refusal;
+        }
 
         try {
             JsonNode root = objectMapper.readTree(payload);

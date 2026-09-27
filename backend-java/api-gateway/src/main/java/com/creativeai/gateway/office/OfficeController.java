@@ -3,12 +3,14 @@ package com.creativeai.gateway.office;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -16,8 +18,12 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -35,8 +41,45 @@ public class OfficeController {
     // URL accessible par OnlyOffice pour télécharger nos fichiers HTML
     private static final String GW_BASE  = "http://api-gateway:8080";
 
+    /**
+     * Seuls hôtes acceptés pour l'URL de sortie du callback OnlyOffice, et
+     * uniquement en http/https.
+     *
+     * <p>Ni {@code localhost} ni {@code 127.0.0.1} : le gateway les résout sur
+     * lui-même, donc les y autoriser rouvrait la porte à
+     * {@code gopher://127.0.0.1:11211/} (Redis) ou aux autres services du
+     * conteneur. Le schéma est restreint pour la même raison : un hôte de la
+     * listeatteint en {@code file://} n'est pas anodin.
+     *
+     * <p>Surchargeable par {@code OFFICE_CALLBACK_ALLOWED_HOSTS} (séparés par des
+     * virgules) pour un OnlyOffice installé hors du réseau Docker.
+     */
+    private final Set<String> onlyOfficeHosts;
+
+    public OfficeController(ReactiveStringRedisTemplate redis,
+                            @Value("${office.callback.allowed-hosts:onlyoffice}") String allowedHosts) {
+        this.redis = redis;
+        this.onlyOfficeHosts = Arrays.stream(allowedHosts.split(","))
+                .map(String::trim)
+                .filter(h -> !h.isEmpty())
+                .map(h -> h.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toUnmodifiableSet());
+        log.info("[OFFICE] Hôtes de callback autorisés : {}", onlyOfficeHosts);
+    }
+
     private final WebClient ooClient  = WebClient.create(OO_BASE);
-    private final WebClient webClient = WebClient.create();
+    /**
+     * Client de téléchargement des DOCX, sans suivi de redirection.
+     *
+     * <p>{@code WebClient.create()} suit les redirections par défaut. Un 302
+     * servi par un hôte de la liste blanche contournerait donc le contrôle
+     * d'origine et renverrait le gateway chercher n'importe quelle URL.
+     */
+    private final WebClient webClient = WebClient.builder()
+            .clientConnector(new ReactorClientHttpConnector(
+                    reactor.netty.http.client.HttpClient.create()
+                            .followRedirect(false)))
+            .build();
 
     // ── 1. Upload HTML → Redis ───────────────────────────────────────────────
 
@@ -134,6 +177,25 @@ public class OfficeController {
 
     // ── 4. OnlyOffice callback (sauvegarde) ──────────────────────────────────
 
+    /**
+     * Callback de sauvegarde envoyé par OnlyOffice.
+     *
+     * <p>Aucune authentification n'était appliquée ici, et le gateway n'a pas de
+     * Spring Security : n'importe qui pouvait POSTer une URL arbitraire sous une
+     * clé de son choix, puis la faire relayer par {@link #downloadDocx}. C'est un
+     * SSRF pilotable — metadata cloud ({@code 169.254.169.254}), services
+     * internes, ports d'administration.
+     *
+     * <p>OnlyOffice n'a pas de JWT applicatif à envoyer, donc l'ancrage se fait
+     * sur l'origine de la donnée, à deux niveaux :
+     * <ol>
+     *   <li>la clé doit avoir été émise par ce gateway (un {@code office:html:},
+     *       {@code office:docurl:} ou {@code office:docx:} existe) — impossible de
+     *       planter une clé inventée ;</li>
+     *   <li>l'URL doit pointer vers l'hôte OnlyOffice — impossible de faire
+     *       relayer une URL interne, même avec une clé légitime.</li>
+     * </ol>
+     */
     @PostMapping(value = "/callback")
     public Mono<Map<String, Integer>> callback(
             @RequestParam(required = false) String key,
@@ -145,12 +207,63 @@ public class OfficeController {
         if ((status == 2 || status == 6) && key != null) {
             Object urlObj = body.get("url");
             if (urlObj instanceof String docUrl) {
-                return redis.opsForValue()
-                        .set("office:docx:" + key, docUrl, Duration.ofHours(24))
-                        .thenReturn(Map.of("error", 0));
+                if (!isOnlyOfficeUrl(docUrl)) {
+                    log.warn("[OFFICE] Callback rejeté : URL hors hôte OnlyOffice : {}", docUrl);
+                    return Mono.just(Map.of("error", 1));
+                }
+                return isKeyIssuedByGateway(key)
+                        .flatMap(known -> {
+                            if (!known) {
+                                log.warn("[OFFICE] Callback rejeté : clé {} inconnue du gateway — "
+                                        + "tentative de plantage d'URL par un tiers", key);
+                                return Mono.just(Map.of("error", 1));
+                            }
+                            return redis.opsForValue()
+                                    .set("office:docx:" + key, docUrl, Duration.ofHours(24))
+                                    .thenReturn(Map.of("error", 0));
+                        });
             }
         }
         return Mono.just(Map.of("error", 0));
+    }
+
+    /** La clé a-t-elle été émise par ce gateway pour un document en cours ? */
+    private Mono<Boolean> isKeyIssuedByGateway(String key) {
+        return redis.hasKey("office:html:" + key).defaultIfEmpty(false)
+                .flatMap(htmlKnown -> {
+                    if (htmlKnown) {
+                        return Mono.just(true);
+                    }
+                    return redis.hasKey("office:docurl:" + key).defaultIfEmpty(false)
+                            .flatMap(docUrlKnown -> {
+                                if (docUrlKnown) {
+                                    return Mono.just(true);
+                                }
+                                return redis.hasKey("office:docx:" + key).defaultIfEmpty(false);
+                            });
+                });
+    }
+
+    /**
+     * L'URL de sortie de OnlyOffice doit viser son propre hôte Docker. On compare
+     * l'autorité (host:port) pour que {@code http://onlyoffice@169.254.169.254/}
+     * — où {@code onlyoffice} se lit comme userinfo — soit refusé.
+     */
+    private boolean isOnlyOfficeUrl(String url) {
+        try {
+            java.net.URI uri = java.net.URI.create(url.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || host == null || uri.getUserInfo() != null) {
+                return false;
+            }
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+                return false;
+            }
+            return onlyOfficeHosts.contains(host.toLowerCase(Locale.ROOT));
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ── 5. Poll résultat sauvegarde ──────────────────────────────────────────

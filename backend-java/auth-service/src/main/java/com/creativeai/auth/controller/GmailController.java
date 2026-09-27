@@ -19,22 +19,25 @@ import java.util.Map;
  * Gmail OAuth2 endpoints.
  *
  * Public (no JWT required):
- *   GET  /gmail/auth/url        → Returns Google authorization URL
  *   GET  /gmail/callback        → Handles OAuth2 redirect from Google
  *
- * Protected (JWT required via Authorization: Bearer <token>):
+ * Protected (JWT required):
+ *   GET  /gmail/auth/url        → Returns Google authorization URL (userId from the JWT)
  *   GET  /gmail/status          → Is the user connected to Gmail?
  *   GET  /gmail/emails          → Fetch inbox emails
  *   GET  /gmail/emails/{id}     → Get a specific email
  *   POST /gmail/emails/send     → Send an email
  *   POST /gmail/emails/{id}/read → Mark email as read
  *   DELETE /gmail/disconnect    → Revoke Gmail access
+ *
+ * `/gmail/auth/url` exige le JWT même si le frontend envoie déjà l'en-tête :
+ * c'est cet endpoint qui décide à quel compte les tokens Gmail seront rattachés,
+ * donc il ne peut pas être public. Voir {@link GmailOAuthStateStore}.
  */
 @Slf4j
 @RestController
 @RequestMapping("/gmail")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class GmailController {
 
     private final GmailOAuthService gmailService;
@@ -44,8 +47,13 @@ public class GmailController {
 
     /** Step 1: Frontend calls this to get the Google consent URL */
     @GetMapping("/auth/url")
-    public ResponseEntity<Map<String, String>> getAuthUrl(@RequestParam String userId) {
-        String url = gmailService.buildAuthorizationUrl(userId);
+    public ResponseEntity<Map<String, String>> getAuthUrl(
+            HttpServletRequest request,
+            // Conservé pour ne pas casser le client actuel, mais IGNORÉ :
+            // le userId fait autorité sur le JWT, jamais sur un paramètre d'URL.
+            @RequestParam(required = false) String userId) {
+        String authenticated = extractUserId(request);
+        String url = gmailService.buildAuthorizationUrl(authenticated, userId);
         return ResponseEntity.ok(Map.of("url", url));
     }
 

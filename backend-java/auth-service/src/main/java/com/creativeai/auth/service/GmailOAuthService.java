@@ -31,6 +31,7 @@ public class GmailOAuthService {
     private final GmailTokenRepository tokenRepository;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
+    private final GmailOAuthStateStore stateStore;
 
     @Value("${app.gmail.client-id}")
     private String clientId;
@@ -60,8 +61,21 @@ public class GmailOAuthService {
 
     // ── 1. Generate Google OAuth2 Authorization URL ───────────────────────────
 
-    public String buildAuthorizationUrl(String userId) {
-        String state = Base64.getUrlEncoder().encodeToString(userId.getBytes(StandardCharsets.UTF_8));
+    /**
+     * Construit l'URL de consentement Google.
+     *
+     * <p>{@code userId} doit provenir du JWT de l'appelant, jamais d'un paramètre
+     * de requête : c'est l'ancrage de sécurité de tout le flux.
+     *
+     * @param requestedUserId valeur historique envoyée par le frontend ; ignorée,
+     *                       et signalée si elle ne correspond pas au JWT
+     */
+    public String buildAuthorizationUrl(String userId, String requestedUserId) {
+        if (requestedUserId != null && !requestedUserId.isBlank() && !requestedUserId.equals(userId)) {
+            log.warn("[GMAIL] userId demandé ({}) ignoré : l'appelant est authentifié en tant que {}",
+                requestedUserId, userId);
+        }
+        String state = stateStore.issue(userId);
         return GOOGLE_AUTH_URL + "?" +
             "client_id="     + encode(clientId) +
             "&redirect_uri=" + encode(redirectUri) +
@@ -74,9 +88,29 @@ public class GmailOAuthService {
 
     // ── 2. Handle OAuth Callback (exchange code for tokens) ───────────────────
 
+    /** Levée quand le state est inconnu, expiré ou déjà utilisé. */
+    public static class InvalidStateException extends RuntimeException {
+        public InvalidStateException(String message) { super(message); }
+    }
+
     @Transactional
     public String handleCallback(String code, String state) {
-        String userId = new String(Base64.getUrlDecoder().decode(state), StandardCharsets.UTF_8);
+        // Le state n'est plus décodé : il est consommé du store. Un state
+        // inconnu, expiré ou rejoué est refusé ici, AVANT tout échange de code.
+        // La consommation est volontairement hors du try principal : elle ne doit
+        // jamais être confondue avec un échec d'échange de code.
+        String userId;
+        try {
+            userId = stateStore.consume(state)
+                .orElseThrow(() -> new InvalidStateException("État OAuth Gmail invalide ou expiré"));
+        } catch (InvalidStateException e) {
+            // On renvoie l'utilisateur vers le frontend au lieu de le laisser sur
+            // une 500 : un state expiré est un incident normal (onglet resté
+            // ouvert, service redémarré), pas une panne. Le state lui-même n'est
+            // pas journalisé : c'est un jeton bearer d'un seul usage.
+            log.warn("Gmail OAuth callback refusé — state invalide, expiré ou déjà consommé");
+            return frontendRedirect + "?gmail=error&reason=state";
+        }
         log.info("Gmail OAuth callback for userId={}", userId);
 
         try {
@@ -107,7 +141,11 @@ public class GmailOAuthService {
 
         } catch (Exception e) {
             log.error("Gmail OAuth callback error: {}", e.getMessage(), e);
-            return frontendRedirect + "?gmail=error&message=" + encode(e.getMessage());
+            // Le message d'exception partait dans l'URL, donc dans l'historique
+            // du navigateur et dans les logs du proxy : il peut contenir des URLs
+            // de refresh token, des identifiants Google ou des noms de tables.
+            // Le detail va dans les logs serveur, pas dans la redirection.
+            return frontendRedirect + "?gmail=error";
         }
     }
 

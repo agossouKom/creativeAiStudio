@@ -126,11 +126,13 @@ telegram:
   webhook-secret: ${TELEGRAM_WEBHOOK_SECRET:}
 
 whatsapp:
-  verify-token: ${WHATSAPP_VERIFY_TOKEN:creativeai-whatsapp-verify}
+  # Défaut VOLONTAIREMENT vide : un secret par défaut en dur est un secret
+  # publié. Vide = endpoint fermé (503), pas « vérification désactivée ».
+  verify-token: ${WHATSAPP_VERIFY_TOKEN:}
   app-secret: ${WHATSAPP_APP_SECRET:}
 
 facebook:
-  verify-token: ${FACEBOOK_VERIFY_TOKEN:creativeai-facebook-verify}
+  verify-token: ${FACEBOOK_VERIFY_TOKEN:}
   app-secret: ${FACEBOOK_APP_SECRET:}
   polling-enabled: ${FACEBOOK_POLLING_ENABLED:false}
   poll-fixed-delay-ms: ${FACEBOOK_POLL_DELAY_MS:300000}
