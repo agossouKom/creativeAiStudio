@@ -98,6 +98,11 @@ minio:
 agent:
   jwt-secret: ${JWT_SECRET:creativeaistudio-super-secret-key-that-is-long-enough-for-hs256}
   encryption-key: ${ENCRYPTION_KEY:Q3JlYXRpdmVBSVN0dWRpb0tleUNoYW5nZU1lSW5Qcm9k}
+  # Secret des appels entre services (/internal/**), utilisé par le planificateur
+  # de generation-service. Sans valeur par défaut : à vide, le point d'entrée
+  # interne refuse tout appel. Doit être identique à la valeur lue par
+  # generation-service (INTERNAL_SERVICE_TOKEN).
+  internal-service-token: ${INTERNAL_SERVICE_TOKEN:}
   # LLM providers base URLs
   groq-base-url: ${GROQ_BASE_URL:https://api.groq.com/openai/v1}
   openai-base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}

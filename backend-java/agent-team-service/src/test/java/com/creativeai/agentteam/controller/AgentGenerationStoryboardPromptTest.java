@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.core.Authentication;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Optional;
@@ -42,6 +43,11 @@ class AgentGenerationStoryboardPromptTest {
 
     private AgentGenerationController controller() {
         return new AgentGenerationController(agentRepository, llmGateway, objectMapper, promptService);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     private void givenAuthenticatedOwner() {

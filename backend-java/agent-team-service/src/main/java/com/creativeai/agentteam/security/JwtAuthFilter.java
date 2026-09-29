@@ -48,9 +48,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
         if (jwtService.isValid(token)) {
             String userId = jwtService.extractUserId(token);
+            // Le rôle vient du jeton signé par auth-service. Avant, tout le
+            // monde recevait ROLE_USER en dur, ce qui rendait toute
+            // administration impossible ici.
+            String role = jwtService.extractRole(token);
+            String authority = "ADMIN".equalsIgnoreCase(role) ? "ROLE_ADMIN" : "ROLE_USER";
+            log.debug("JWT accepté pour {} ({})", userId, authority);
             UsernamePasswordAuthenticationToken auth =
                 new UsernamePasswordAuthenticationToken(userId, null,
-                    List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                    List.of(new SimpleGrantedAuthority(authority)));
             SecurityContextHolder.getContext().setAuthentication(auth);
         }
         filterChain.doFilter(request, response);

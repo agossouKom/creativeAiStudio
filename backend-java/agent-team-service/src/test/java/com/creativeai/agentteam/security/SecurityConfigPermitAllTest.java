@@ -10,6 +10,8 @@ import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
 import com.creativeai.agentteam.service.MinioService;
 import com.creativeai.agentteam.service.OAuthStateStore;
+import com.creativeai.agentteam.service.SocialPlatformConfigService;
+import com.creativeai.agentteam.service.UserSocialAccountService;
 import com.creativeai.agentteam.service.TaskService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +58,8 @@ class SecurityConfigPermitAllTest {
     @MockBean private EncryptionService encryptionService;
     @MockBean private OAuthStateStore stateStore;
     @MockBean private TaskService taskService;
+    @MockBean private SocialPlatformConfigService platformConfig;
+    @MockBean private UserSocialAccountService userSocialAccounts;
 
     /**
      * L'app ne déclare aucun AuthenticationEntryPoint : une requête sans
@@ -67,6 +71,11 @@ class SecurityConfigPermitAllTest {
     private void givenValidJwt() {
         when(jwtService.isValid(anyString())).thenReturn(true);
         when(jwtService.extractUserId(anyString())).thenReturn("user-1");
+        when(jwtService.extractRole(anyString())).thenReturn("USER");
+        // Le contrôleur résout désormais les identifiants de la plateforme via ce
+        // service ; sans stub il renvoie null et l'endpoint tombe en 500.
+        when(platformConfig.resolve(anyString())).thenReturn(
+            new SocialPlatformConfigService.Credentials("client-id", "client-secret", false));
         when(agentRepo.findByIdAndOwnerIdAndDeletedFalse(anyString(), anyString()))
             .thenReturn(Optional.of(org.mockito.Mockito.mock(Agent.class)));
     }

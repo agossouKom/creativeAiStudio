@@ -9,6 +9,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URI;
 import java.time.Instant;
@@ -55,6 +56,22 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleIllegalState(IllegalStateException ex) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
         detail.setType(URI.create("/errors/conflict"));
+        detail.setProperty("timestamp", Instant.now());
+        return detail;
+    }
+
+    /**
+     * Sans ce handler, le {@code @ExceptionHandler(Exception.class)} ci-dessous
+     * avaleait les {@link ResponseStatusException} et transformait chaque 400/404
+     * explicite en 500 : un refus de validation devenait une panne serveur.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ProblemDetail handleResponseStatus(ResponseStatusException ex) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        HttpStatus resolved = status != null ? status : HttpStatus.INTERNAL_SERVER_ERROR;
+        String reason = ex.getReason() != null ? ex.getReason() : resolved.getReasonPhrase();
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(resolved, reason);
+        detail.setType(URI.create("/errors/" + resolved.value()));
         detail.setProperty("timestamp", Instant.now());
         return detail;
     }

@@ -10,11 +10,14 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 
 // CORS géré exclusivement par l'API Gateway — pas de config CORS ici pour éviter
 // la duplication des headers Access-Control-Allow-Origin qui bloque les navigateurs.
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -41,7 +44,15 @@ public class SecurityConfig {
                     // (verify_token Meta, secret Telegram/WhatsApp) dans le handler.
                     "/api/facebook/webhook/**",
                     "/api/telegram/webhook/**",
-                    "/api/whatsapp/webhook/**"
+                    "/api/whatsapp/webhook/**",
+                    // Appels entre services (planificateur de publication).
+                    // Aucun jeton de session n'existe à 3h du matin : l'appel est
+                    // authentifié par un secret partagé (X-Internal-Token) ET par la
+                    // vérification que l'agent appartient à l'email déclaré, les deux
+                    // faites dans le contrôleur. C'est le même schéma que les webhooks.
+                    // Le service n'a pas de port exposé et l'api-gateway ne route pas
+                    // /internal/** : le exposer serait une porte déverrouillée.
+                    "/internal/**"
                 ).permitAll()
                 .anyRequest().authenticated()
             )
@@ -49,3 +60,4 @@ public class SecurityConfig {
         return http.build();
     }
 }
+

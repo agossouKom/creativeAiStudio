@@ -58,6 +58,18 @@ public class Channel extends BaseEntity {
     @Column(name = "account_id", length = 200)
     private String accountId;
 
+    /**
+     * Nouveau compte unifié (table user_social_accounts) quand le canal a été
+     * reconnecté via le dashboard. Volontairement null pour tous les canaux
+     * historiques : ceux-ci continuent de lire leurs tokens dans
+     * {@link #encryptedCredentials}, qui reste le repli. Ne pas supprimer ce
+     * champ ni rendre la colonne obligatoire sans migration de données.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "social_account_id")
+    @JsonIgnore
+    private UserSocialAccount socialAccount;
+
     @Column(name = "account_name", length = 200)
     private String accountName;
 

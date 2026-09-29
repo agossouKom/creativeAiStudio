@@ -6,6 +6,8 @@ import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
 import com.creativeai.agentteam.service.OAuthStateStore;
+import com.creativeai.agentteam.service.SocialPlatformConfigService;
+import com.creativeai.agentteam.service.UserSocialAccountService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -54,6 +57,8 @@ class OAuthSocialControllerSecurityTest {
     @Mock private ChannelRepository channelRepo;
     @Mock private AgentRepository agentRepo;
     @Mock private EncryptionService encryptionService;
+    @Mock private SocialPlatformConfigService platformConfig;
+    @Mock private UserSocialAccountService userSocialAccounts;
 
     private OAuthStateStore stateStore;
     private OAuthSocialController controller;
@@ -62,9 +67,13 @@ class OAuthSocialControllerSecurityTest {
     void setUp() {
         stateStore = new OAuthStateStore(600, 1000);
         controller = new OAuthSocialController(channelService, channelRepo, agentRepo,
-            encryptionService, stateStore, new ObjectMapper());
+            encryptionService, stateStore, new ObjectMapper(), platformConfig, userSocialAccounts);
         ReflectionTestUtils.setField(controller, "publicUrl", "https://app.test");
         ReflectionTestUtils.setField(controller, "frontendUrl", "https://app.test");
+        // Résolution de la config plateforme : sans stub, le mock renvoie null
+        // et le contrôleur-plantait sur un NPE avant même d'atteindre sa logique.
+        lenient().when(platformConfig.resolve(anyString())).thenReturn(
+            new SocialPlatformConfigService.Credentials("client-id", "client-secret", false));
         ReflectionTestUtils.setField(controller, "fbAppId", "fb-id");
         ReflectionTestUtils.setField(controller, "fbAppSecret", "fb-secret");
         ReflectionTestUtils.setField(controller, "twitterClientId", "tw-id");

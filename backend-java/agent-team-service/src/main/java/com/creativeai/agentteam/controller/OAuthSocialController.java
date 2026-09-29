@@ -11,6 +11,8 @@ import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
 import com.creativeai.agentteam.service.OAuthStateStore;
+import com.creativeai.agentteam.service.SocialPlatformConfigService;
+import com.creativeai.agentteam.service.UserSocialAccountService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -65,6 +67,19 @@ public class OAuthSocialController {
     private final EncryptionService encryptionService;
     private final OAuthStateStore stateStore;
     private final ObjectMapper objectMapper;
+    /**
+     * Identifiants applicatifs saisis par l'administrateur dans le dashboard,
+     * avec repli sur les variables d'environnement. Résolu à chaque appel pour
+     * qu'une correction dans le dashboard prenne effet sans redémarrage.
+     */
+    private final SocialPlatformConfigService platformConfig;
+
+    /**
+     * Enregistre en parallèle le compte unifié de l'utilisateur. Le canal garde
+     * ses propres credentials : l'écriture du compte ne doit jamais pouvoir
+     * faire échouer une connexion qui fonctionne déjà.
+     */
+    private final UserSocialAccountService userSocialAccounts;
 
     // ── Config ───────────────────────────────────────────────────────────────
 
@@ -339,16 +354,235 @@ public class OAuthSocialController {
             Channel ch = channels.stream()
                 .filter(c -> c.getPlatformType() == platform)
                 .findFirst().orElse(null);
+
+            // ADDITIF : ces deux champs n'existent que si le canal a été créé
+            // par un échange OAuth remontant plusieurs Pages. Un canal historique
+            // n'en a pas → le frontend n'affiche aucun sélecteur et la
+            // publication continue exactement comme avant.
+            boolean pageSelectionPending = false;
+            int availablePageCount = 0;
+            if (ch != null && ch.getEncryptedCredentials() != null) {
+                Map<String, Object> creds = decryptCredentials(ch);
+                pageSelectionPending = Boolean.TRUE.equals(creds.get("pageSelectionPending"));
+                if (creds.get("availablePages") instanceof List<?> list) {
+                    availablePageCount = list.size();
+                }
+            }
+
             result.add(Map.of(
                 "platform",     platform.name(),
                 "connected",    ch != null && ch.getStatus() == ChannelStatus.CONNECTED,
                 "channelId",    ch != null ? ch.getId() : "",
                 "accountName",  ch != null && ch.getAccountName() != null ? ch.getAccountName() : "",
                 "configured",   isPlatformConfigured(platform.name()),
-                "lastSync",     ch != null && ch.getLastSyncAt() != null ? ch.getLastSyncAt().toString() : ""
+                "lastSync",     ch != null && ch.getLastSyncAt() != null ? ch.getLastSyncAt().toString() : "",
+                "pageSelectionPending", pageSelectionPending,
+                "availablePageCount",   availablePageCount
             ));
         }
         return ResponseEntity.ok(result);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    //  Choix de la Page (Meta) — un utilisateur peut gérer plusieurs Pages
+    // ═════════════════════════════════════════════════════════════════════════
+
+    @Operation(summary = "Pages Facebook disponibles pour le canal, et Page actuellement utilisée")
+    @GetMapping("/{platform}/pages/{channelId}")
+    public ResponseEntity<Map<String, Object>> listPages(
+            Authentication authentication,
+            @PathVariable String platform,
+            @PathVariable String channelId) {
+        ChannelLookup lookup = lookupOwnedChannel(authentication, platform, channelId);
+        if (lookup.error() != null) return lookup.error();
+        return ResponseEntity.ok(pagesPayload(lookup.channel()));
+    }
+
+    @Operation(summary = "Basculer le canal sur une autre Page Facebook")
+    @PostMapping("/{platform}/pages/{channelId}/select")
+    public ResponseEntity<Map<String, Object>> selectPage(
+            Authentication authentication,
+            @PathVariable String platform,
+            @PathVariable String channelId,
+            @RequestBody(required = false) Map<String, Object> body) {
+
+        ChannelLookup lookup = lookupOwnedChannel(authentication, platform, channelId);
+        if (lookup.error() != null) return lookup.error();
+
+        Channel channel = lookup.channel();
+        Map<String, Object> creds = decryptCredentials(channel);
+        List<?> pages = (List<?>) creds.get("availablePages");
+        if (pages == null || pages.isEmpty()) {
+            // Une seule Page : rien à choisir, c'est le cas normal, pas une erreur.
+            Map<String, Object> nothingToChoose = pagesPayload(channel);
+            nothingToChoose.put("changed", false);
+            nothingToChoose.put("reason", "single_page");
+            return ResponseEntity.ok(nothingToChoose);
+        }
+
+        Object wanted = body == null ? null : body.get("pageId");
+        if (wanted == null || String.valueOf(wanted).isBlank()) {
+            return ResponseEntity.badRequest()
+                .body(Map.of("error", "pageId est obligatoire"));
+        }
+
+        // On n'accepte QUE les pages déjà revues lors de l'échange OAuth.
+        // Sans ce filtre, un utilisateur pourrait faire pointer son canal vers
+        // une Page tierce en forgeant un pageId dans le corps de la requête.
+        Map<String, Object> target = null;
+        for (Object o : pages) {
+            if (o instanceof Map<?, ?> m
+                && String.valueOf(wanted).equals(String.valueOf(m.get("id")))) {
+                target = new LinkedHashMap<>((Map<String, Object>) m);
+                break;
+            }
+        }
+
+        if (target == null) {
+            return ResponseEntity.badRequest()
+                .body(Map.of("error", "Cette page ne fait pas partie de vos pages connectées"));
+        }
+
+        try {
+            applyPage(platform, creds, target);
+        } catch (Exception e) {
+            log.warn("[OAUTH_{}] Page {} non sélectable : {}", platform, wanted, e.getMessage());
+            return ResponseEntity.badRequest()
+                .body(Map.of("error", describePageFailure(platform, e)));
+        }
+
+        creds.put("pageSelectionPending", false);
+        try {
+            channel.setEncryptedCredentials(encryptionService.encrypt(objectMapper.writeValueAsString(creds)));
+            channel.setAccountId((String) creds.get("accountId"));
+            channel.setAccountName((String) creds.get("accountName"));
+            // Même libellé que celui créé par le callback OAuth (plateforme en
+            // majuscules), sinon le canal apparaît deux fois dans les listes.
+            channel.setDisplayName(platform.toUpperCase(Locale.ROOT) + " — " + creds.get("accountName"));
+            channel.setStatus(ChannelStatus.CONNECTED);
+            channel.setLastSyncAt(java.time.LocalDateTime.now());
+            channelRepo.save(channel);
+        } catch (Exception e) {
+            log.error("[OAUTH_{}] Echec sauvegarde du canal {} : {}", platform, channelId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Impossible d'enregistrer la sélection"));
+        }
+
+        log.info("[OAUTH_{}] Canal {} basculé sur la page {} ({})",
+            platform, channelId, creds.get("accountName"), wanted);
+        Map<String, Object> body2 = pagesPayload(channel);
+        body2.put("changed", true);
+        return ResponseEntity.ok(body2);
+    }
+
+    private record ChannelLookup(Channel channel, ResponseEntity<Map<String, Object>> error) {}
+
+    /**
+     * Résout le canal en vérifiant l'ownership. Un canal inconnu, une
+     * plateforme incohérente et un agent appartenant à quelqu'un d'autre
+     * renvoient tous 403 : on ne veut pas laisser un utilisateur authentifié
+     * énumérer l'existence de canaux d'autrui.
+     */
+    private ChannelLookup lookupOwnedChannel(Authentication authentication, String platform, String channelId) {
+        String userId = authenticatedUserId(authentication);
+        if (userId == null) {
+            return new ChannelLookup(null, ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("error", "Authentification requise")));
+        }
+        Channel channel = channelRepo.findById(channelId).orElse(null);
+        if (channel == null
+            || channel.getType() != ChannelType.SOCIAL_MEDIA
+            || channel.getPlatformType() == null
+            || !channel.getPlatformType().name().equalsIgnoreCase(platform)
+            || agentRepo.findByIdAndOwnerIdAndDeletedFalse(channel.getAgent().getId(), userId).isEmpty()) {
+            return new ChannelLookup(null, ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("error", "Canal introuvable ou non autorisé")));
+        }
+        return new ChannelLookup(channel, null);
+    }
+
+
+    /** Réponse de /pages et /select : jamais de token dans la réponse. */
+    private Map<String, Object> pagesPayload(Channel channel) {
+        Map<String, Object> creds = decryptCredentials(channel);
+        List<?> pages = (List<?>) creds.get("availablePages");
+
+        List<Map<String, String>> safe = new ArrayList<>();
+        if (pages != null) {
+            for (Object o : pages) {
+                if (o instanceof Map<?, ?> p) {
+                    // On ne renvoie QUE l'id et le nom : jamais accessToken.
+                    safe.add(Map.of(
+                        "id",   String.valueOf(p.get("id")),
+                        "name", String.valueOf(p.get("name"))));
+                }
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("pageId",   String.valueOf(creds.getOrDefault("pageId", "")));
+        out.put("pageName", String.valueOf(creds.getOrDefault("pageName", channel.getAccountName())));
+        out.put("pages",    safe);
+        return out;
+    }
+
+    private Map<String, Object> decryptCredentials(Channel channel) {
+        Map<String, Object> creds = new LinkedHashMap<>();
+        if (channel.getEncryptedCredentials() == null) return creds;
+        try {
+            String plain = encryptionService.decrypt(channel.getEncryptedCredentials());
+            return objectMapper.readValue(plain, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+        } catch (Exception e) {
+            log.warn("Impossible de déchiffrer les credentials du canal {} : {}",
+                channel.getId(), e.getMessage());
+            return creds;
+        }
+    }
+
+    /** Bascule les credentials sur une autre Page, Instagram inclus. */
+    private void applyPage(String platform, Map<String, Object> creds, Map<String, Object> target)
+            throws Exception {
+        String pageId          = String.valueOf(target.get("id"));
+        String pageAccessToken = String.valueOf(target.get("accessToken"));
+        String pageName        = String.valueOf(target.getOrDefault("name", "Ma Page"));
+
+        creds.put("pageId",      pageId);
+        creds.put("accessToken", pageAccessToken);
+        creds.put("pageName",    pageName);
+        creds.put("accountId",   pageId);
+        creds.put("accountName", pageName);
+
+        if ("INSTAGRAM".equalsIgnoreCase(platform)) {
+            // Instagram n'existe pas seul : il faut re-résoudre l'id du compte
+            // professionnel rattaché à CETTE page, pas à la précédente.
+            String igId = fetchIgBusinessId(pageId, pageAccessToken);
+            if (igId == null || igId.isBlank()) {
+                throw new IllegalStateException("no_ig_account");
+            }
+            creds.put("igUserId", igId);
+            creds.put("accountId", igId);
+        }
+    }
+
+    private String fetchIgBusinessId(String pageId, String pageAccessToken) {
+        String igUrl = "https://graph.facebook.com/v19.0/" + pageId
+            + "?fields=instagram_business_account&access_token=" + pageAccessToken;
+        try {
+            ResponseEntity<String> igResp = restTemplate.getForEntity(igUrl, String.class);
+            JsonNode igNode = objectMapper.readTree(igResp.getBody());
+            return igNode.path("instagram_business_account").path("id").asText(null);
+        } catch (Exception e) {
+            log.warn("[OAUTH_INSTAGRAM] Impossible de récupérer igUserId pour la page {} : {}",
+                pageId, e.getMessage());
+            return null;
+        }
+    }
+
+    private String describePageFailure(String platform, Exception e) {
+        if ("INSTAGRAM".equalsIgnoreCase(platform)) {
+            return "Cette page n'a pas de compte Instagram professionnel associé. "
+                 + "Reliez le compte Instagram à la page, puis réessayez.";
+        }
+        return "Impossible d'utiliser cette page : " + e.getMessage();
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -395,7 +629,7 @@ public class OAuthSocialController {
             ? "pages_show_list,instagram_basic,instagram_content_publish,instagram_manage_comments,pages_read_engagement"
             : "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_metadata,public_profile";
         return UriComponentsBuilder.fromHttpUrl(FB_AUTH_URL)
-            .queryParam("client_id",     fbAppId.isBlank() ? "YOUR_FB_APP_ID" : fbAppId)
+            .queryParam("client_id",     clientIdOr("FACEBOOK", "YOUR_FB_APP_ID"))
             .queryParam("redirect_uri",  callbackUri)
             .queryParam("state",         state)
             .queryParam("scope",         scope)
@@ -406,7 +640,7 @@ public class OAuthSocialController {
     private String buildLinkedinAuthUrl(String callbackUri, String state) {
         return UriComponentsBuilder.fromHttpUrl(LI_AUTH_URL)
             .queryParam("response_type", "code")
-            .queryParam("client_id",     linkedinClientId.isBlank() ? "YOUR_LI_CLIENT_ID" : linkedinClientId)
+            .queryParam("client_id",     clientIdOr("LINKEDIN", "YOUR_LI_CLIENT_ID"))
             .queryParam("redirect_uri",  callbackUri)
             .queryParam("state",         state)
             .queryParam("scope",         "openid profile email w_member_social")
@@ -419,7 +653,7 @@ public class OAuthSocialController {
         String codeChallenge = OAuthStateStore.s256Challenge(codeVerifier);
         return UriComponentsBuilder.fromHttpUrl(TW_AUTH_URL)
             .queryParam("response_type",         "code")
-            .queryParam("client_id",             twitterClientId.isBlank() ? "YOUR_TW_CLIENT_ID" : twitterClientId)
+            .queryParam("client_id",             clientIdOr("TWITTER_X", "YOUR_TW_CLIENT_ID"))
             .queryParam("redirect_uri",          callbackUri)
             .queryParam("state",                 state)
             .queryParam("scope",                 "tweet.read tweet.write users.read offline.access")
@@ -430,7 +664,7 @@ public class OAuthSocialController {
 
     private String buildTiktokAuthUrl(String callbackUri, String state) {
         return UriComponentsBuilder.fromHttpUrl(TT_AUTH_URL)
-            .queryParam("client_key",    tiktokClientKey.isBlank() ? "YOUR_TT_CLIENT_KEY" : tiktokClientKey)
+            .queryParam("client_key",    clientIdOr("TIKTOK", "YOUR_TT_CLIENT_KEY"))
             .queryParam("redirect_uri",  callbackUri)
             .queryParam("state",         state)
             .queryParam("scope",         "user.info.basic,video.publish,video.upload")
@@ -440,7 +674,7 @@ public class OAuthSocialController {
 
     private String buildYoutubeAuthUrl(String callbackUri, String state) {
         return UriComponentsBuilder.fromHttpUrl(YT_AUTH_URL)
-            .queryParam("client_id",             googleClientId.isBlank() ? "YOUR_GOOGLE_CLIENT_ID" : googleClientId)
+            .queryParam("client_id",             clientIdOr("YOUTUBE", "YOUR_GOOGLE_CLIENT_ID"))
             .queryParam("redirect_uri",          callbackUri)
             .queryParam("state",                 state)
             .queryParam("scope",                 "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly")
@@ -527,6 +761,11 @@ public class OAuthSocialController {
                 log.info("[OAUTH_{}] Nouveau canal {} créé et connecté pour agent {}", platform, channelId, agentId);
             }
 
+            // Le compte unifié est écrit APRÈS le canal, et jamais dans le même
+            // état de transaction : si cette étape échoue, la publication
+            // fonctionne toujours via les credentials du canal.
+            linkUserSocialAccount(userId, platform, accountId, accountName, credsJson);
+
             return redirect(redirectBase + "?oauth_success=true&platform=" + platform + "&account=" + encode(accountName));
 
         } catch (Exception e) {
@@ -535,6 +774,22 @@ public class OAuthSocialController {
             // qui n'ont rien à faire dans l'URL redirigée vers le navigateur.
             log.error("[OAUTH_{}] Erreur échange code pour l'agent {} : {}", platform, agentId, e.getMessage(), e);
             return redirect(redirectBase + "?oauth_error=exchange_failed&platform=" + platform);
+        }
+    }
+
+    /**
+     * Best-effort : toute erreur ici est journalisée puis ignorée. Le canal vient
+     * d'être écrit avec les mêmes credentials, donc l'utilisateur reste connecté
+     * même si la table des comptes unifiés est indisponible.
+     */
+    private void linkUserSocialAccount(String userId, String platform, String accountId,
+                                      String accountName, String credsJson) {
+        try {
+            userSocialAccounts.recordFromOauth(userId, platform, accountId,
+                accountName, credsJson, null);
+        } catch (RuntimeException e) {
+            log.error("[OAUTH_{}] Enregistrement du compte unifié impossible pour {} : {}",
+                platform, userId, e.getMessage(), e);
         }
     }
 
@@ -557,9 +812,9 @@ public class OAuthSocialController {
     private Map<String, Object> exchangeFbCode(String platform, String code, String callbackUri) throws Exception {
         // 1. Échanger le code contre un Short-Lived Token
         String url = UriComponentsBuilder.fromHttpUrl(FB_TOKEN_URL)
-            .queryParam("client_id",     fbAppId)
+            .queryParam("client_id",     clientId("FACEBOOK"))
             .queryParam("redirect_uri",  callbackUri)
-            .queryParam("client_secret", fbAppSecret)
+            .queryParam("client_secret", clientSecret("FACEBOOK"))
             .queryParam("code",          code)
             .build(false).toUriString();
 
@@ -570,8 +825,8 @@ public class OAuthSocialController {
         // 2. Échanger contre un Long-Lived Token (60 jours)
         String llUrl = UriComponentsBuilder.fromHttpUrl(FB_TOKEN_URL)
             .queryParam("grant_type",        "fb_exchange_token")
-            .queryParam("client_id",         fbAppId)
-            .queryParam("client_secret",     fbAppSecret)
+            .queryParam("client_id",         clientId("FACEBOOK"))
+            .queryParam("client_secret",     clientSecret("FACEBOOK"))
             .queryParam("fb_exchange_token", shortToken)
             .build(false).toUriString();
         ResponseEntity<String> llResp = restTemplate.getForEntity(llUrl, String.class);
@@ -589,6 +844,23 @@ public class OAuthSocialController {
         // Prendre la première page
         JsonNode data = pagesNode.path("data");
         if (data.isArray() && data.size() > 0) {
+            // ADDITIF : l'utilisateur peut gérer plusieurs Pages. On continue
+            // d'utiliser la première comme défaut (donc le canal reste
+            // publiable immédiatement, exactement comme avant) mais on conserve
+            // la liste complète pour qu'il puisse basculer ensuite via
+            // POST /{platform}/pages/{channelId}/select.
+            if (data.size() > 1) {
+                List<Map<String, String>> pages = new ArrayList<>();
+                for (JsonNode p : data) {
+                    pages.add(Map.of(
+                        "id",          p.path("id").asText(),
+                        "name",        p.path("name").asText("Ma Page"),
+                        "accessToken", p.path("access_token").asText("")));
+                }
+                creds.put("availablePages", pages);
+                creds.put("pageSelectionPending", true);
+            }
+
             JsonNode page = data.get(0);
             String pageId          = page.path("id").asText();
             String pageAccessToken = page.path("access_token").asText();
@@ -630,8 +902,8 @@ public class OAuthSocialController {
         params.add("grant_type",    "authorization_code");
         params.add("code",          code);
         params.add("redirect_uri",  callbackUri);
-        params.add("client_id",     linkedinClientId);
-        params.add("client_secret", linkedinClientSecret);
+        params.add("client_id",     clientId("LINKEDIN"));
+        params.add("client_secret", clientSecret("LINKEDIN"));
 
         HttpHeaders h = new HttpHeaders();
         h.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
@@ -662,7 +934,8 @@ public class OAuthSocialController {
         }
 
         String credentials = Base64.getEncoder().encodeToString(
-            (twitterClientId + ":" + twitterClientSecret).getBytes(StandardCharsets.UTF_8));
+            (nullSafe(clientId("TWITTER_X")) + ":" + nullSafe(clientSecret("TWITTER_X")))
+                .getBytes(StandardCharsets.UTF_8));
 
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("grant_type",    "authorization_code");
@@ -696,8 +969,8 @@ public class OAuthSocialController {
 
     private Map<String, Object> exchangeTiktokCode(String code, String callbackUri) throws Exception {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("client_key",    tiktokClientKey);
-        params.add("client_secret", tiktokClientSecret);
+        params.add("client_key",    clientId("TIKTOK"));
+        params.add("client_secret", clientSecret("TIKTOK"));
         params.add("code",          code);
         params.add("grant_type",    "authorization_code");
         params.add("redirect_uri",  callbackUri);
@@ -725,8 +998,8 @@ public class OAuthSocialController {
         params.add("grant_type",    "authorization_code");
         params.add("code",          code);
         params.add("redirect_uri",  callbackUri);
-        params.add("client_id",     googleClientId);
-        params.add("client_secret", googleClientSecret);
+        params.add("client_id",     clientId("YOUTUBE"));
+        params.add("client_secret", clientSecret("YOUTUBE"));
 
         HttpHeaders h = new HttpHeaders();
         h.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
@@ -758,14 +1031,52 @@ public class OAuthSocialController {
     // ═════════════════════════════════════════════════════════════════════════
 
     private boolean isPlatformConfigured(String platform) {
+        return platformConfig.resolve(platform).isPresent();
+    }
+
+    /**
+     * Identifiants effectifs d'une plateforme : saisie admin si elle existe,
+     * variable d'environnement sinon. Les champs @Value restent le repli.
+     */
+    private String clientId(String platform) {
+        var creds = platformConfig.resolve(platform);
+        if (creds.isPresent()) return creds.clientId();
         return switch (platform) {
-            case "FACEBOOK", "INSTAGRAM" -> !fbAppId.isBlank() && !fbAppSecret.isBlank();
-            case "LINKEDIN"  -> !linkedinClientId.isBlank() && !linkedinClientSecret.isBlank();
-            case "TWITTER_X" -> !twitterClientId.isBlank() && !twitterClientSecret.isBlank();
-            case "TIKTOK"    -> !tiktokClientKey.isBlank() && !tiktokClientSecret.isBlank();
-            case "YOUTUBE"   -> !googleClientId.isBlank() && !googleClientSecret.isBlank();
-            default -> false;
+            case "FACEBOOK", "INSTAGRAM" -> nullIfBlank(fbAppId);
+            case "LINKEDIN"  -> nullIfBlank(linkedinClientId);
+            case "TWITTER_X" -> nullIfBlank(twitterClientId);
+            case "TIKTOK"    -> nullIfBlank(tiktokClientKey);
+            case "YOUTUBE"   -> nullIfBlank(googleClientId);
+            default -> null;
         };
+    }
+
+    private String clientSecret(String platform) {
+        var creds = platformConfig.resolve(platform);
+        if (creds.isPresent()) return creds.clientSecret();
+        return switch (platform) {
+            case "FACEBOOK", "INSTAGRAM" -> nullIfBlank(fbAppSecret);
+            case "LINKEDIN"  -> nullIfBlank(linkedinClientSecret);
+            case "TWITTER_X" -> nullIfBlank(twitterClientSecret);
+            case "TIKTOK"    -> nullIfBlank(tiktokClientSecret);
+            case "YOUTUBE"   -> nullIfBlank(googleClientSecret);
+            default -> null;
+        };
+    }
+
+    /** Identifiant effectif, ou un placeholder lisible sur l'écran d'admin. */
+    private String clientIdOr(String platform, String placeholder) {
+        String v = clientId(platform);
+        return (v == null || v.isBlank()) ? placeholder : v;
+    }
+
+    /** Évite qu'un "null" parte dans une chaîne de signature Basic. */
+    private String nullSafe(String v) {
+        return v == null ? "" : v;
+    }
+
+    private String nullIfBlank(String v) {
+        return (v == null || v.isBlank()) ? null : v;
     }
 
     private ResponseEntity<Void> redirect(String url) {

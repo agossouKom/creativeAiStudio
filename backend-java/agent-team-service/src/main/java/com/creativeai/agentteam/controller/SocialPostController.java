@@ -70,16 +70,29 @@ public class SocialPostController {
         @PathVariable String agentId,
         @AuthenticationPrincipal String userId,
         @Valid @RequestBody SocialPostRequest request) {
+        return publishAsUser(userId, agentId, request.platform(), request.content(), request.mediaUrls());
+    }
 
-        PlatformType platform = resolvePlatform(request.platform());
+    /**
+     * Point d'entrée unique de la publication. Les deux appelants — l'utilisateur
+     * connecté et le déclencheur de programming — passent par ici : le chemin
+     * interne ne doit jamais devenir un raccourci qui_encoderait une vérification
+     * (canal connecté, média présent, plateforme gérée) que l'utilisateur, lui,
+     * devrait passer.
+     */
+    public ResponseEntity<ChannelSenderService.SendResult> publishAsUser(
+        String userId, String agentId, String rawPlatform,
+        String rawContent, List<String> rawMediaUrls) {
+
+        PlatformType platform = resolvePlatform(rawPlatform);
         if (platform == null) {
             return ResponseEntity.badRequest().body(new ChannelSenderService.SendResult(false, null,
-                "Plateforme non prise en charge par agent-team-service: " + request.platform()
+                "Plateforme non prise en charge par agent-team-service: " + rawPlatform
                     + ". Adaptateurs disponibles: " + SUPPORTED_PLATFORMS));
         }
 
-        String content = request.content() == null ? "" : request.content();
-        List<String> mediaUrls = request.mediaUrls() == null ? List.of() : request.mediaUrls();
+        String content = rawContent == null ? "" : rawContent;
+        List<String> mediaUrls = rawMediaUrls == null ? List.of() : rawMediaUrls;
         if (content.isBlank() && mediaUrls.isEmpty()) {
             return ResponseEntity.badRequest().body(new ChannelSenderService.SendResult(false, null,
                 "Un contenu texte ou au moins un média est requis"));
