@@ -10,6 +10,16 @@ export interface SocialPlatformStatus {
   accountName: string;
   configured: boolean;
   lastSync: string;
+  /** Le canal a été connecté avec plusieurs Pages : l'utilisateur doit choisir. */
+  pageSelectionPending?: boolean;
+  availablePageCount?: number;
+}
+
+/** Pageiexposée par l'API. Volontairement sans `accessToken` : le backend ne
+ *  renvoie jamais de secret dans une réponse. */
+export interface SocialPage {
+  id: string;
+  name: string;
 }
 
 interface PlatformMeta {
@@ -21,6 +31,12 @@ interface PlatformMeta {
   setupSteps: string[];
   docsUrl: string;
   docsSummary: string;
+  /**
+   * Plateformes à connecter AVANT celle-ci. Instagram emprunte son jeton au
+   * canal Facebook du même agent : sans Page Meta il n'a rien à quoi se
+   * raccrocher, et l'échec n'apparaît qu'au moment de publier.
+   */
+  requires?: string[];
 }
 
 const PLATFORMS: PlatformMeta[] = [
@@ -46,9 +62,11 @@ const PLATFORMS: PlatformMeta[] = [
     icon: 'fab fa-instagram',
     color: '#E1306C',
     description: 'Publier des photos et vidéos sur votre compte Instagram Business.',
+    requires: ['FACEBOOK'],
     setupSteps: [
       'Votre compte Instagram doit être un compte Professionnel/Business',
       'Liez-le à une Page Facebook (obligatoire par Meta)',
+      'Connectez d\'abord Facebook ci-contre — Instagram utilise sa Page',
       'Cliquez "Connecter Instagram" — une fenêtre s\'ouvre',
       'Autorisez l\'accès à votre Page et à Instagram',
       'Votre agent peut maintenant publier sur Instagram.'
@@ -137,7 +155,7 @@ const PLATFORMS: PlatformMeta[] = [
 
   <!-- Grille des plateformes -->
   <div class="platforms-grid">
-    @for (pm of PLATFORMS; track pm.key) {
+    @for (pm of visiblePlatforms(); track pm.key) {
       <div class="platform-card" [class.connected]="isConnected(pm.key)" [class.not-configured]="!isConfigured(pm.key)">
 
         <!-- Badge statut -->
@@ -158,15 +176,65 @@ const PLATFORMS: PlatformMeta[] = [
         <h3>{{ pm.label }}</h3>
         @if (isConnected(pm.key)) {
           <p class="account-name"><i class="fas fa-user"></i> {{ getAccountName(pm.key) || 'Compte connecté' }}</p>
+
+          <!-- Choix de Page : n'apparaît que si le canal gère plusieurs Pages.
+               Un canal connecté avant cette fonctionnalité n'affiche rien ici. -->
+          @if (hasPageChoice(pm.key)) {
+            @if (needsPageChoice(pm.key)) {
+              <p class="page-pending">
+                <i class="fas fa-exclamation-triangle"></i>
+                Plusieurs Pages détectées : choisissez celle où publier.
+              </p>
+            }
+            <button class="btn-page-picker" (click)="togglePagePicker(pm.key)">
+              <i class="fas fa-layer-group"></i>
+              {{ pagePickerFor === pm.key ? 'Masquer les Pages' : 'Changer de Page' }}
+              @if ((getStatus(pm.key)?.availablePageCount ?? 0) > 0) {
+                <span class="page-count">{{ getStatus(pm.key)?.availablePageCount }}</span>
+              }
+            </button>
+
+            @if (pagePickerFor === pm.key) {
+              <div class="page-picker">
+                @if (pagesLoading) {
+                  <p class="page-message"><i class="fas fa-spinner fa-spin"></i> Chargement…</p>
+                } @else if (pages.length <= 1) {
+                  <p class="page-message">Une seule Page n'est accessible : rien à choisir.</p>
+                } @else {
+                  <label [for]="'page-select-' + pm.key">Page de publication</label>
+                  <select [id]="'page-select-' + pm.key"
+                          [value]="currentPageId"
+                          [disabled]="pageSwitching"
+                          (change)="selectPage(pm.key, $event)">
+                    @for (p of pages; track p.id) {
+                      <option [value]="p.id">{{ p.name }}</option>
+                    }
+                  </select>
+                  <p class="page-hint">
+                    Ce choix est enregistré et s'applique à toutes les prochaines publications.
+                  </p>
+                }
+                @if (pageMessage) {
+                  <p class="page-message error">{{ pageMessage }}</p>
+                }
+              </div>
+            }
+          }
         } @else {
           <p class="description">{{ pm.description }}</p>
         }
 
         <!-- Actions -->
         <div class="card-actions">
+          @if (missingRequirements(pm).length > 0) {
+            <p class="requirement-warning">
+              <i class="fas fa-lock"></i>
+              Connectez d'abord {{ labelOf(missingRequirements(pm)[0]) }}
+            </p>
+          }
           @if (!isConnected(pm.key)) {
             <button class="btn-connect" [style.background]="pm.color"
-                    [disabled]="connecting === pm.key"
+                    [disabled]="connecting === pm.key || missingRequirements(pm).length > 0"
                     (click)="startOAuth(pm)">
               @if (connecting === pm.key) {
                 <i class="fas fa-spinner fa-spin"></i> Connexion…
@@ -219,6 +287,34 @@ const PLATFORMS: PlatformMeta[] = [
     }
   </div>
 
+  <!-- État vide : aucune plateforme activée par l'administrateur -->
+  @if (statusesLoaded && visiblePlatforms().length === 0) {
+    <div class="no-platform">
+      <i class="fas fa-plug"></i>
+      <p>
+        Aucune plateforme n'est encore activée sur cette installation.
+        Contactez l'administrateur pour ouvrir Facebook, Instagram ou une autre plateforme.
+      </p>
+    </div>
+  }
+
+  <!-- Plateformes non activées : listées sans action, pour ne pas Walls d'erreurs -->
+  @if (hiddenPlatforms().length > 0) {
+    <div class="coming-soon">
+      <span class="coming-soon-label">
+        <i class="fas fa-lock"></i>
+        Pas encore activées sur cette installation
+      </span>
+      <span class="coming-soon-list">
+        @for (pm of hiddenPlatforms(); track pm.key; let last = $last) {
+          <span class="coming-soon-item">
+            <i [class]="pm.icon" [style.color]="pm.color"></i> {{ pm.label }}{{ last ? '' : ',' }}
+          </span>
+        }
+      </span>
+    </div>
+  }
+
   <!-- Message de succès / erreur OAuth -->
   @if (oauthMessage) {
     <div class="oauth-message" [class.success]="oauthSuccess" [class.error]="!oauthSuccess">
@@ -255,6 +351,42 @@ const PLATFORMS: PlatformMeta[] = [
 .platform-card:hover { border-color: #c4b5fd; box-shadow: 0 4px 20px rgba(124,58,237,.08); }
 .platform-card.connected { border-color: #10b981; background: #f0fdf4; }
 .platform-card.not-configured { opacity: .85; }
+
+/* Prérequis non satisfait (ex. Instagram sans Facebook) */
+.requirement-warning {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 0 10px; padding: 7px 10px;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+  color: #92400e; font-size: .8rem; font-weight: 600;
+}
+.requirement-warning + .btn-connect { opacity: .5; }
+
+/* Aucune plateforme activée */
+.no-platform {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 36px 24px; text-align: center;
+  background: #fff; border: 2px dashed #e2e8f0; border-radius: 16px;
+  color: #64748b;
+}
+.no-platform i { font-size: 1.6rem; color: #cbd5e1; }
+.no-platform p { margin: 0; max-width: 46ch; line-height: 1.5; }
+
+/* Plateformes listées mais non activées : sans bouton, donc sans cul-de-sac */
+.coming-soon {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
+  margin-top: 18px; padding: 12px 16px;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;
+}
+.coming-soon-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #64748b; font-size: .78rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.coming-soon-list { display: flex; flex-wrap: wrap; gap: 12px; }
+.coming-soon-item {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: #94a3b8; font-size: .85rem;
+}
 
 .status-badge {
   position: absolute; top: 14px; right: 14px;
@@ -297,6 +429,61 @@ const PLATFORMS: PlatformMeta[] = [
   padding: 7px 14px; font-size: .85rem; font-weight: 600; cursor: pointer; transition: opacity .2s;
 }
 .btn-reconnect:hover { opacity: .7; }
+
+/* Sélecteur de Page */
+.page-pending {
+  margin: .4rem 0 .2rem;
+  font-size: .78rem;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: .35rem .5rem;
+}
+.btn-page-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  margin-top: .4rem;
+  padding: .35rem .6rem;
+  font-size: .8rem;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.btn-page-picker:hover { background: #dbeafe; }
+.page-count {
+  padding: 0 .35rem;
+  border-radius: 999px;
+  background: #1d4ed8;
+  color: #fff;
+  font-size: .7rem;
+}
+.page-picker {
+  margin-top: .5rem;
+  padding: .6rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+.page-picker label { font-size: .78rem; font-weight: 600; color: #334155; }
+.page-picker select {
+  padding: .4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: .85rem;
+  background: #fff;
+}
+.page-picker select:disabled { opacity: .6; }
+.page-hint { margin: 0; font-size: .72rem; color: #64748b; }
+.page-message { margin: 0; font-size: .78rem; color: #475569; }
+.page-message.error { color: #b91c1c; }
 
 .btn-guide {
   background: transparent; border: 1px solid #e2e8f0; border-radius: 8px;
@@ -355,10 +542,21 @@ export class SocialConnectWizardComponent implements OnInit, OnDestroy {
 
   protected readonly PLATFORMS = PLATFORMS;
   protected statuses: SocialPlatformStatus[] = [];
+  /** Tant que c'est false, on ne décide pas de masquer une plateforme : on
+   *  afficherait « non configuré » pendant le simple temps du chargement. */
+  protected statusesLoaded = false;
   protected connecting: string | null = null;
   protected activeGuide: string | null = null;
   protected oauthMessage = '';
   protected oauthSuccess = false;
+
+  /** Plateforme dont on affiche le sélecteur de Page, ou null. */
+  protected pagePickerFor: string | null = null;
+  protected pages: SocialPage[] = [];
+  protected currentPageId = '';
+  protected pagesLoading = false;
+  protected pageSwitching = false;
+  protected pageMessage = '';
 
   private readonly API = '/api/oauth/social';
   private readonly AGENTS_API = '/api/agents';
@@ -389,6 +587,33 @@ export class SocialConnectWizardComponent implements OnInit, OnDestroy {
     return s ? Boolean(s.configured) : true;
   }
 
+  /**
+   * Ce qu'on montre dans la grille principale.
+   *
+   * Une plateforme configurée par l'administrateur, OU déjà connectée — même si
+   * la configuration a disparu entre-temps, sinon l'utilisateur verrait son
+   * canal disparaître de l'écran et ne pourrait plus le déconnecter.
+   */
+  protected visiblePlatforms(): PlatformMeta[] {
+    if (!this.statusesLoaded) return this.PLATFORMS;
+    return this.PLATFORMS.filter(pm => this.isConfigured(pm.key) || this.isConnected(pm.key));
+  }
+
+  /** Plateformes que l'administrateur n'a pas encore activées. */
+  protected hiddenPlatforms(): PlatformMeta[] {
+    if (!this.statusesLoaded) return [];
+    return this.PLATFORMS.filter(pm => !this.isConfigured(pm.key) && !this.isConnected(pm.key));
+  }
+
+  /** Prérequis non satisfaits, ex. ['FACEBOOK'] pour Instagram. */
+  protected missingRequirements(pm: PlatformMeta): string[] {
+    return (pm.requires ?? []).filter(k => !this.isConnected(k));
+  }
+
+  protected labelOf(platform: string): string {
+    return this.PLATFORMS.find(p => p.key === platform)?.label ?? platform;
+  }
+
   protected getAccountName(platform: string): string {
     return this.getStatus(platform)?.accountName || '';
   }
@@ -408,6 +633,12 @@ export class SocialConnectWizardComponent implements OnInit, OnDestroy {
   protected startOAuth(pm: PlatformMeta, existingChannelId?: string): void {
     if (!this.agentId) {
       this.showMessage('Veuillez d\'abord sélectionner un agent.', false);
+      return;
+    }
+    const missing = this.missingRequirements(pm);
+    if (missing.length) {
+      const names = missing.map(k => this.labelOf(k)).join(' et ');
+      this.showMessage(`Connectez d\'abord ${names} : ${pm.label} en dépend.`, false);
       return;
     }
     this.connecting = pm.key;
@@ -459,11 +690,97 @@ export class SocialConnectWizardComponent implements OnInit, OnDestroy {
     });
   }
 
+  // ── Choix de la Page (Facebook / Instagram) ──────────────────────────────
+
+  /**
+   * Un sélecteur n'est proposé que si le canal a été connecté via un échange
+   * OAuth remontant plusieurs Pages. Les canaux historiques n'ont pas ces
+   * informations : on ne montre alors rien du tout et la publication continue
+   * sur la Page déjà enregistrée.
+   */
+  protected hasPageChoice(platform: string): boolean {
+    const s = this.getStatus(platform);
+    if (!s || !s.connected) return false;
+    return (s.availablePageCount ?? 0) > 1;
+  }
+
+  protected needsPageChoice(platform: string): boolean {
+    return this.hasPageChoice(platform) && Boolean(this.getStatus(platform)?.pageSelectionPending);
+  }
+
+  protected togglePagePicker(platform: string): void {
+    if (this.pagePickerFor === platform) {
+      this.closePagePicker();
+      return;
+    }
+    const channelId = this.getStatus(platform)?.channelId;
+    if (!channelId) return;
+
+    this.pagePickerFor = platform;
+    this.pages = [];
+    this.currentPageId = '';
+    this.pageMessage = '';
+    this.pagesLoading = true;
+
+    this.http.get<{ pageId: string; pageName: string; pages: SocialPage[] }>(
+        `${this.API}/${platform.toLowerCase()}/pages/${channelId}`)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: res => {
+          this.pages = res.pages ?? [];
+          this.currentPageId = res.pageId ?? '';
+          this.pagesLoading = false;
+        },
+        error: () => {
+          this.pagesLoading = false;
+          this.pageMessage = 'Impossible de charger vos Pages.';
+        }
+      });
+  }
+
+  protected closePagePicker(): void {
+    this.pagePickerFor = null;
+    this.pages = [];
+    this.currentPageId = '';
+    this.pageMessage = '';
+  }
+
+  protected selectPage(platform: string, event: Event): void {
+    const channelId = this.getStatus(platform)?.channelId;
+    const pageId = (event.target as HTMLSelectElement).value;
+    if (!channelId || !pageId || pageId === this.currentPageId) return;
+
+    this.pageSwitching = true;
+    this.pageMessage = '';
+
+    this.http.post<{ changed: boolean; pageName: string; error?: string }>(
+        `${this.API}/${platform.toLowerCase()}/pages/${channelId}/select`, { pageId })
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: res => {
+          this.pageSwitching = false;
+          this.currentPageId = pageId;
+          const name = this.pages.find(p => p.id === pageId)?.name ?? res.pageName;
+          this.showMessage(`✅ ${platform} publiera désormais sur « ${name} ».`, true);
+          this.closePagePicker();
+          this.loadStatuses();
+        },
+        error: err => {
+          this.pageSwitching = false;
+          this.pageMessage = err?.error?.error
+            ?? 'Impossible de changer de Page. Réessayez.';
+        }
+      });
+  }
+
   private loadStatuses(): void {
     if (!this.agentId) return;
     this.http.get<SocialPlatformStatus[]>(`${this.API}/status/${this.agentId}`)
       .pipe(takeUntil(this.destroy$))
-      .subscribe({ next: (s) => this.statuses = s, error: () => {} });
+      .subscribe({
+        next: s => { this.statuses = s; this.statusesLoaded = true; },
+        error: () => { this.statusesLoaded = true; }
+      });
   }
 
   /** Lire les query params OAuth depuis l'URL courante (callback depuis popup/redirect) */

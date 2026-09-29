@@ -10,6 +10,59 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { AdminService, User, Entreprise, Contact, Pub, Promotion, Resultat, HistoryEntry, Categorie, Fonction, Produit, ClientPub, Vente, UserSession, SocialLink } from '../../services/admin.service';
 import { AuthService } from '../../services/auth.service';
 import { Router } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
+
+interface SocialPlatformAdmin {
+  id: string;
+  displayName: string;
+  authType: string;
+  clientId: string | null;
+  clientSecretConfigured: boolean;
+  scopes: string[];
+  tokenEndpoint: string | null;
+  refreshEndpoint: string | null;
+  accessTokenTtl: number | null;
+  refreshTokenTtl: number | null;
+  extraConfig: string;
+  sortOrder: number;
+  connectedAccounts: number;
+  configured: boolean;
+  active: boolean;
+}
+
+interface SocialAccountAdmin {
+  id: string;
+  userId: string;
+  platformId: string;
+  platformName: string;
+  platformAccountId: string;
+  platformAccountName: string;
+  scopesGranted: string[];
+  status: string;
+  needsRefresh: boolean;
+  usable: boolean;
+  tokenExpiresAt: string | null;
+  connectedAt: string | null;
+  lastRefreshedAt: string | null;
+  lastError: string | null;
+}
+
+const blankSocialPlatform = () => ({
+  id: '',
+  displayName: '',
+  authType: 'oauth2',
+  clientId: '',
+  clientSecret: '',
+  scopesText: '',
+  tokenEndpoint: '',
+  refreshEndpoint: '',
+  accessTokenTtl: 3600,
+  refreshTokenTtl: 86400,
+  extraConfig: '{}',
+  sortOrder: 0,
+  isActive: true,
+  clientSecretConfigured: false
+});
 
 @Component({
   selector: 'app-dashboard',
@@ -47,6 +100,7 @@ import { Router } from '@angular/router';
           <a class="sb-item" [class.active]="tab==='ads'" (click)="tab='ads'">📢 <span>Publicités</span></a>
           <a class="sb-item" [class.active]="tab==='clientpubs'" (click)="tab='clientpubs'">🤝 <span>Annonceurs</span></a>
           <a class="sb-item" [class.active]="tab==='sociallinks'" (click)="tab='sociallinks'; loadSocialLinks()">🌐 <span>Réseaux Sociaux</span></a>
+          <a class="sb-item" [class.active]="tab==='socialoauth'" (click)="tab='socialoauth'; loadSocialAdmin()">🔗 <span>OAuth Social</span></a>
 
           <p class="sb-section-label">Business</p>
           <a class="sb-item" [class.active]="tab==='ventes'" (click)="tab='ventes'">💰 <span>Ventes</span></a>
@@ -924,6 +978,116 @@ import { Router } from '@angular/router';
           </div>
         </div>
 
+        <!-- ── OUAUTH SOCIAL (ADMIN) ── -->
+        <div *ngIf="tab==='socialoauth'" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">OAuth Réseaux Sociaux</h1>
+              <p class="page-sub">Configurations OAuth des plateformes (Facebook, Instagram, YouTube, LinkedIn, X, TikTok) et comptes utilisateurs rattachés.</p>
+            </div>
+            <div class="header-actions flex gap-2">
+              <button class="btn-primary" (click)="openAddSocialPlatform()" [disabled]="socialSpinner">+ Configurer une Plateforme</button>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-top"><span class="stat-label">Plateformes configurées</span><span class="stat-trend">{{ configuredPlatformCount }}/{{ socialPlatforms.length }}</span></div>
+              <div class="stat-bar"><div class="stat-bar-fill" [style.width]="(configuredPlatformCount / (socialPlatforms.length || 1)) * 100 + '%'"></div></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-top"><span class="stat-label">Comptes connectés</span><span class="stat-trend">{{ socialStats.totalConnected }}</span></div>
+              <div class="stat-bar"><div class="stat-bar-fill" style="width: 100%; background: #22c55e"></div></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-top"><span class="stat-label">Jetons bientôt expirés</span><span class="stat-trend">{{ socialStats.expiringSoon }}</span></div>
+              <div class="stat-bar"><div class="stat-bar-fill" style="width: 100%; background: #f59e0b"></div></div>
+            </div>
+          </div>
+
+          <div class="toolbar card">
+            <div class="search-box">
+              <span class="search-icon">📱</span>
+              <select [(ngModel)]="socialAdminView" class="filter-select" (change)="onSocialAdminViewChange()">
+                <option value="platforms">Plateformes ({{ socialPlatforms.length }})</option>
+                <option value="accounts">Comptes connectés ({{ socialStats.totalConnected }})</option>
+              </select>
+            </div>
+            <div class="filters" *ngIf="socialAdminView==='accounts'">
+              <select [(ngModel)]="socialAccountPlatform" class="filter-select" (change)="loadSocialAccounts()">
+                <option value="">Toutes les plateformes</option>
+                <option *ngFor="let p of socialPlatforms" [value]="p.id">{{ p.displayName }}</option>
+              </select>
+              <input type="text" [(ngModel)]="socialAccountUser" (keyup.enter)="loadSocialAccounts()" placeholder="Filtrer par utilisateur (email)...">
+            </div>
+          </div>
+
+          <div *ngIf="socialAdminView==='platforms'" class="card">
+            <table class="data-table">
+              <thead><tr><th>Plateforme</th><th>Type</th><th>Client ID</th><th>Secret</th><th>Comptes</th><th>Ordre</th><th>Statut</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let p of socialPlatforms">
+                  <td>
+                    <div class="flex items-center gap-2 text-white">
+                      <span class="font-bold">{{ p.displayName }}</span>
+                      <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300">{{ p.id }}</span>
+                    </div>
+                  </td>
+                  <td><span class="role-badge">{{ p.authType }}</span></td>
+                  <td class="max-w-xs truncate">{{ p.clientId || '—' }}</td>
+                  <td>
+                    <span [class]="p.clientSecretConfigured ? 'badge badge-on' : 'badge badge-off'">{{ p.clientSecretConfigured ? 'CONFIGURÉ' : 'MANQUANT' }}</span>
+                  </td>
+                  <td><span class="text-slate-300 font-bold">{{ p.connectedAccounts }}</span></td>
+                  <td>{{ p.sortOrder }}</td>
+                  <td>
+                    <button class="badge cursor-pointer" [class.badge-on]="p.active" [class.badge-off]="!p.active"
+                            (click)="toggleSocialPlatformActive(p)" title="Cliquer pour changer le statut">
+                      {{ p.active ? 'ACTIF' : 'INACTIF' }}
+                    </button>
+                  </td>
+                  <td>
+                    <div class="action-btns">
+                      <button class="btn-sm btn-block" (click)="openEditSocialPlatform(p)" title="Modifier">✏️</button>
+                      <button class="btn-sm btn-block" (click)="revealSocialPlatform(p)" title="Vérifier la configuration">👁️</button>
+                      <button class="btn-sm btn-revoke" (click)="deleteSocialPlatform(p)" title="Supprimer">🗑️</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr *ngIf="socialPlatforms.length === 0">
+                  <td colspan="8" class="text-center py-6 text-slate-500">{{ socialSpinner ? 'Chargement...' : 'Aucune plateforme. Cliquez sur « Configurer une Plateforme ». (Seed V26 : facebook, instagram, youtube, linkedin, twitter_x, tiktok)' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div *ngIf="socialAdminView==='accounts'" class="card">
+            <table class="data-table">
+              <thead><tr><th>Utilisateur</th><th>Plateforme</th><th>Compte</th><th>Statut</th><th>Usable</th><th>Expiration jeton</th><th>Connecté le</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let a of socialAccounts">
+                  <td class="max-w-xs truncate">{{ a.userId }}</td>
+                  <td><span class="role-badge">{{ a.platformName }}</span></td>
+                  <td>
+                    <div class="text-white font-semibold">{{ a.platformAccountName || '—' }}</div>
+                    <div class="text-[10px] text-slate-500">{{ a.platformAccountId }}</div>
+                  </td>
+                  <td><span class="badge" [class.badge-on]="a.status==='CONNECTED'" [class.badge-off]="a.status!=='CONNECTED'">{{ a.status }}</span></td>
+                  <td><span class="badge" [class.badge-on]="a.usable" [class.badge-off]="!a.usable">{{ a.usable ? 'OUI' : 'NON' }}</span></td>
+                  <td>
+                    <span class="text-slate-300">{{ a.tokenExpiresAt ? (a.tokenExpiresAt | date:'short') : '—' }}</span>
+                    <span *ngIf="a.needsRefresh" class="badge badge-off ml-1">REFRESH</span>
+                  </td>
+                  <td>{{ a.connectedAt ? (a.connectedAt | date:'short') : '—' }}</td>
+                </tr>
+                <tr *ngIf="socialAccounts.length === 0">
+                  <td colspan="7" class="text-center py-6 text-slate-500">Aucun compte connecté.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- ── CATEGORIES ── -->
         <div *ngIf="tab==='categories'" class="tab-pane">
           <div class="page-header">
@@ -1553,6 +1717,119 @@ import { Router } from '@angular/router';
         </div>
       </div>
 
+      <!-- ══ SOCIAL PLATFORM MODAL ══════════════════════════════════ -->
+      <div *ngIf="showSocialPlatformModal" class="modal-overlay" (click)="showSocialPlatformModal=false">
+        <div class="modal-card animate-slide-up !max-w-2xl" (click)="$event.stopPropagation()">
+          <h2 class="text-xl font-bold mb-6">{{ isEditingSocialPlatform ? 'Modifier' : 'Configurer' }} la plateforme {{ currSocialPlatform.displayName || '' }}</h2>
+          <form (submit)="saveSocialPlatform($event)" class="space-y-4">
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="form-group">
+                <label>Identifiant *</label>
+                <input name="spid" type="text" required [(ngModel)]="currSocialPlatform.id" [readonly]="isEditingSocialPlatform"
+                       placeholder="facebook">
+              </div>
+              <div class="form-group">
+                <label>Nom affiché *</label>
+                <input name="spname" type="text" required [(ngModel)]="currSocialPlatform.displayName" placeholder="Facebook">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="form-group">
+                <label>Type d'authentification</label>
+                <select name="spauth" [(ngModel)]="currSocialPlatform.authType" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm text-white">
+                  <option value="oauth2">OAuth 2.0</option>
+                  <option value="oauth1">OAuth 1.0</option>
+                  <option value="api_key">Clé API</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Ordre d'affichage</label>
+                <input name="sporder" type="number" [(ngModel)]="currSocialPlatform.sortOrder">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Client ID</label>
+              <input name="spclientid" type="text" [(ngModel)]="currSocialPlatform.clientId" placeholder="App ID / Client ID">
+            </div>
+
+            <div class="form-group">
+              <label>Client Secret <span class="text-slate-400">(écriture seule : laisser vide pour conserver l'existant)</span></label>
+              <input name="spsecret" type="password" [(ngModel)]="currSocialPlatform.clientSecret"
+                     [placeholder]="currSocialPlatform.clientSecretConfigured ? '•••••••• (secret déjà configuré)' : 'Secret client'">
+            </div>
+
+            <div class="form-group">
+              <label>Scopes <span class="text-slate-400">(séparés par des virgules)</span></label>
+              <input name="spscopes" type="text" [(ngModel)]="currSocialPlatform.scopesText" placeholder="pages_manage_posts, publish_video">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="form-group">
+                <label>Endpoint token</label>
+                <input name="sptok" type="text" [(ngModel)]="currSocialPlatform.tokenEndpoint" placeholder="https://.../oauth/access_token">
+              </div>
+              <div class="form-group">
+                <label>Endpoint refresh</label>
+                <input name="spreftok" type="text" [(ngModel)]="currSocialPlatform.refreshEndpoint" placeholder="https://...">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="form-group">
+                <label>TTL access token <span class="text-slate-400">(secondes)</span></label>
+                <input name="spaccttl" type="number" [(ngModel)]="currSocialPlatform.accessTokenTtl">
+              </div>
+              <div class="form-group">
+                <label>TTL refresh token <span class="text-slate-400">(secondes)</span></label>
+                <input name="sprefreshttl" type="number" [(ngModel)]="currSocialPlatform.refreshTokenTtl">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Config supplémentaire <span class="text-slate-400">(JSON)</span></label>
+              <textarea name="spextra" rows="3" [(ngModel)]="currSocialPlatform.extraConfig" placeholder='{"graphVersion":"v19.0"}'></textarea>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <input name="spactive" type="checkbox" [(ngModel)]="currSocialPlatform.isActive" class="w-auto">
+              <label class="mb-0 text-sm">Plateforme active</label>
+            </div>
+
+            <div class="flex gap-4 pt-4">
+              <button type="button" class="btn-secondary flex-1" (click)="showSocialPlatformModal=false">Annuler</button>
+              <button type="submit" class="btn-primary flex-1">Enregistrer</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- ══ SOCIAL REVEAL MODAL ══════════════════════════════════ -->
+      <div *ngIf="showSocialRevealModal" class="modal-overlay" (click)="showSocialRevealModal=false">
+        <div class="modal-card animate-slide-up !max-w-md" (click)="$event.stopPropagation()">
+          <h2 class="text-xl font-bold mb-4">Configuration — {{ socialReveal.displayName }}</h2>
+          <div class="space-y-3">
+            <div class="form-group">
+              <label>Client ID</label>
+              <p class="text-white break-all">{{ socialReveal.clientId || '—' }}</p>
+            </div>
+            <div class="form-group">
+              <label>Client Secret</label>
+              <span class="badge" [class.badge-on]="socialReveal.hasSecret" [class.badge-off]="!socialReveal.hasSecret">{{ socialReveal.hasSecret ? 'CONFIGURÉ' : 'MANQUANT' }}</span>
+            </div>
+            <div class="form-group">
+              <label>Origine</label>
+              <span class="role-badge">{{ socialReveal.fromDatabase ? 'Base de données' : "Variable d'environnement" }}</span>
+            </div>
+          </div>
+          <div class="flex gap-4 pt-4">
+            <button class="btn-secondary flex-1" (click)="showSocialRevealModal=false">Fermer</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ══ TOAST NOTIFICATIONS ══════════════════════════════════ -->
       <div class="fixed bottom-6 right-6 z-[2000] flex flex-col gap-3">
         <div *ngFor="let toast of toasts" 
@@ -1822,6 +2099,24 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   isEditingSocialLink = false;
   currSocialLink: any = { platform: '', url: '', iconClass: '', displayOrder: 0, isActive: true, ownerType: 'US' };
 
+  // OAuth Social (admin) State
+  socialAdminView: 'platforms' | 'accounts' = 'platforms';
+  socialPlatforms: SocialPlatformAdmin[] = [];
+  socialAccounts: SocialAccountAdmin[] = [];
+  socialStats = { totalConnected: 0, expiringSoon: 0 };
+  socialSpinner = false;
+  socialAccountPlatform = '';
+  socialAccountUser = '';
+  showSocialPlatformModal = false;
+  isEditingSocialPlatform = false;
+  currSocialPlatform: any = blankSocialPlatform();
+  showSocialRevealModal = false;
+  socialReveal = { displayName: '', clientId: '', hasSecret: false, fromDatabase: false };
+
+  get configuredPlatformCount() {
+    return this.socialPlatforms.filter(p => p.configured).length;
+  }
+
   // Common Dialog
   showGenericModal = false;
   isEditingGeneric = false;
@@ -1853,7 +2148,8 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     private adminService: AdminService, 
     private sanitizer: DomSanitizer,
     public authService: AuthService,
-    private router: Router
+    private router: Router,
+    private http: HttpClient
   ) {
     this.swaggerUrl = this.sanitizer.bypassSecurityTrustResourceUrl('http://localhost:8480/swagger-ui.html');
   }
@@ -2575,6 +2871,124 @@ export class DashboardComponent implements OnInit, AfterViewInit {
           this.loadSocialLinks();
         },
         error: (err: any) => this.showToast('Erreur de suppression', 'error')
+      });
+    });
+  }
+
+  // ── OAuth Social (admin) ───────────────────────────────────────────────
+
+  loadSocialAdmin() {
+    this.socialSpinner = true;
+    this.loadSocialPlatforms();
+    this.loadSocialAccounts();
+  }
+
+  loadSocialPlatforms() {
+    this.http.get<SocialPlatformAdmin[]>('/api/admin/social/platforms').subscribe({
+      next: (data) => { this.socialPlatforms = data; this.socialSpinner = false; },
+      error: () => { this.showToast('Erreur de chargement des plateformes', 'error'); this.socialSpinner = false; }
+    });
+  }
+
+  loadSocialAccounts() {
+    const params: string[] = ['page=0', 'size=200'];
+    if (this.socialAccountPlatform) { params.push('platform=' + encodeURIComponent(this.socialAccountPlatform)); }
+    if (this.socialAccountUser) { params.push('user=' + encodeURIComponent(this.socialAccountUser.trim())); }
+    this.http.get<any>('/api/admin/social/accounts?' + params.join('&')).subscribe({
+      next: (page) => {
+        this.socialAccounts = page?.content || [];
+        this.socialStats = page?.stats || { totalConnected: 0, expiringSoon: 0 };
+      },
+      error: () => this.showToast('Erreur de chargement des comptes', 'error')
+    });
+  }
+
+  onSocialAdminViewChange() {
+    if (this.socialAdminView === 'accounts') {
+      this.loadSocialAccounts();
+    }
+  }
+
+  openAddSocialPlatform() {
+    this.isEditingSocialPlatform = false;
+    this.currSocialPlatform = blankSocialPlatform();
+    this.showSocialPlatformModal = true;
+  }
+
+  openEditSocialPlatform(p: SocialPlatformAdmin) {
+    this.isEditingSocialPlatform = true;
+    this.currSocialPlatform = {
+      id: p.id,
+      displayName: p.displayName,
+      authType: p.authType,
+      clientId: p.clientId || '',
+      clientSecret: '',
+      scopesText: (p.scopes || []).join(', '),
+      tokenEndpoint: p.tokenEndpoint || '',
+      refreshEndpoint: p.refreshEndpoint || '',
+      accessTokenTtl: p.accessTokenTtl,
+      refreshTokenTtl: p.refreshTokenTtl,
+      extraConfig: p.extraConfig || '{}',
+      sortOrder: p.sortOrder,
+      isActive: p.active,
+      clientSecretConfigured: p.clientSecretConfigured
+    };
+    this.showSocialPlatformModal = true;
+  }
+
+  saveSocialPlatform(event: Event) {
+    event.preventDefault();
+    const c = this.currSocialPlatform;
+    const id = String(c.id || '').trim().toLowerCase();
+    if (!id) { this.showToast("L'identifiant est obligatoire", 'error'); return; }
+    const body: any = {
+      id,
+      displayName: String(c.displayName || '').trim(),
+      authType: c.authType || 'oauth2',
+      clientId: c.clientId ? String(c.clientId).trim() : null,
+      clientSecret: c.clientSecret ? String(c.clientSecret).trim() : null,
+      scopes: String(c.scopesText || '').split(',').map((s: string) => s.trim()).filter(Boolean),
+      tokenEndpoint: c.tokenEndpoint ? String(c.tokenEndpoint).trim() : null,
+      refreshEndpoint: c.refreshEndpoint ? String(c.refreshEndpoint).trim() : null,
+      accessTokenTtl: c.accessTokenTtl ?? null,
+      refreshTokenTtl: c.refreshTokenTtl ?? null,
+      extraConfig: c.extraConfig && String(c.extraConfig).trim() ? String(c.extraConfig).trim() : '{}',
+      sortOrder: c.sortOrder ?? 0,
+      isActive: !!c.isActive
+    };
+    this.http.put<any>('/api/admin/social/platforms/' + id, body).subscribe({
+      next: () => {
+        this.showToast('Plateforme enregistrée', 'success');
+        this.showSocialPlatformModal = false;
+        this.loadSocialPlatforms();
+      },
+      error: (err: any) => this.showToast(err.error?.detail || err.error?.error || "Erreur d'enregistrement", 'error')
+    });
+  }
+
+  toggleSocialPlatformActive(p: SocialPlatformAdmin) {
+    const next = !p.active;
+    this.http.patch<any>(`/api/admin/social/platforms/${p.id}/active?active=${next}`, {}).subscribe({
+      next: () => { this.showToast(`Plateforme ${next ? 'activée' : 'désactivée'}`, 'success'); this.loadSocialPlatforms(); },
+      error: (err: any) => this.showToast(err.error?.error || 'Erreur de mise à jour', 'error')
+    });
+  }
+
+  revealSocialPlatform(p: SocialPlatformAdmin) {
+    this.http.get<any>(`/api/admin/social/platforms/${p.id}/reveal`).subscribe({
+      next: (r) => {
+        this.socialReveal = { displayName: p.displayName, clientId: r.clientId ?? '', hasSecret: !!r.hasSecret, fromDatabase: !!r.fromDatabase };
+        this.showSocialRevealModal = true;
+      },
+      error: () => this.showToast('Erreur de vérification', 'error')
+    });
+  }
+
+  deleteSocialPlatform(p: SocialPlatformAdmin) {
+    this.openConfirm(`Supprimer la plateforme « ${p.displayName} » ?`, () => {
+      this.http.delete(`/api/admin/social/platforms/${p.id}`).subscribe({
+        next: () => { this.showToast('Plateforme supprimée', 'success'); this.loadSocialPlatforms(); },
+        error: (err: any) => this.showToast(err.error?.error || 'Erreur de suppression', 'error')
       });
     });
   }

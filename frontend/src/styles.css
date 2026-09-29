@@ -485,18 +485,24 @@ body.admin-mode { background: var(--bg-admin); }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ─── Layout 3 colonnes ──────────────────────────────────────────────────────── */
+/* PLEIN LARGEUR : le conteneur ne plafonne plus à 1280px et n'est plus centré,
+   sinon tout écran > 1280px (donc la quasi-totalité des écrans aujourd'hui) affiche
+   une bande vide à gauche ET à droite de la page. Voir le bloc "PLEIN LARGEUR"
+   en bas de fichier pour la liste des wrappers de page neutralises. */
 .page-layout {
   display: flex;
   min-height: calc(100vh - 64px);
   align-items: flex-start;
-  justify-content: center;
+  justify-content: stretch;
+  width: 100%;
 }
 
 .main-content {
-  flex: 1;
+  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
-  max-width: 1280px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
 }
 
 /* Masquer les sidebars uniquement sur tablettes/mobiles */
@@ -518,4 +524,102 @@ body.admin-mode { background: var(--bg-admin); }
   .admin-sidebar { position: relative; width: 100%; height: auto; overflow-y: visible; }
   .admin-content { margin-left: 0; padding: 1.25rem; }
   .nav-links-wrap { gap: 1rem; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PLEIN LARGEUR — correction globale de l'espace latéral
+   ───────────────────────────────────────────────────────────────────────────
+   Symptôme : sur /docfusion, /agentique/workspace, /agentique/teams et
+   /generation/studio, la page n'occupe que ~1200-1400px au centre d'un écran
+   large, laissant une bande vide à gauche et une à droite.
+
+   Deux causes cumulatives, corrigées ICI et seulement ici (une fois pour toutes) :
+     1. .main-content { max-width:1280px; margin:0 auto }  -> voir bloc ci-dessus ;
+     2. chaque page re-imposait sa propre largeur dans son CSS encapsulé
+        (.ws-wrap 1200px, .at-wrap 1400px, .studio 1160px, .panel 1280px…),
+        ces règles-là n'existent qu'après encapsulation Angular.
+
+   Le bloc ci-dessous neutralise ces plafonds. Ajouter une page = ajouter son
+   wrapper dans cette liste, rien d'autre à faire.
+
+   ATTENTION : ne passe jamais en `!important` — la règle doit gagner par
+   l'ORDRE du fichier (styles.css est chargé avant le CSS encapsulé de chaque
+   composant) ou par une spécificité supérieure via `:not()`. Un `!important`
+   masquerait le symptôme sans supprimer la cause.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Largeur de contenu de référence (utilisée comme padding latéral de secours). */
+  --page-gutter: clamp(1rem, 2.2vw, 2.5rem);
+}
+
+/* Plafonds neutralises, page par page. Ajouter une page = ajouter son wrapper
+   dans cette liste. `.panel` est volontairement scope à `.df-grid` : la classe
+   existe aussi dans creative-studio / agent-prospection pour d'autres usages. */
+.df-grid > .panel,
+.df-grid > .hist-panel,
+.ws-wrap,
+.at-wrap,
+.studio {
+  max-width: none;
+  margin-inline: 0;
+}
+
+/* Gutter latéral proportionnel : le contenu touche les bords sur petit écran et
+   respire sur très large, au lieu de laisser une bande morte. Les pages qui ont
+   déjà leur propre padding (.ws-page 1.5rem, .at-wrap 1.5rem, :host du studio)
+   n'ont pas besoin de cette règle. */
+.df-page { padding-inline: var(--page-gutter); }
+
+/* teams : les colonnes latérales suivent la largeur de l'écran au lieu d'être
+   figées à 260px. `:not()` lève la spécificité pour battre la règle du composant
+   tout en laissant les variantes repliées (.at-main-layout--lc/--rc) intactes. */
+.at-main-layout:not(.at-main-layout--lc):not(.at-main-layout--rc) {
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(220px, 280px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOOLTIP GLOBAL
+   ───────────────────────────────────────────────────────────────────────────
+   Usage dans un template :  <button [tip]="description" [tipSide]="'right'">
+   La bulle elle-meme est rendue par <app-tooltip-host> (fixed, hors flux) :
+   un `::after` en CSS serait rogne par les `overflow: auto` des sidebars.
+   Ici on ne style que la bulle. Voir shared/ui/tooltip.directive.ts.
+
+   Convention de texte : "Titre\nDescription" — la 1re ligne se lit comme un
+   titre, les suivantes comme le detail de la fonctionnalite.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.tip-bubble {
+  position: fixed;
+  z-index: 4000;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 1.5rem));
+  padding: .5rem .7rem;
+  border-radius: 9px;
+  background: #0b1220;
+  color: #e2e8f0;
+  font-size: .72rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: 0 12px 32px rgba(2, 6, 23, .55);
+  border: 1px solid rgba(99, 102, 241, .4);
+  pointer-events: none;
+  animation: appTipIn .16s ease-out both;
+}
+
+/* Alignement : l'ancre (left/top) est fournie par la directive. */
+.tip-bubble--right  { transform: translate(0, -50%); }
+.tip-bubble--left   { transform: translate(-100%, -50%); }
+.tip-bubble--bottom { transform: translate(-50%, 0); }
+.tip-bubble--top    { transform: translate(-50%, -100%); }
+
+@keyframes appTipIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tip-bubble { animation: none; }
 }

@@ -5,6 +5,7 @@ import { Router, RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import * as XLSX from 'xlsx';
 import { DialogService } from '../../shared/ui/dialog.service';
+import { TipDirective } from '../../shared/ui/tooltip.directive';
 import { AuthService } from '../../services/auth.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -150,7 +151,7 @@ function makeCompetencies(type: string, desc: string): string[] {
 @Component({
   selector: 'app-ai-teams',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, RouterModule, TipDirective],
   changeDetection: ChangeDetectionStrategy.Default,
   template: `
 <div class="at-page">
@@ -210,7 +211,8 @@ function makeCompetencies(type: string, desc: string): string[] {
         </select>
       </div>
       <div class="at-team-bar-actions">
-        <a routerLink="/agentique/workspace" class="at-btn-secondary" title="Tableau de bord">⚙ Espace de travail</a>
+        <a routerLink="/agentique/workspace" class="at-btn-secondary"
+           [tip]="'Espace de travail\\nTableau de bord : toutes vos requêtes, tâches et livrables'">⚙ Espace de travail</a>
         <button class="at-btn-secondary" (click)="toggleTasksPanel()">📋 Mes demandes <span *ngIf="myTasks.length" class="at-badge-count">{{ myTasks.length }}</span></button>
         <button class="at-btn-primary" (click)="openCreateTeamModal()">+ Nouvelle équipe</button>
       </div>
@@ -243,7 +245,8 @@ function makeCompetencies(type: string, desc: string): string[] {
               </div>
             </div>
           </div>
-          <button class="at-relaunch-btn" (click)="relaunchTask(t)" title="Relancer comme nouvelle demande">↺ Relancer</button>
+          <button class="at-relaunch-btn" (click)="relaunchTask(t)"
+                 [tip]="'Relancer\\nRejoue cette demande comme une nouvelle tâche'">↺ Relancer</button>
         </div>
       </div>
     </div>
@@ -259,10 +262,13 @@ function makeCompetencies(type: string, desc: string): string[] {
       <!-- LEFT COLUMN -->
       <div class="at-col at-col-left" [class.at-col--collapsed]="leftCollapsed">
         <div class="at-col-header">
-          <span *ngIf="!leftCollapsed">ÉQUIPE D'AGENTS</span>
+          <span *ngIf="!leftCollapsed"
+                [tip]="'Colonne gauche\\nAffinez ici les agents ; la colonne centrale garde l\\'ordre de travail'">ÉQUIPE D'AGENTS</span>
           <div class="at-col-hdr-btns">
-            <button *ngIf="!leftCollapsed" class="at-col-add-btn" (click)="openCreateAgentModal()" title="Ajouter un agent">＋</button>
-            <button class="at-sidebar-toggle" (click)="leftCollapsed=!leftCollapsed" [title]="leftCollapsed ? 'Déplier' : 'Replier'">
+            <button *ngIf="!leftCollapsed" class="at-col-add-btn" (click)="openCreateAgentModal()"
+                      [tip]="'Ajouter un agent\\nCréer un nouvel agent dans cette colonne'">＋</button>
+            <button class="at-sidebar-toggle" (click)="leftCollapsed=!leftCollapsed"
+                    [tip]="leftCollapsed ? 'Déplier la colonne\\nRevoir la liste des agents de gauche' : 'Replier la colonne\\nGarder plus de place pour le centre'">
               {{ leftCollapsed ? '›' : '‹' }}
             </button>
           </div>
@@ -280,9 +286,9 @@ function makeCompetencies(type: string, desc: string): string[] {
                 </div>
               </div>
               <div class="at-card-btns">
-                <button class="at-btn-icon at-btn-info"  (click)="openDetails(agent)"     title="Détails">👁</button>
-                <button class="at-btn-icon at-btn-edit"  (click)="openEditModal(agent)"   title="Modifier">✎</button>
-                <button class="at-btn-icon at-btn-del"   (click)="deleteAgent(agent, $event)" title="Supprimer" [class.at-busy]="deletingId === agent.id">🗑</button>
+                <button class="at-btn-icon at-btn-info"  (click)="openDetails(agent)"     [tip]="'Détails\\nVoir la fiche complète de cet agent'">👁</button>
+                <button class="at-btn-icon at-btn-edit"  (click)="openEditModal(agent)"   [tip]="'Modifier\\nÉditer nom, prompt système et paramètres'">✎</button>
+                <button class="at-btn-icon at-btn-del"   (click)="deleteAgent(agent, $event)" [tip]="'Supprimer\\nRetire définitivement cet agent'" [class.at-busy]="deletingId === agent.id">🗑</button>
               </div>
             </div>
           </ng-container>
@@ -326,9 +332,9 @@ function makeCompetencies(type: string, desc: string): string[] {
               <div class="at-top-name">{{ scrumCard.name }}</div>
               <div class="at-top-role">Chef de Projet Agent</div>
               <div class="at-top-card-btns">
-                <button class="at-btn-icon at-btn-info" (click)="openDetails(scrumCard)" title="Détails">👁</button>
-                <button class="at-btn-icon at-btn-edit" (click)="openEditModal(scrumCard)" title="Modifier">✎</button>
-                <button class="at-btn-icon at-btn-del"  (click)="deleteAgent(scrumCard, $event)" title="Supprimer">🗑</button>
+                <button class="at-btn-icon at-btn-info" (click)="openDetails(scrumCard)" [tip]="'Détails\\nVoir la fiche complète de cet agent'">👁</button>
+                <button class="at-btn-icon at-btn-edit" (click)="openEditModal(scrumCard)" [tip]="'Modifier\\nÉditer nom, prompt système et paramètres'">✎</button>
+                <button class="at-btn-icon at-btn-del"  (click)="deleteAgent(scrumCard, $event)" [tip]="'Supprimer\\nRetire définitivement cet agent'">🗑</button>
               </div>
             </div>
           </div>
@@ -352,12 +358,16 @@ function makeCompetencies(type: string, desc: string): string[] {
       <div class="at-col at-col-right" [class.at-col--collapsed]="rightCollapsed">
         <div class="at-col-header">
           <div class="at-col-hdr-btns">
-            <button class="at-sidebar-toggle" (click)="rightCollapsed=!rightCollapsed" [title]="rightCollapsed ? 'Déplier' : 'Replier'">
+            <button class="at-sidebar-toggle" (click)="rightCollapsed=!rightCollapsed" tipSide="left"
+                    [tip]="rightCollapsed ? 'Déplier la colonne\\nRevoir la liste des agents de droite' : 'Replier la colonne\\nGarder plus de place pour le centre'">
               {{ rightCollapsed ? '‹' : '›' }}
             </button>
-            <button *ngIf="!rightCollapsed" class="at-col-add-btn" (click)="openCreateAgentModal()" title="Ajouter un agent">＋</button>
+            <button *ngIf="!rightCollapsed" class="at-col-add-btn" (click)="openCreateAgentModal()"
+                      tipSide="left"
+                      [tip]="'Ajouter un agent\\nCréer un nouvel agent dans cette colonne'">＋</button>
           </div>
-          <span *ngIf="!rightCollapsed">ÉQUIPE D'AGENTS</span>
+          <span *ngIf="!rightCollapsed"
+                [tip]="'Colonne droite\\nGardez de côté les agents secondaires ; cliquez sur une carte pour l\\'attribuer à la colonne centrale'">ÉQUIPE D'AGENTS</span>
         </div>
         <ng-container *ngIf="!rightCollapsed">
           <ng-container *ngFor="let agent of rightAgents">
@@ -372,9 +382,9 @@ function makeCompetencies(type: string, desc: string): string[] {
                 </div>
               </div>
               <div class="at-card-btns">
-                <button class="at-btn-icon at-btn-info" (click)="openDetails(agent)"        title="Détails">👁</button>
-                <button class="at-btn-icon at-btn-edit" (click)="openEditModal(agent)"       title="Modifier">✎</button>
-                <button class="at-btn-icon at-btn-del"  (click)="deleteAgent(agent, $event)" title="Supprimer" [class.at-busy]="deletingId === agent.id">🗑</button>
+                <button class="at-btn-icon at-btn-info" (click)="openDetails(agent)"        tipSide="left" [tip]="'Détails\\nVoir la fiche complète de cet agent'">👁</button>
+                <button class="at-btn-icon at-btn-edit" (click)="openEditModal(agent)"       tipSide="left" [tip]="'Modifier\\nÉditer nom, prompt système et paramètres'">✎</button>
+                <button class="at-btn-icon at-btn-del"  (click)="deleteAgent(agent, $event)" tipSide="left" [tip]="'Supprimer\\nRetire définitivement cet agent'" [class.at-busy]="deletingId === agent.id">🗑</button>
               </div>
             </div>
           </ng-container>
@@ -777,7 +787,7 @@ function makeCompetencies(type: string, desc: string): string[] {
                      placeholder="email@exemple.com" (keydown.enter)="addContact(); $event.preventDefault()"/>
               <button class="at-contact-add-btn" (click)="addContact()">＋ Ajouter</button>
               <button class="at-contact-add-btn" style="background:#3b5bdb" (click)="openClientPicker()">📋 Mes clients</button>
-              <label class="at-upload-btn at-upload-btn--sm" title="Importer CSV/Excel">
+              <label class="at-upload-btn at-upload-btn--sm" [tip]="'Importer un fichier\\nCharge une liste d\\'agents depuis un CSV ou Excel'">
                 📎 Importer
                 <input type="file" accept=".csv,.txt,.xls,.xlsx,text/csv,text/plain" class="at-file-hidden" (change)="importContactsFile($event)"/>
               </label>
@@ -1287,7 +1297,7 @@ function makeCompetencies(type: string, desc: string): string[] {
 .at-orb1 { width:600px; height:600px; background:#6366f1; top:-200px; left:-200px; }
 .at-orb2 { width:500px; height:500px; background:#0ea5e9; bottom:-150px; right:-100px; }
 .at-orb3 { width:400px; height:400px; background:#10b981; top:50%; left:40%; }
-.at-wrap { position:relative; z-index:1; max-width:1400px; margin:0 auto; padding:1.5rem; }
+.at-wrap { position:relative; z-index:1; max-width:none; margin-inline:0; padding:1.5rem; }
 
 /* ── Teaser (visiteur non connecté) ──────────────────────────────────────── */
 .at-teaser { position:relative; z-index:1; max-width:860px; margin:0 auto; padding:4.5rem 1.5rem 3rem; text-align:center; }

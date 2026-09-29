@@ -6,12 +6,13 @@ import { filter } from 'rxjs/operators';
 import { AuthService } from './services/auth.service';
 import { GameChromeService } from './services/game-chrome.service';
 import { DialogHostComponent } from './shared/ui/dialog-host.component';
+import { TooltipHostComponent } from './shared/ui/tooltip-host.component';
 import { GamepadKeyboardBridgeService } from './features/games/gamepad-keyboard-bridge.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterModule, DialogHostComponent],
+  imports: [CommonModule, RouterModule, DialogHostComponent, TooltipHostComponent],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css']
 })

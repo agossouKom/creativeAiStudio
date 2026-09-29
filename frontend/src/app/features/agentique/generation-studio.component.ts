@@ -1,12 +1,14 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
+import { catchError, forkJoin, map, of } from 'rxjs';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 import { SocialConnectWizardComponent } from './social-connect-wizard.component';
+import { TipDirective } from '../../shared/ui/tooltip.directive';
 
 type MediaKind = 'VIDEO' | 'IMAGE';
-type StudioTab = 'generation' | 'montage' | 'gallery' | 'social' | 'planning';
+type StudioTab = 'generation' | 'montage' | 'gallery' | 'social' | 'planning' | 'history';
 
 interface ImageModelEntry {
   id: string;
@@ -28,7 +30,7 @@ interface UploadedMediaItem {
 @Component({
   selector: 'app-generation-studio',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, SocialConnectWizardComponent],
+  imports: [CommonModule, FormsModule, RouterModule, SocialConnectWizardComponent, TipDirective],
   template: `
     <main class="studio">
       <header class="studio-header">
@@ -44,26 +46,37 @@ interface UploadedMediaItem {
 
       <!-- Navigation des onglets -->
       <nav class="studio-tabs" role="tablist" aria-label="Onglets du Studio">
-        <button type="button" class="tab-btn" [class.active]="activeTab === 'generation'" (click)="activeTab = 'generation'" role="tab" [attr.aria-selected]="activeTab === 'generation'">
+        <button type="button" class="tab-btn" [class.active]="activeTab === 'generation'" (click)="activeTab = 'generation'" role="tab"
+          tipSide="bottom" [tip]="'Génération\\nDécrire un projet et lancer la création d\\\'une vidéo ou d\\\'images par IA'" [attr.aria-selected]="activeTab === 'generation'">
           <span class="tab-icon">✨</span>
           <span>1. Génération</span>
         </button>
-        <button type="button" class="tab-btn" [class.active]="activeTab === 'montage'" (click)="activeTab = 'montage'" role="tab" [attr.aria-selected]="activeTab === 'montage'">
+        <button type="button" class="tab-btn" [class.active]="activeTab === 'montage'" (click)="activeTab = 'montage'" role="tab"
+          tipSide="bottom" [tip]="'Montage\\nAssembler storyboard, voix off, musique et rendu final'" [attr.aria-selected]="activeTab === 'montage'">
           <span class="tab-icon">🎬</span>
           <span>2. Montage</span>
         </button>
-        <button type="button" class="tab-btn" [class.active]="activeTab === 'gallery'" (click)="activeTab = 'gallery'" role="tab" [attr.aria-selected]="activeTab === 'gallery'">
+        <button type="button" class="tab-btn" [class.active]="activeTab === 'gallery'" (click)="activeTab = 'gallery'" role="tab"
+          tipSide="bottom" [tip]="'Galerie\\nRetrouver tous vos rendus, les rejouer ou les télécharger'" [attr.aria-selected]="activeTab === 'gallery'">
           <span class="tab-icon">🖼️</span>
           <span>3. Galerie</span>
           <span *ngIf="jobs.length" class="badge-count">{{ jobs.length }}</span>
         </button>
-        <button type="button" class="tab-btn" [class.active]="activeTab === 'social'" (click)="activeTab = 'social'" role="tab" [attr.aria-selected]="activeTab === 'social'">
+        <button type="button" class="tab-btn" [class.active]="activeTab === 'social'" (click)="activeTab = 'social'" role="tab"
+          tipSide="bottom" [tip]="'Réseaux\\nPublier un rendu sur Facebook ou Instagram, ou planifier la publication'" [attr.aria-selected]="activeTab === 'social'">
           <span class="tab-icon">🌐</span>
           <span>4. Réseaux Sociaux</span>
         </button>
-        <button type="button" class="tab-btn" [class.active]="activeTab === 'planning'" (click)="activeTab = 'planning'" role="tab" [attr.aria-selected]="activeTab === 'planning'">
+        <button type="button" class="tab-btn" [class.active]="activeTab === 'planning'" (click)="activeTab = 'planning'; loadPlans()" role="tab"
+          tipSide="bottom" [tip]="'Planning\\nProgrammer à l\\'avance vos publications sur les réseaux'" [attr.aria-selected]="activeTab === 'planning'">
           <span class="tab-icon">📅</span>
           <span>5. Planning</span>
+        </button>
+        <button type="button" class="tab-btn" [class.active]="activeTab === 'history'" (click)="activeTab = 'history'; loadPublishHistory()" role="tab"
+          tipSide="bottom" [tip]="'Historique\\nRetracer chaque publication, réussie ou en échec, avec son détail'" [attr.aria-selected]="activeTab === 'history'">
+          <span class="tab-icon">🗂️</span>
+          <span>6. Historique</span>
+          <span *ngIf="publishHistory.length" class="badge-count">{{ publishHistory.length }}</span>
         </button>
       </nav>
 
@@ -463,14 +476,27 @@ interface UploadedMediaItem {
 
             <div class="gallery-card-actions">
               <button type="button" class="secondary text-xs" (click)="refreshJob(job)" [disabled]="job.refreshing">Détails</button>
-              <button *ngFor="let output of job.outputs" type="button" class="secondary text-xs" (click)="download(job, output.index)">
-                📥 Télécharger
-              </button>
-              <button *ngFor="let output of job.outputs" type="button" class="primary text-xs"
-                      [disabled]="job.status !== 'DONE' || availablePlatforms(job).length === 0"
-                      (click)="openPublisher(job, output.index)">
-                🚀 Publier
-              </button>
+              <!-- Un bouton par fichier généré : sans le numéro, deux rendus
+                   donnaient deux boutons « Télécharger » rigoureusement
+                   identiques, ce qui ressemblait à un bug d'affichage. -->
+              <ng-container *ngFor="let output of job.outputs; let outputNo = index">
+                <button type="button" class="secondary text-xs" (click)="download(job, output.index)"
+                        [title]="output.objectKey || output.contentType || ''">
+                  📥 Télécharger<span *ngIf="job.outputs.length > 1"> {{ outputNo + 1 }}/{{ job.outputs.length }}</span>
+                </button>
+                <button type="button" class="primary text-xs"
+                        [disabled]="job.status !== 'DONE' || availablePlatforms(job).length === 0"
+                        (click)="openPublisher(job, output.index)"
+                        [title]="job.status !== 'DONE' ? 'Génération encore en cours' : 'Publier ce fichier'">
+                  🚀 Publier<span *ngIf="job.outputs.length > 1"> {{ outputNo + 1 }}/{{ job.outputs.length }}</span>
+                </button>
+                <button type="button" class="secondary text-xs"
+                        [disabled]="job.status !== 'DONE' || availablePlatforms(job).length === 0"
+                        (click)="openPlanner(job, output.index)"
+                        title="Programmer la publication de ce fichier plus tard">
+                  🗓️ Planifier<span *ngIf="job.outputs.length > 1"> {{ outputNo + 1 }}/{{ job.outputs.length }}</span>
+                </button>
+              </ng-container>
               <button *ngIf="job.status === 'FAILED' || job.status === 'DONE'" type="button" class="secondary text-xs"
                       (click)="retry(job)" [disabled]="job.retrying">
                 {{ job.retrying ? 'Relance…' : '↻ Relancer' }}
@@ -482,18 +508,24 @@ interface UploadedMediaItem {
               <h4 class="text-sm font-bold text-indigo-300">Diffusion sur les réseaux sociaux</h4>
               <label class="field">
                 <div class="field-label-row">
-                  <span>Réseau social cible</span>
+                  <span>Réseaux sociaux cibles</span>
                   <div class="tip-anchor" tabindex="0">
                     <span class="tip-icon">ℹ️</span>
                     <div class="tip-card">
                       <strong>Diffusion :</strong>
-                      <p>Facebook et Instagram sont disponibles immédiatement. Les autres plateformes sont en cours d'intégration.</p>
+                      <p>Cochez un ou plusieurs réseaux : la même création est publiée sur chacun, avec sa propre ligne d'historique.</p>
                     </div>
                   </div>
                 </div>
-                <select [(ngModel)]="publishPlatform">
-                  <option *ngFor="let platform of availablePlatforms(job)" [value]="platform.platform">{{ platform.label }}</option>
-                </select>
+                <div class="platform-checks">
+                  <label *ngFor="let platform of availablePlatforms(job)" class="platform-check">
+                    <input type="checkbox" [value]="platform.platform" (change)="togglePublishPlatform(platform.platform, $event)">
+                    <span>{{ platform.label }}</span>
+                  </label>
+                  <p *ngIf="availablePlatforms(job).length === 0" class="hint">
+                    Aucun réseau ne peut encore diffuser ce type de média.
+                  </p>
+                </div>
               </label>
 
               <label class="field">
@@ -527,13 +559,16 @@ interface UploadedMediaItem {
                 <textarea [(ngModel)]="publishCaption" rows="2" maxlength="2200"></textarea>
               </label>
 
-              <p *ngIf="publishResult" class="hint">Publication {{ publishResult.status }} · {{ publishResult.requestId }}</p>
+              <p *ngIf="publishResult" class="hint">
+                {{ publishResultSummary(publishResult) }}
+              </p>
 
               <div class="job-actions mt-2">
                 <button class="secondary text-xs" type="button" (click)="publishJobId = ''">Fermer</button>
                 <button class="primary text-xs" type="button" (click)="publish(job, publishOutputIndex)"
-                        [disabled]="publishing || !publishPlatform || !publishAgentId">
+                        [disabled]="publishing || publishPlatforms.length === 0 || !publishAgentId">
                   {{ publishing ? 'Envoi…' : 'Confirmer la publication' }}
+                  <span *ngIf="publishPlatforms.length > 1"> ({{ publishPlatforms.length }} réseaux)</span>
                 </button>
               </div>
             </div>
@@ -555,16 +590,186 @@ interface UploadedMediaItem {
       <!-- ONGLET 5 : PLANNING                                           -->
       <!-- ============================================================== -->
       <section *ngIf="activeTab === 'planning'" class="studio-card animate-fade">
-        <h2 class="section-title">📅 Planning & Calendrier Éditorial</h2>
-        <p class="section-desc">Programmez vos publications sur les réseaux sociaux pour les diffuser automatiquement au meilleur créneau horaire.</p>
-
-        <div class="planning-box mt-4">
-          <div class="empty p-4">
-            <span class="text-2xl">🗓️</span>
-            <h3 class="font-bold text-lg mt-2">Planification automatique</h3>
-            <p class="text-sm text-slate-400 mt-1">Vous pouvez sélectionner un média depuis la <strong>Galerie</strong> et choisir une date et une heure de diffusion différée.</p>
-            <button class="primary mt-3 text-sm" (click)="activeTab = 'gallery'">Ouvrir la Galerie</button>
+        <div class="history-heading">
+          <div>
+            <h2 class="section-title">📅 Planning</h2>
+            <p class="section-desc">Choisissez un média, écrivez ce que vous direz, et laissez la diffusion se faire toute seule à l'heure voulue.</p>
           </div>
+          <button class="secondary text-sm" (click)="loadPlans()">↻ Rafraîchir</button>
+        </div>
+
+        <p *ngIf="planMessage" class="plan-feedback ok">{{ planMessage }}</p>
+        <p *ngIf="planError" class="plan-feedback ko">{{ planError }}</p>
+
+        <!-- 1. Média -->
+        <div class="plan-step">
+          <h4 class="step-title">1. Quel média publier ?</h4>
+          <div *ngIf="!planMedia" class="empty">
+            Aucun média sélectionné. Choisissez-en un dans la Galerie avec le bouton
+            <strong>🗓️ Planifier</strong>.
+            <div class="mt-3"><button class="secondary text-sm" (click)="activeTab = 'gallery'">Ouvrir la Galerie</button></div>
+          </div>
+          <div *ngIf="planMedia" class="selected-media">
+            <span class="kind">{{ planMedia.mediaType === 'VIDEO' ? '🎬 Vidéo' : '🎨 Image' }}</span>
+            <span class="text-sm">{{ planMedia.prompt }}</span>
+            <button class="secondary text-xs" (click)="activeTab = 'gallery'">Changer</button>
+          </div>
+        </div>
+
+        <!-- 2. Réseaux -->
+        <div class="plan-step" *ngIf="planMedia">
+          <h4 class="step-title">2. Sur quels réseaux ?</h4>
+          <div class="platform-checks">
+            <label *ngFor="let platform of availablePlatforms(planMedia)" class="platform-check">
+              <input type="checkbox" [value]="platform.platform"
+                     [checked]="planPlatforms.includes(platform.platform)"
+                     (change)="togglePlanPlatform(platform.platform, $event)">
+              <span>{{ platform.label }}</span>
+            </label>
+            <p *ngIf="availablePlatforms(planMedia).length === 0" class="hint">
+              Aucun réseau ne peut encore diffuser ce type de média.
+            </p>
+          </div>
+          <p class="hint mt-1">Chaque réseau reçoit sa propre programmation : l'un peut échouer sans bloquer les autres.</p>
+        </div>
+
+        <!-- 3. Agent -->
+        <div class="plan-step" *ngIf="planMedia">
+          <h4 class="step-title">3. Compte qui publie</h4>
+          <label class="field">
+            <select [(ngModel)]="planAgentId">
+              <option value="">— Choisir un agent —</option>
+              <option *ngFor="let agent of agents" [value]="agent.id">{{ agent.name }}</option>
+            </select>
+          </label>
+          <p class="hint">Les identifiants du compte connecté sont choisis dans l'onglet <strong>Réseaux</strong>.</p>
+        </div>
+
+        <!-- 4. Texte -->
+        <div class="plan-step" *ngIf="planMedia">
+          <h4 class="step-title">4. Que allez-vous dire ?</h4>
+          <label class="field">
+            <span>Votre événement, en une phrase</span>
+            <textarea rows="2" [(ngModel)]="planEvent"
+                      placeholder="ex. : inauguration de notre nouvelle boutique vendredi matin"></textarea>
+          </label>
+          <button class="secondary text-sm" type="button"
+                  (click)="generateCaption()" [disabled]="planCaptionBusy || !planEvent.trim()">
+            {{ planCaptionBusy ? 'Rédaction…' : '✨ Rédiger pour moi' }}
+          </button>
+          <label class="field mt-3">
+            <span>Légende publiée <em class="muted">(modifiable)</em></span>
+            <textarea rows="4" [(ngModel)]="planCaption" maxlength="2200"
+                      placeholder="Ce texte sera publié tel quel."></textarea>
+            <small class="muted text-xs">{{ planCaption.length }}/2200 caractères</small>
+          </label>
+        </div>
+
+        <!-- 5. Date -->
+        <div class="plan-step" *ngIf="planMedia">
+          <h4 class="step-title">5. Quand ?</h4>
+          <div class="date-grid">
+            <label class="field">
+              <span>Date et heure de publication</span>
+              <input type="datetime-local" [(ngModel)]="planScheduledAt" [min]="planMinDateTime">
+            </label>
+            <label class="field">
+              <span>Date de fin <em class="muted">(optionnelle)</em></span>
+              <input type="datetime-local" [(ngModel)]="planEndAt">
+            </label>
+          </div>
+          <p class="hint">La date de fin sert de limite : si le compte est déconnecté jusqu'à cette date, la programmation est abandonnée plutôt que de publier à l'improviste.</p>
+
+          <div class="mt-3 flex gap-2">
+            <button class="primary" type="button" (click)="schedule()" [disabled]="!canSchedule()">
+              {{ planSaving ? 'Programmation…' : '🗓️ Programmer' }}
+            </button>
+            <button class="secondary" type="button" (click)="activeTab = 'gallery'" [disabled]="planSaving">
+              Annuler
+            </button>
+          </div>
+        </div>
+
+        <!-- Programmations existantes -->
+        <div class="plan-step">
+          <h4 class="step-title">Vos programmations</h4>
+          <div *ngIf="plans.length === 0" class="empty">Aucune publication programmée pour l'instant.</div>
+          <div *ngIf="plans.length > 0" class="plan-list">
+            <article *ngFor="let plan of plans" class="plan-row">
+              <div class="plan-row-main">
+                <span class="pub-badge" [ngClass]="planOutcome(plan.status).css">{{ planOutcome(plan.status).label }}</span>
+                <span class="text-sm font-semibold">{{ plan.platform }}</span>
+                <span class="muted text-xs">média {{ plan.jobId }} #{{ plan.outputIndex }}</span>
+              </div>
+              <div class="muted text-xs">
+                Publication le {{ plan.scheduledAt | date:'medium' }}
+                <ng-container *ngIf="plan.endAt"> — avant le {{ plan.endAt | date:'medium' }}</ng-container>
+              </div>
+              <p *ngIf="plan.lastError" class="job-error mt-1">{{ plan.lastError }}</p>
+              <button *ngIf="plan.cancellable" class="secondary text-xs mt-1"
+                      type="button" (click)="cancelPlan(plan)">Annuler cette publication</button>
+              <button *ngIf="plan.retryable" class="primary text-xs mt-1"
+                      type="button" [disabled]="planRetrying"
+                      (click)="retryPlan(plan)">Relancer la publication</button>
+              <p *ngIf="!plan.cancellable && plan.status === 'DISPATCHED'" class="hint mt-1">
+                Diffusion en cours : l'issue n'est pas encore connue, vérifiez le réseau social dans quelques instants.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- ONGLET 6 : HISTORIQUE DES PUBLICATIONS                           -->
+      <!-- ============================================================== -->
+      <section *ngIf="activeTab === 'history'" class="studio-card animate-fade">
+        <div class="history-heading">
+          <div>
+            <h2 class="section-title">🗂️ Historique des publications</h2>
+            <p class="section-desc">Chaque tentative de diffusion, avec son statut et le détail technique en cas d'échec.</p>
+          </div>
+          <button class="secondary text-sm" (click)="loadPublishHistory()">↻ Rafraîchir</button>
+        </div>
+
+        <div *ngIf="publishHistory.length === 0" class="empty">
+          Aucune publication pour le moment. Vos diffusions apparaîtront ici avec leur statut.
+        </div>
+
+        <div *ngIf="publishHistory.length > 0" class="pub-history">
+          <p class="muted text-xs mb-2">{{ publishHistoryTotal }} publication(s) enregistrée(s)</p>
+          <details *ngFor="let entry of publishHistory" class="pub-row">
+            <summary>
+              <span class="pub-badge" [ngClass]="publishOutcome(entry.status).css">
+                {{ publishOutcome(entry.status).label }}
+              </span>
+              <span class="pub-platform">{{ entry.platform }}</span>
+              <span class="pub-date">{{ (entry.publishedAt || entry.submittedAt || entry.createdAt) | date:'medium' }}</span>
+              <span class="pub-caption" [title]="entry.caption">{{ entry.caption || '(sans légende)' }}</span>
+            </summary>
+            <div class="pub-detail">
+              <dl>
+                <dt>Identifiant</dt><dd>{{ entry.requestId }}</dd>
+                <dt>Création</dt><dd>{{ entry.createdAt | date:'medium' }}</dd>
+                <dt>Job</dt><dd>{{ entry.jobId }} (rendu n°{{ entry.outputIndex + 1 }}, exécution v{{ entry.executionVersion }})</dd>
+                <dt>Agent</dt><dd>{{ entry.agentId || '—' }}</dd>
+                <dt>Statut</dt><dd>{{ entry.status }}</dd>
+                <dt>Tentatives</dt><dd>{{ entry.attempts }}</dd>
+                <dt>Envoyé le</dt><dd>{{ entry.submittedAt ? (entry.submittedAt | date:'medium') : '—' }}</dd>
+                <dt>Publié le</dt><dd>{{ entry.publishedAt ? (entry.publishedAt | date:'medium') : '—' }}</dd>
+                <ng-container *ngIf="entry.remotePermalink">
+                  <dt>Lien public</dt>
+                  <dd><a [href]="entry.remotePermalink" target="_blank" rel="noopener">Voir la publication</a></dd>
+                </ng-container>
+                <ng-container *ngIf="entry.remoteMediaId">
+                  <dt>Identifiant distant</dt><dd>{{ entry.remoteMediaId }}</dd>
+                </ng-container>
+                <ng-container *ngIf="entry.error || entry.errorCode">
+                  <dt class="pub-ko">Cause de l'échec</dt>
+                  <dd class="pub-ko">{{ entry.errorCode }} — {{ entry.error || 'aucun détail renvoyé' }}</dd>
+                </ng-container>
+              </dl>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -572,7 +777,7 @@ interface UploadedMediaItem {
   `,
   styles: [`
     :host { display:block; min-height:100vh; background:#080d19; color:#e2e8f0; padding:clamp(1rem,3vw,2.5rem); font-family:'Inter',system-ui,sans-serif; }
-    .studio { max-width:1160px; margin:0 auto; }
+    .studio { max-width:none; margin-inline:0; }
     .studio-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem; }
     h1 { margin:.35rem 0 .2rem; font-size:clamp(1.7rem,3.5vw,2.3rem); font-weight:800; color:#f8fafc; letter-spacing:-0.02em; }
     .subtitle { color:#94a3b8; font-size:.92rem; max-width:750px; line-height:1.5; margin:0; }
@@ -580,6 +785,19 @@ interface UploadedMediaItem {
     .back-link:hover { color:#a5b4fc; }
 
     /* Onglets de navigation */
+    .plan-step { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #1e293b; }
+    .plan-step:first-of-type { border-top: none; padding-top: 0; }
+    .step-title { font-weight: 700; color: #c7d2fe; margin-bottom: .75rem; font-size: .9rem; }
+    .date-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+    .selected-media { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+                      padding: .75rem; background: rgba(99,102,241,.08); border-radius: .5rem; }
+    .plan-feedback { margin: 1rem 0 0; padding: .65rem .85rem; border-radius: .5rem; font-size: .8rem; }
+    .plan-feedback.ok { background: rgba(34,197,94,.12); color: #86efac; }
+    .plan-feedback.ko { background: rgba(239,68,68,.12); color: #fca5a5; }
+    .plan-list { display: flex; flex-direction: column; gap: .75rem; }
+    .plan-row { padding: .75rem; background: rgba(15,23,42,.6); border: 1px solid #1e293b; border-radius: .5rem; }
+    .plan-row-main { display: flex; align-items: center; gap: .6rem; margin-bottom: .3rem; flex-wrap: wrap; }
+
     .studio-tabs { display:flex; gap:.5rem; margin-bottom:1.5rem; border-bottom:1px solid #1e293b; padding-bottom:.5rem; overflow-x:auto; }
     .tab-btn { display:inline-flex; align-items:center; gap:.5rem; padding:.65rem 1.15rem; background:transparent; border:1px solid transparent; border-radius:10px; color:#94a3b8; font-weight:600; font-size:.88rem; cursor:pointer; transition:all .2s; white-space:nowrap; }
     .tab-btn:hover { background:#111c30; color:#cbd5e1; }
@@ -691,6 +909,42 @@ interface UploadedMediaItem {
     .badge-planned { background:#3b2d11; color:#fcd34d; }
     .platform-notes { color:#94a3b8; line-height:1.4; }
 
+    /* Sélection multiple de réseaux */
+    .platform-checks { display:flex; flex-wrap:wrap; gap:.5rem; }
+    .platform-check {
+      display:inline-flex; align-items:center; gap:.45rem; cursor:pointer;
+      background:#141d2f; border:1px solid #233450; border-radius:99px;
+      padding:.35rem .8rem; font-size:.8rem; color:#e2e8f0; user-select:none;
+    }
+    .platform-check:hover { border-color:#4f46e5; }
+    .platform-check input { accent-color:#6366f1; margin:0; }
+
+    /* Historique des publications */
+    .pub-history { display:flex; flex-direction:column; gap:.4rem; }
+    .pub-row {
+      background:#0b1322; border:1px solid #233450; border-radius:10px; padding:.55rem .8rem;
+    }
+    .pub-row > summary {
+      display:flex; align-items:center; gap:.7rem; cursor:pointer;
+      font-size:.82rem; color:#cbd5e1; list-style:none;
+    }
+    .pub-row > summary::-webkit-details-marker { display:none; }
+    .pub-badge { flex-shrink:0; font-size:.7rem; font-weight:700; padding:.15rem .5rem; border-radius:99px; }
+    .pub-ok { background:#064e3b; color:#6ee7b7; }
+    .pub-ko { background:#4c1d1d; color:#fca5a5; }
+    .pub-wait { background:#3b2d11; color:#fcd34d; }
+    .pub-platform { font-weight:700; color:#e2e8f0; }
+    .pub-date { color:#94a3b8; flex-shrink:0; }
+    .pub-caption { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#94a3b8; }
+    .pub-detail { margin-top:.6rem; padding-top:.6rem; border-top:1px solid #233450; }
+    .pub-detail dl {
+      display:grid; grid-template-columns:minmax(9rem,auto) 1fr; gap:.35rem .9rem;
+      margin:0; font-size:.78rem; color:#cbd5e1;
+    }
+    .pub-detail dt { color:#94a3b8; font-weight:600; }
+    .pub-detail dd { margin:0; word-break:break-word; }
+    .pub-detail a { color:#818cf8; }
+
     /* Montage preview */
     .montage-preview-box { background:#0b1322; border:1px solid #233450; border-radius:14px; padding:1.2rem; }
     .timeline-container { display:flex; flex-direction:column; gap:.3rem; }
@@ -748,11 +1002,61 @@ export class GenerationStudioComponent implements OnInit, OnDestroy {
   // Publication sociale
   publishJobId = '';
   publishOutputIndex = 0;
-  publishPlatform = '';
+  publishPlatforms: string[] = [];
   publishAgentId = '';
   publishCaption = '';
-  publishResult: any = null;
+  publishResult: any[] | null = null;
   publishing = false;
+
+  // Historique des publications (GET /api/generation/social/requests)
+  publishHistory: any[] = [];
+  publishHistoryTotal = 0;
+
+  // ── Planning : publication différée ──────────────────────────────────────
+  // Une ligne de programmation par réseau : les états restent indépendants,
+  // donc une campagne partly échouée reste lisible.
+  planJobId = '';
+  planOutputIndex = 0;
+  planPlatforms: string[] = [];
+  planAgentId = '';
+  planEvent = '';
+  planCaption = '';
+  planScheduledAt = '';
+  planEndAt = '';
+  planMessage = '';
+  planError = '';
+  planCaptionBusy = false;
+  planSaving = false;
+  planRetrying = false;
+  plans: any[] = [];
+
+  /** Date/heure locales au format attendu par <input type="datetime-local">. */
+  get planMinDateTime(): string {
+    const d = new Date(Date.now() + 5 * 60 * 1000);
+    d.setSeconds(0, 0);
+    return this.toLocalInput(d);
+  }
+
+  private toLocalInput(d: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+         + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  /**
+   * Convertit une saisie « 12/03/2026 14:00 » en instant.
+   *
+   * <p>`new Date('2026-03-12T14:00')` est interprété dans le fuseau du
+   * navigateur, et toISOString() rend l'instant correspondant. C'est le
+   * navigateur qui applique les règles de l'heure d'été, pas un calcul manuel
+   * côté serveur : une programmation saisie un jour de changement d'heure reste
+   * à l'heure affichée.
+   */
+  private localInputToIso(value: string): string | null {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
 
   readonly videoOptions = {
     aspectRatio: '9:16',
@@ -783,6 +1087,7 @@ export class GenerationStudioComponent implements OnInit, OnDestroy {
     this.loadImageModels();
     this.loadPlatforms();
     this.loadJobs();
+    this.loadPublishHistory();
     this.refreshTimer = setInterval(() => this.loadJobs(), 15000);
   }
 
@@ -945,7 +1250,8 @@ export class GenerationStudioComponent implements OnInit, OnDestroy {
         this.loadJobs();
       },
       error: error => {
-        this.errorMessage = error?.error?.detail || error?.error?.message || 'Impossible de lancer la génération. Vérifiez la configuration.';
+        this.errorMessage = this.describeHttpError(error,
+          'La génération n\'a pas pu démarrer : la demande a atteint le serveur mais a été refusée.');
         this.submitting = false;
       }
     });
@@ -982,7 +1288,7 @@ export class GenerationStudioComponent implements OnInit, OnDestroy {
     this.http.post<any>(`/api/generation/jobs/${encodeURIComponent(job.jobId)}/retry`, {}).subscribe({
       next: updated => this.replaceJob(updated, job),
       error: error => {
-        this.errorMessage = error?.error?.detail || error?.error?.message || 'Impossible de relancer ce job.';
+        this.errorMessage = this.describeHttpError(error, 'Impossible de relancer ce job.');
         job.retrying = false;
       }
     });
@@ -994,7 +1300,7 @@ export class GenerationStudioComponent implements OnInit, OnDestroy {
         if (result?.url) window.open(result.url, '_blank', 'noopener');
         else this.errorMessage = 'Le service n’a pas fourni d’URL de téléchargement.';
       },
-      error: error => this.errorMessage = error?.error?.detail || error?.error?.message || 'Impossible de créer le lien de téléchargement.'
+      error: error => this.errorMessage = this.describeHttpError(error, 'Impossible de créer le lien de téléchargement.')
     });
   }
 
@@ -1006,38 +1312,290 @@ export class GenerationStudioComponent implements OnInit, OnDestroy {
   openPublisher(job: any, index: number): void {
     this.publishJobId = job.jobId;
     this.publishOutputIndex = index;
-    this.publishPlatform = this.availablePlatforms(job)[0]?.platform || '';
+    this.publishPlatforms = this.availablePlatforms(job).slice(0, 1).map(p => p.platform);
     this.publishAgentId = job.agentId || this.agentId || '';
     this.publishCaption = job.prompt || '';
     this.publishResult = null;
   }
 
+  togglePublishPlatform(platform: string, event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.publishPlatforms = checked
+      ? [...this.publishPlatforms, platform]
+      : this.publishPlatforms.filter(p => p !== platform);
+  }
+
+  /**
+   * Le backend accepte une seule plateforme par requête, donc une publication
+   * multi-réseaux = N appels parallèles. On garde le résultat de chacun : un
+   * réseau qui échoue ne doit pas faire disparaître les succès des autres.
+   */
   publish(job: any, index: number): void {
-    if (!this.publishPlatform || !this.publishAgentId || this.publishing) return;
+    if (this.publishPlatforms.length === 0 || !this.publishAgentId || this.publishing) return;
     this.publishing = true;
     this.errorMessage = '';
-    this.http.post<any>(
+    this.publishResult = null;
+
+    forkJoin(this.publishPlatforms.map(platform => this.http.post<any>(
       `/api/generation/jobs/${encodeURIComponent(job.jobId)}/outputs/${index}/publish`,
-      { platform: this.publishPlatform, agentId: this.publishAgentId, caption: this.publishCaption }
-    ).subscribe({
-      next: result => {
-        this.publishResult = result;
-        this.publishing = false;
-      },
-      error: error => {
-        this.errorMessage = error?.error?.detail || error?.error?.message || 'La publication a échoué. Vérifiez le canal et les contraintes.';
-        this.publishing = false;
+      { platform, agentId: this.publishAgentId, caption: this.publishCaption }
+    ).pipe(
+      map(result => ({ platform, ok: true as const, result })),
+      catchError(error => of({
+        platform,
+        ok: false as const,
+        error: this.describeHttpError(error, 'La publication a échoué sur ce réseau.')
+      }))
+    ))).subscribe(outcomes => {
+      this.publishResult = outcomes;
+      const failures = outcomes.filter(o => !o.ok);
+      this.publishing = false;
+      if (failures.length > 0) {
+        this.errorMessage = failures.length === outcomes.length
+          ? 'Aucune publication n\'a abouti : ' + failures.map(f => this.describeHttpError((f as any).error)).join(' · ')
+          : `${outcomes.length - failures.length} réseau(x) publié(s), ${failures.length} en échec. Voir le détail.`;
       }
+      this.loadPublishHistory();
     });
+  }
+
+  publishResultSummary(outcomes: any[]): string {
+    if (!Array.isArray(outcomes)) return '';
+    return outcomes.map(o => o.ok
+      ? `✅ ${o.platform} : ${o.result?.status || 'envoyé'}`
+      : `❌ ${o.platform} : échec`).join(' · ');
+  }
+
+  /**
+   * Le message « Vérifiez la configuration » masquait la vraie cause : il ne
+   * s'affichait qu'en dernier recours, une fois le corps de la réponse épuisé.
+   * On remonte maintenant le code HTTP, qui est l'information la plus utile.
+   */
+  private describeHttpError(error: any, fallback?: string): string {
+    const status = error?.status;
+    const serverMessage = error?.error?.detail || error?.error?.message || error?.error?.title;
+    if (serverMessage) return status ? `${serverMessage} (HTTP ${status})` : serverMessage;
+    if (status === 0) return 'Serveur injoignable : la passerelle API ne répond pas.';
+    if (status === 401) return 'Session expirée : reconnectez-vous.';
+    if (status === 403) return 'Accès refusé : votre compte ne peut pas utiliser cette fonctionnalité.';
+    if (status === 404) return 'Ressource introuvable côté serveur.';
+    if (status && status >= 500) return `Erreur du serveur (HTTP ${status}). Réessayez dans un instant.`;
+    return fallback || 'Une erreur inattendue est survenue.';
+  }
+
+  // ── Historique des publications ────────────────────────────────────────
+
+  loadPublishHistory(): void {
+    this.http.get<any>('/api/generation/social/requests?page=0&size=50').subscribe({
+      next: page => {
+        this.publishHistory = page?.content || [];
+        this.publishHistoryTotal = page?.totalElements ?? this.publishHistory.length;
+      },
+      error: () => { /* l'historique ne doit jamais masquer la galerie */ }
+    });
+  }
+
+  publishOutcome(status: string): { label: string; css: string } {
+    switch (status) {
+      case 'PUBLISHED': return { label: '✅ Succès', css: 'pub-ok' };
+      case 'FAILED':    return { label: '❌ Échec',  css: 'pub-ko' };
+      case 'REJECTED':  return { label: '⚠️ Refusée', css: 'pub-ko' };
+      case 'DISPATCHED':return { label: '⏳ Envoyée', css: 'pub-wait' };
+      default:          return { label: '⏳ En attente', css: 'pub-wait' };
+    }
   }
 
   loadPlatforms(): void {
     this.http.get<any[]>('/api/generation/social/platforms').subscribe({
       next: platforms => this.platforms = platforms || [],
       error: error => {
-        this.errorMessage = error?.error?.detail || 'Impossible de charger les plateformes de publication.';
+        this.errorMessage = this.describeHttpError(error, 'Impossible de charger les plateformes de publication.');
       }
     });
+  }
+
+  // ── Planning ─────────────────────────────────────────────────────────────
+
+  /** Ouvre le Planning sur un média déjà choisi, comme « Publier » le pré-remplit. */
+  openPlanner(job: any, index: number): void {
+    this.planJobId = job.jobId;
+    this.planOutputIndex = index;
+    this.planPlatforms = this.availablePlatforms(job).slice(0, 1).map(p => p.platform);
+    this.planAgentId = job.agentId || this.agentId || '';
+    this.planCaption = '';
+    this.planMessage = '';
+    this.planError = '';
+    this.activeTab = 'planning';
+    this.loadPlans();
+  }
+
+  togglePlanPlatform(platform: string, event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.planPlatforms = checked
+      ? [...this.planPlatforms, platform]
+      : this.planPlatforms.filter(p => p !== platform);
+  }
+
+  /** Le média actuellement retenu dans le Planning, pour l'aperçu. */
+  get planMedia(): any | null {
+    return this.jobs.find(j => j.jobId === this.planJobId) ?? null;
+  }
+
+  canSchedule(): boolean {
+    return !!(this.planJobId
+      && this.planAgentId
+      && this.planPlatforms.length > 0
+      && this.planScheduledAt
+      && !this.planSaving);
+  }
+
+  /**
+   * Rédaction assistée. Le modèle ne fait que reformuler la description : s'il
+   * invente un prix ou une date, l'utilisateur le relit avant programmer.
+   */
+  generateCaption(): void {
+    if (!this.planEvent.trim()) {
+      this.planError = 'Décrivez d\'abord votre événement en une phrase.';
+      return;
+    }
+    this.planCaptionBusy = true;
+    this.planError = '';
+    this.http.post<any>('/api/social/caption', {
+      event: this.planEvent.trim(),
+      platform: this.planPlatforms[0] || null,
+      tone: null,
+      agentId: this.planAgentId || null
+    }).subscribe({
+      next: res => {
+        this.planCaption = res?.caption || '';
+        if (!this.planCaption) {
+          this.planError = 'Le modèle n\'a renvoyé aucun texte. Écrivez la légende à la main.';
+        }
+        this.planCaptionBusy = false;
+      },
+      error: error => {
+        this.planError = this.describeHttpError(error,
+          'Rédaction assistée indisponible : vous pouvez écrire la légende vous-même.');
+        this.planCaptionBusy = false;
+      }
+    });
+  }
+
+  /**
+   * Programme une publication par réseau coché.
+   *
+   * <p>Le backend n'accepte qu'une plateforme par programmation, d'où la boucle.
+   * Les programmations sont créées en parallèle et les échecs partiels sont
+   * remontés : un réseau en erreur ne doit pas faire perdre les autres, qui
+   * restent programmés.
+   */
+  schedule(): void {
+    const scheduledAt = this.localInputToIso(this.planScheduledAt);
+    if (!scheduledAt) {
+      this.planError = 'Indiquez une date et une heure de publication.';
+      return;
+    }
+    const endAt = this.planEndAt ? this.localInputToIso(this.planEndAt) : null;
+    if (this.planEndAt && !endAt) {
+      this.planError = 'La date de fin saisie est invalide.';
+      return;
+    }
+    if (endAt && new Date(endAt) < new Date(scheduledAt)) {
+      this.planError = 'La date de fin doit être postérieure à la date de publication.';
+      return;
+    }
+
+    this.planSaving = true;
+    this.planError = '';
+    this.planMessage = '';
+
+    forkJoin(this.planPlatforms.map(platform => this.http.post<any>('/api/scheduled-publications', {
+      jobId: this.planJobId,
+      outputIndex: this.planOutputIndex,
+      platform,
+      agentId: this.planAgentId,
+      caption: this.planCaption,
+      scheduledAt,
+      endAt
+    }).pipe(
+      map(res => ({ ok: true as const, platform, id: res?.id })),
+      // catchError par requête : sans lui, une seule erreur ferait échouer le
+      // forkJoin entier et les réseaux déjà programmés seraient perdus.
+      catchError(error => of({
+        ok: false as const,
+        platform,
+        message: this.describeHttpError(error, 'Programmation impossible sur ce réseau.')
+      }))
+    ))).subscribe(results => {
+      this.planSaving = false;
+      const ok = results.filter(r => r.ok).length;
+      const ko = results.length - ok;
+
+      if (ok > 0) {
+        this.planMessage = ok === 1
+          ? 'Publication programmée. Elle sera diffusée automatiquement à l\'heure choisie.'
+          : `${ok} publications programmées, une par réseau.`;
+      }
+      if (ko > 0) {
+        // Prédicat de type explicite : sans lui, TypeScript ne sait pas que
+        // l'union a bien été filtrée sur la variante « échec » et `message`
+        // reste une propriété inconnue sur la variante « succès ».
+        const failures = results.filter(
+          (r): r is { ok: false; platform: string; message: string } => !r.ok);
+        this.planError = `${ko} réseau(x) n'ont pas pu être programmés. `
+          + failures.map(r => `${r.platform} : ${r.message}`).join(' — ');
+      }
+      this.loadPlans();
+    });
+  }
+
+  loadPlans(): void {
+    this.http.get<any>('/api/scheduled-publications?page=0&size=50').subscribe({
+      next: page => this.plans = page?.content || [],
+      error: error => {
+        this.planError = this.describeHttpError(error, 'Impossible de charger les programmations.');
+      }
+    });
+  }
+
+  cancelPlan(plan: any): void {
+    this.http.delete<any>(`/api/scheduled-publications/${plan.id}`).subscribe({
+      next: () => {
+        this.planMessage = 'Programmation annulée : rien ne sera publié à cette date.';
+        this.planError = '';
+        this.loadPlans();
+      },
+      error: error => {
+        this.planError = this.describeHttpError(error, 'Annulation impossible.');
+      }
+    });
+  }
+
+  retryPlan(plan: any): void {
+    this.planRetrying = true;
+    this.http.post<any>(`/api/scheduled-publications/${plan.id}/retry`, {}).subscribe({
+      next: () => {
+        this.planRetrying = false;
+        this.planMessage = 'Publication reprogrammée : nouvelle tentative au prochain tour.';
+        this.planError = '';
+        this.loadPlans();
+      },
+      error: error => {
+        this.planRetrying = false;
+        this.planError = this.describeHttpError(error, 'Relance impossible.');
+      }
+    });
+  }
+
+  planOutcome(status: string): { label: string; css: string } {
+    switch (status) {
+      case 'PUBLISHED': return { label: '✅ Diffusée',   css: 'pub-ok' };
+      case 'FAILED':    return { label: '❌ Échec',      css: 'pub-ko' };
+      case 'CANCELLED': return { label: '🚫 Annulée',    css: 'pub-wait' };
+      case 'EXPIRED':   return { label: '⌛ Expirée',    css: 'pub-wait' };
+      case 'DISPATCHED':return { label: '⏳ En cours',   css: 'pub-wait' };
+      default:          return { label: '⏳ Programmée', css: 'pub-wait' };
+    }
   }
 
   private replaceJob(updated: any, current: any): void {

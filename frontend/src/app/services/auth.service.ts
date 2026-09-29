@@ -95,7 +95,27 @@ export class AuthService {
       const user = JSON.parse(raw) as AuthUser;
       // Session invalide si le token est absent (ex : loginné avant le fix cleanResponse)
       if (!user?.token) { localStorage.removeItem(this.KEY); return null; }
+      // ... ou s'il est expiré : le JWT vaut 24 h et il n'y a pas de refresh.
+      // Sans ce test, l'app affichait un shell « connecté » avec un jeton mort
+      // et chaque appel API repartait en 401 sans jamais renvoyer vers /auth.
+      if (this.isTokenExpired(user.token)) { localStorage.removeItem(this.KEY); return null; }
       return user;
     } catch { return null; }
+  }
+
+  /** Vrai si le JWT est absent, illisible ou périmé (tolérance d'horloge 30 s). */
+  private isTokenExpired(token: string): boolean {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    try {
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      const exp = Number(payload?.exp);
+      // Pas de claim exp : on ne peut rien déduire, on laisse la session vivre
+      // (le backend reste seul juge de la validité).
+      if (!exp) return false;
+      return Date.now() >= exp * 1000 - 30_000;
+    } catch {
+      return true;
+    }
   }
 }

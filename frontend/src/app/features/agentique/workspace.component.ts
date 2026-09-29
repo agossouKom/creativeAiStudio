@@ -5,6 +5,7 @@ import { RouterModule, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { DialogService } from '../../shared/ui/dialog.service';
+import { TipDirective } from '../../shared/ui/tooltip.directive';
 import * as XLSX from 'xlsx';
 
 const API = '';
@@ -170,7 +171,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 @Component({
   selector: 'app-workspace',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, RouterModule, TipDirective],
   changeDetection: ChangeDetectionStrategy.Default,
   template: `
 <div class="ws-page">
@@ -197,7 +198,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
     <!-- Tabs -->
     <div #wsTabs class="ws-tabs">
       <button *ngFor="let t of tabs" class="ws-tab" [class.ws-tab--active]="activeTab === t.id"
-              (click)="switchTab(t.id)">
+              (click)="switchTab(t.id)" tipSide="bottom" [tip]="t.label + '\\n' + t.hint">
         <span class="ws-tab-icon">{{ t.icon }}</span>{{ t.label }}
         <span *ngIf="t.count && t.count > 0" class="ws-tab-badge">{{ t.count }}</span>
       </button>
@@ -212,7 +213,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
       </div>
       <nav class="ws-tab-drawer-list">
         <button *ngFor="let t of tabs" class="ws-tab ws-tab--drawer" [class.ws-tab--active]="activeTab === t.id"
-                (click)="switchTab(t.id)">
+                (click)="switchTab(t.id)" tipSide="right" [tip]="t.label + '\\n' + t.hint">
           <span class="ws-tab-icon">{{ t.icon }}</span>{{ t.label }}
           <span *ngIf="t.count && t.count > 0" class="ws-tab-badge">{{ t.count }}</span>
         </button>
@@ -2508,7 +2509,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 .ws-orb { position:fixed; border-radius:50%; filter:blur(80px); pointer-events:none; }
 .ws-orb1 { width:500px; height:500px; background:rgba(99,102,241,.12); top:-100px; right:-100px; }
 .ws-orb2 { width:400px; height:400px; background:rgba(14,165,233,.08); bottom:-80px; left:-80px; }
-.ws-wrap { max-width:1200px; margin:0 auto; position:relative; z-index:1; }
+.ws-wrap { max-width:none; margin-inline:0; position:relative; z-index:1; }
 
 /* Header */
 .ws-header { margin-bottom:1.5rem; }
@@ -3440,18 +3441,18 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   activeTab: Tab = 'agents';
   tabsMenuOpen = false;
   tabs = [
-    { id: 'agents'   as Tab, icon: '🤖', label: 'Agents',    count: 0 },
-    { id: 'equipes'  as Tab, icon: '🏢', label: 'Équipes',   count: 0 },
-    { id: 'taches'   as Tab, icon: '📋', label: 'Tâches',    count: 0 },
-    { id: 'inbox'    as Tab, icon: '📥', label: 'Inbox',     count: 0 },
-    { id: 'prompts'  as Tab, icon: '✍️', label: 'Prompts',   count: 0 },
-    { id: 'workflow' as Tab, icon: '⚡', label: 'Workflow',  count: 0 },
-    { id: 'chat'     as Tab, icon: '💬', label: 'Chat',      count: 0 },
-    { id: 'rag'      as Tab, icon: '🔍', label: 'RAG Chat',  count: 0 },
-    { id: 'llm'      as Tab, icon: '🔑', label: 'Clés API',  count: 0 },
-    { id: 'canaux'   as Tab, icon: '📡', label: 'Canaux',    count: 0 },
-    { id: 'social'   as Tab, icon: '📲', label: 'Réseaux',   count: 0 },
-    { id: 'studio'   as Tab, icon: '🎬', label: 'Studio',   count: 0 },
+    { id: 'agents'   as Tab, icon: '🤖', label: 'Agents',    count: 0, hint: 'Créer, configurer et mettre en service vos agents' },
+    { id: 'equipes'  as Tab, icon: '🏢', label: 'Équipes',   count: 0, hint: 'Regrouper des agents qui collaborent sur un même objectif' },
+    { id: 'taches'   as Tab, icon: '📋', label: 'Tâches',    count: 0, hint: 'Suivre les demandes envoyées et leur avancement' },
+    { id: 'inbox'    as Tab, icon: '📥', label: 'Inbox',     count: 0, hint: 'Réponses des agents, notifications et validations à traiter' },
+    { id: 'prompts'  as Tab, icon: '✍️', label: 'Prompts',   count: 0, hint: 'Bibliothèque de prompts réutilisables entre agents' },
+    { id: 'workflow' as Tab, icon: '⚡', label: 'Workflow',  count: 0, hint: 'Enchaîner plusieurs étapes et agents en un seul scénario' },
+    { id: 'chat'     as Tab, icon: '💬', label: 'Chat',      count: 0, hint: 'Discuter avec un agent ou une équipe, en direct' },
+    { id: 'rag'      as Tab, icon: '🔍', label: 'RAG Chat',  count: 0, hint: 'Interroger vos documents indexés par pertinence' },
+    { id: 'llm'      as Tab, icon: '🔑', label: 'Clés API',  count: 0, hint: 'Connecter les fournisseurs de modèles (Groq, DeepSeek, Ollama)' },
+    { id: 'canaux'   as Tab, icon: '📡', label: 'Canaux',    count: 0, hint: 'Brancher Telegram, Discord et autres points d\'entrée' },
+    { id: 'social'   as Tab, icon: '📲', label: 'Réseaux',   count: 0, hint: 'Connecter vos comptes et publier du contenu généré' },
+    { id: 'studio'   as Tab, icon: '🎬', label: 'Studio',   count: 0, hint: 'Générer des vidéos et des images de A à Z' },
     { id: 'email'    as Tab, icon: '📧', label: 'Email',     count: 0 },
     { id: 'profil'   as Tab, icon: '👤', label: 'Mon Profil', count: 0 },
   ];

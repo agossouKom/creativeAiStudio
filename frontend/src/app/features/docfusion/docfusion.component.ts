@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpClientModule, HttpHeaders } from '@angular/common/http';
 import { AuthService } from '../../services/auth.service';
+import { TipDirective } from '../../shared/ui/tooltip.directive';
 
 type Op = 'merge' | 'merge-docx' | 'split' | 'compress' | 'watermark'
         | 'to-pdf' | 'to-docx' | 'ocr' | 'base64-encode' | 'base64-decode';
@@ -52,11 +53,13 @@ const EXT_OPTIONS = [
 @Component({
   selector: 'app-docfusion',
   standalone: true,
-  imports: [CommonModule, FormsModule, HttpClientModule],
+  imports: [CommonModule, FormsModule, HttpClientModule, TipDirective],
   styles: [`
     :host { display: block; --rail-w: 244px; }
 
     /* ── Page ─── */
+    /* Le gutter horizontal vient de styles.css (--page-gutter) : le rail et le
+       panneau respirent autant, sans bande vide sur grand écran. */
     .df-page { min-height: calc(100vh - 64px); background: #f8fafc;
                padding: .75rem 0 3rem; position: relative; overflow: hidden; overflow: clip; }
     .bg-blob { position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; opacity: .28; }
@@ -65,7 +68,7 @@ const EXT_OPTIONS = [
     .df-inner { position: relative; }
 
     /* ── Hero ─── */
-    .hero { padding: 0 1.5rem 1.25rem; display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
+    .hero { padding: 0 0 1.25rem; display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
     .hero-h1  { font-family: 'Outfit', sans-serif; font-size: clamp(1.15rem, 2.5vw, 1.5rem);
                 font-weight: 900; color: #0f172a; letter-spacing: -.5px; margin: 0; }
     .hero-h1 span { background: linear-gradient(135deg, #6366f1, #a855f7);
@@ -132,8 +135,9 @@ const EXT_OPTIONS = [
       .df-grid.collapsed .sidebar-toggle { font-size: 0; }
     }
 
-    /* Contenu du panneau aligné sur le rail */
-    .panel, .hist-panel { width: 100%; max-width: 1280px; margin-inline: auto; }
+    /* Contenu du panneau aligné sur le rail, pleine largeur (la largeur de page
+       est pilotée globalement dans styles.css → bloc PLEIN LARGEUR). */
+    .panel, .hist-panel { width: 100%; max-width: none; margin-inline: 0; }
 
     /* ── Drawer backdrop ─── */
     .df-drawer-backdrop { display: none; }
@@ -472,6 +476,7 @@ const EXT_OPTIONS = [
     <!-- Hero -->
     <div class="hero animate-fade">
       <button class="df-menu-btn" (click)="drawerOpen = !drawerOpen"
+              [tip]="drawerOpen ? 'Fermer le menu\\nReplier la liste des outils' : 'Ouvrir le menu\\nAfficher la liste des outils'"
               [attr.aria-label]="drawerOpen ? 'Fermer le menu' : 'Ouvrir le menu'">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <ng-container *ngIf="!drawerOpen">
@@ -499,7 +504,7 @@ const EXT_OPTIONS = [
           <button class="df-drawer-close" (click)="drawerOpen = false" aria-label="Fermer">✕</button>
         </div>
         <button class="sidebar-toggle" (click)="sidebarCollapsed = !sidebarCollapsed"
-                [title]="sidebarCollapsed ? 'Deployer' : 'Replier'">
+                [tip]="sidebarCollapsed ? 'Déplier la barre\\nAfficher les noms et descriptions des outils' : 'Replier la barre\\nAfficher uniquement les icônes'">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <ng-container *ngIf="!sidebarCollapsed">
               <line x1="3" y1="6"  x2="21" y2="6"/> <line x1="3" y1="12" x2="21" y2="12"/> <line x1="3" y1="18" x2="21" y2="18"/>
@@ -513,7 +518,7 @@ const EXT_OPTIONS = [
             <div class="ops-group-label" [class.hidden]="sidebarCollapsed">{{ grp.label }}</div>
             <button *ngFor="let op of grp.ops"
                     class="op-btn" [class.active]="view==='workspace' && selectedOp===op.id"
-                    (click)="select(op.id)" [title]="sidebarCollapsed ? op.name : ''">
+                    (click)="select(op.id)" [tip]="op.name + '\\n' + op.desc + '\\n' + op.hint">
               <span class="op-ico">{{ op.icon }}</span>
               <ng-container *ngIf="!sidebarCollapsed">
                 <div class="op-texts">
@@ -526,7 +531,8 @@ const EXT_OPTIONS = [
           </ng-container>
           <div class="sidebar-divider"></div>
           <button class="hist-nav-btn" [class.active]="view==='history'"
-                  (click)="switchView('history')" [title]="sidebarCollapsed ? 'Historique' : ''">
+                  (click)="switchView('history')"
+                  [tip]="'Historique\\nVos conversions et extractions précédentes, avec téléchargement et relecture du texte extrait.'">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0">
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
@@ -544,7 +550,8 @@ const EXT_OPTIONS = [
             <h2 class="panel-title">{{ currentOp.name }}</h2>
             <p class="panel-hint">{{ currentOp.hint }}</p>
           </div>
-          <button *ngIf="files.length>0 || results.length>0" class="clear-btn" (click)="clearCurrentOp()" title="Effacer tout">
+          <button *ngIf="files.length>0 || results.length>0" class="clear-btn" (click)="clearCurrentOp()"
+                  [tip]="'Effacer tout\\nVide les fichiers déposés et les résultats affichés pour cet outil'">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
             Effacer
           </button>
