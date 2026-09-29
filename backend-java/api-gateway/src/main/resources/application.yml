@@ -169,6 +169,19 @@ spring:
             - AuthenticationFilter
             - RewritePath=/api/generation/(?<segment>.*), /api/generation/${segment}
 
+        # Planning : publication différée. Route dédiée plutôt qu'un simple ajout
+        # à /api/generation/** pour que l'URL reste lisible côté navigateur et
+        # que le Planning puisse évoluer sans impacter les jobs.
+        - id: scheduled-publications
+          uri: http://${GENERATION_SERVICE_HOST:generation-service}:8088
+          predicates:
+            - Path=/api/scheduled-publications/**
+          filters:
+            - AuthenticationFilter
+
+        # Repo planifié : /internal/** n'est délibérément routé nulle part.
+        # Publication programmée = appel direct generation-service → agent-team.
+
         # ── Agent Team Service — DOIT être AVANT les routes agent génériques ──────
         - id: agent-team-agents
           uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
@@ -323,6 +336,37 @@ spring:
             - Path=/api/oauth/social/*/callback
           filters:
             - RewritePath=/api/oauth/social/(?<segment>.*), /api/oauth/social/${segment}
+
+        # Choix de la Page sur un canal existant (Facebook / Instagram).
+        # Route distincte de /authorize : elle échappe volontairement au
+        #permitAll du callback, le JWT est obligatoire (AuthenticationFilter).
+        - id: oauth-social-pages
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/oauth/social/*/pages/**
+          filters:
+            - RewritePath=/api/oauth/social/(?<segment>.*), /api/oauth/social/${segment}
+            - name: AuthenticationFilter
+
+        # Administration des réseaux sociaux d'entreprise (plateformes + comptes).
+        # Le contrôleur porte déjà @PreAuthorize("hasRole('ADMIN')") : le gateway
+        # exige seulement un JWT valide, le rôle est décidé par le service.
+        - id: admin-social
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/admin/social/**
+          filters:
+            - name: AuthenticationFilter
+
+        # Rédaction assistée d'une légende depuis l'onglet Planning.
+        # JWT obligatoire : la génération de texte consomme des crédits.
+        - id: social-caption
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/social/caption
+          filters:
+            - name: AuthenticationFilter
+
 
 
         # File Security Service (Scan & Sanitize) — jamais accessible sans JWT :
