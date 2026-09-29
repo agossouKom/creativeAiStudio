@@ -337,6 +337,27 @@ spring:
           filters:
             - RewritePath=/api/oauth/social/(?<segment>.*), /api/oauth/social/${segment}
 
+        # Alias du callback Facebook pour l'URI déclarée dans la console Meta
+        # (https://api.ai.labibpro.com/api/v1/oauth/facebook/callback). Meta
+        # exige que le redirect_uri serve exactement cette URL : on la re-route
+        # vers le handler historique. Publique, comme le callback d'origine.
+        - id: oauth-social-callback-v1
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/v1/oauth/facebook/callback
+          filters:
+            - RewritePath=/api/v1/oauth/facebook/callback, /api/oauth/social/facebook/callback
+
+        # Webhook de désautorisation Facebook (deauthorize callback) : Meta le
+        # POSTe sans JWT, la confiance vient du signed_request HMAC-SHA256. Doit
+        # rester PUBLIC — le routeur global ajoute AuthenticationFilter par défaut.
+        - id: oauth-social-deauthorize
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/oauth/social/facebook/deauthorize
+          filters:
+            - RewritePath=/api/oauth/social/(?<segment>.*), /api/oauth/social/${segment}
+
         # Choix de la Page sur un canal existant (Facebook / Instagram).
         # Route distincte de /authorize : elle échappe volontairement au
         #permitAll du callback, le JWT est obligatoire (AuthenticationFilter).

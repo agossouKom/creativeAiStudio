@@ -16,4 +16,7 @@ public interface ChannelRepository extends JpaRepository<Channel, String> {
     Optional<Channel> findByIdAndAgentIdAndDeletedFalse(String id, String agentId);
     Optional<Channel> findFirstByAccountIdAndPlatformTypeAndStatusAndDeletedFalse(
             String accountId, PlatformType platformType, ChannelStatus status);
+
+    List<Channel> findByAccountIdAndPlatformTypeAndStatusAndDeletedFalse(
+            String accountId, PlatformType platformType, ChannelStatus status);
 }

@@ -37,4 +37,30 @@ public interface UserSocialAccountRepository extends JpaRepository<UserSocialAcc
     Page<UserSocialAccount> search(@org.springframework.data.repository.query.Param("platformId") String platformId,
                                    @org.springframework.data.repository.query.Param("userId") String userId,
                                    Pageable pageable);
+
+    /**
+     * Comptes Facebook/Instagram dont le Meta user id (app-scoped) correspond à
+     * celui que Meta renvoie au webhook deauthorize. C'est par ce mapping que
+     * la suppression de l'app dans les réglages Meta aboutit à la révocation de
+     * nos jetons — exigence du cahier des charges RGPD de Meta.
+     */
+    @org.springframework.data.jpa.repository.Query(value = """
+        SELECT * FROM user_social_accounts
+        WHERE deleted = false
+          AND platform_id = :platformId
+          AND extra_account_data IS NOT NULL
+          AND cast(extra_account_data as jsonb)->>'metaUserId' = :metaUserId
+        """, nativeQuery = true)
+    List<UserSocialAccount> findByMetaUserId(@org.springframework.data.repository.query.Param("platformId") String platformId,
+                                             @org.springframework.data.repository.query.Param("metaUserId") String metaUserId);
+
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT a FROM UserSocialAccount a
+        WHERE a.deleted = false
+          AND a.status <> 'DISCONNECTED'
+          AND (a.needsRefresh = true
+               OR (a.tokenExpiresAt IS NOT NULL AND a.tokenExpiresAt < :soon))
+        ORDER BY a.tokenExpiresAt ASC
+        """)
+    List<UserSocialAccount> findRefreshCandidates(@org.springframework.data.repository.query.Param("soon") LocalDateTime soon);
 }

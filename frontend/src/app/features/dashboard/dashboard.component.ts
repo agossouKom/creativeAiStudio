@@ -21,6 +21,8 @@ interface SocialPlatformAdmin {
   scopes: string[];
   tokenEndpoint: string | null;
   refreshEndpoint: string | null;
+  baseRedirectUrl: string | null;
+  callbackPath: string | null;
   accessTokenTtl: number | null;
   refreshTokenTtl: number | null;
   extraConfig: string;
@@ -56,6 +58,8 @@ const blankSocialPlatform = () => ({
   scopesText: '',
   tokenEndpoint: '',
   refreshEndpoint: '',
+  baseRedirectUrl: '',
+  callbackPath: '',
   accessTokenTtl: 3600,
   refreshTokenTtl: 86400,
   extraConfig: '{}',
@@ -1779,6 +1783,17 @@ const blankSocialPlatform = () => ({
 
             <div class="grid grid-cols-2 gap-4">
               <div class="form-group">
+                <label>Base URL redirect <span class="text-slate-400">(vide → APP_PUBLIC_URL)</span></label>
+                <input name="spbasedir" type="text" [(ngModel)]="currSocialPlatform.baseRedirectUrl" placeholder="https://api.votre-domaine.com">
+              </div>
+              <div class="form-group">
+                <label>Chemin callback <span class="text-slate-400">(vide → défaut)</span></label>
+                <input name="spcbpath" type="text" [(ngModel)]="currSocialPlatform.callbackPath" placeholder="/api/oauth/social/facebook/callback">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="form-group">
                 <label>TTL access token <span class="text-slate-400">(secondes)</span></label>
                 <input name="spaccttl" type="number" [(ngModel)]="currSocialPlatform.accessTokenTtl">
               </div>
@@ -2926,6 +2941,8 @@ export class DashboardComponent implements OnInit, AfterViewInit {
       scopesText: (p.scopes || []).join(', '),
       tokenEndpoint: p.tokenEndpoint || '',
       refreshEndpoint: p.refreshEndpoint || '',
+      baseRedirectUrl: p.baseRedirectUrl || '',
+      callbackPath: p.callbackPath || '',
       accessTokenTtl: p.accessTokenTtl,
       refreshTokenTtl: p.refreshTokenTtl,
       extraConfig: p.extraConfig || '{}',
@@ -2950,6 +2967,8 @@ export class DashboardComponent implements OnInit, AfterViewInit {
       scopes: String(c.scopesText || '').split(',').map((s: string) => s.trim()).filter(Boolean),
       tokenEndpoint: c.tokenEndpoint ? String(c.tokenEndpoint).trim() : null,
       refreshEndpoint: c.refreshEndpoint ? String(c.refreshEndpoint).trim() : null,
+      baseRedirectUrl: c.baseRedirectUrl ? String(c.baseRedirectUrl).trim() : null,
+      callbackPath: c.callbackPath ? String(c.callbackPath).trim() : null,
       accessTokenTtl: c.accessTokenTtl ?? null,
       refreshTokenTtl: c.refreshTokenTtl ?? null,
       extraConfig: c.extraConfig && String(c.extraConfig).trim() ? String(c.extraConfig).trim() : '{}',

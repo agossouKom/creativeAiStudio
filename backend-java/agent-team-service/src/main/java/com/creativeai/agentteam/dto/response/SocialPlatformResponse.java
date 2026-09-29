@@ -26,6 +26,8 @@ public class SocialPlatformResponse {
     private List<String> scopes;
     private String tokenEndpoint;
     private String refreshEndpoint;
+    private String baseRedirectUrl;
+    private String callbackPath;
     private Long accessTokenTtl;
     private Long refreshTokenTtl;
     private String extraConfig;
@@ -48,6 +50,8 @@ public class SocialPlatformResponse {
             .scopes(sp.scopeList())
             .tokenEndpoint(sp.getTokenEndpoint())
             .refreshEndpoint(sp.getRefreshEndpoint())
+            .baseRedirectUrl(sp.getBaseRedirectUrl())
+            .callbackPath(sp.getCallbackPath())
             .accessTokenTtl(sp.getAccessTokenTtl())
             .refreshTokenTtl(sp.getRefreshTokenTtl())
             .extraConfig(sp.getExtraConfig())

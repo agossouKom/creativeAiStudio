@@ -179,6 +179,48 @@ class AdminSocialControllerTest {
             .doesNotContain("nouveau-secret");
     }
 
+    @Test
+    void leDomaineEtLeCheminDeCallbackSontPersistes() {
+        SocialPlatform sp = platform("facebook");
+        doReturn(Optional.of(sp)).when(platformRepository).findById("facebook");
+        doReturn(0L).when(accountRepository).countByPlatform_IdAndDeletedFalse("facebook");
+        doReturn(new SocialPlatformConfigService.Credentials("client-id", "x", true))
+            .when(configService).resolve("facebook");
+
+        controller.upsert("facebook", SocialPlatformRequest.builder()
+            .id("facebook")
+            .displayName("Facebook")
+            .clientSecret("")
+            .baseRedirectUrl("https://api.ai.labibpro.com")
+            .callbackPath("/cb/facebook")
+            .build());
+
+        assertThat(sp.getBaseRedirectUrl()).isEqualTo("https://api.ai.labibpro.com");
+        assertThat(sp.getCallbackPath()).isEqualTo("/cb/facebook");
+        verify(platformRepository).save(sp);
+    }
+
+    @Test
+    void unDomaineVideReinitialiseLeCallbackAURepliEnv() {
+        SocialPlatform sp = platform("facebook");
+        sp.setBaseRedirectUrl("https://ancien.domaine.com");
+        doReturn(Optional.of(sp)).when(platformRepository).findById("facebook");
+        doReturn(0L).when(accountRepository).countByPlatform_IdAndDeletedFalse("facebook");
+        doReturn(new SocialPlatformConfigService.Credentials("client-id", "x", true))
+            .when(configService).resolve("facebook");
+
+        controller.upsert("facebook", SocialPlatformRequest.builder()
+            .id("facebook")
+            .displayName("Facebook")
+            .clientSecret("")
+            .baseRedirectUrl("   ")
+            .callbackPath(null)
+            .build());
+
+        assertThat(sp.getBaseRedirectUrl()).isNull();
+        assertThat(sp.getCallbackPath()).isNull();
+    }
+
     // ── 3. Une plateforme rattachée à des comptes est protégée ─────────────
 
     @Test

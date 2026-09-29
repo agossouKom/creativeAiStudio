@@ -83,9 +83,6 @@ public class OAuthSocialController {
 
     // ── Config ───────────────────────────────────────────────────────────────
 
-    @Value("${app.public-url:http://localhost:8480}")
-    private String publicUrl;
-
     @Value("${app.frontend-url:http://localhost:4400}")
     private String frontendUrl;
 
@@ -138,6 +135,7 @@ public class OAuthSocialController {
     private static final String FB_AUTH_URL   = "https://www.facebook.com/v19.0/dialog/oauth";
     private static final String FB_TOKEN_URL  = "https://graph.facebook.com/v19.0/oauth/access_token";
     private static final String FB_PAGES_URL  = "https://graph.facebook.com/v19.0/me/accounts";
+    private static final String FB_ME_URL     = "https://graph.facebook.com/v19.0/me";
 
     private static final String LI_AUTH_URL   = "https://www.linkedin.com/oauth/v2/authorization";
     private static final String LI_TOKEN_URL  = "https://www.linkedin.com/oauth/v2/accessToken";
@@ -226,7 +224,7 @@ public class OAuthSocialController {
         }
 
         String state = issued.state();
-        String callbackUri = publicUrl + "/api/oauth/social/" + platform.toLowerCase() + "/callback";
+        String callbackUri = resolveCallbackUri(platformUpper);
 
         String authUrl;
         try {
@@ -625,9 +623,14 @@ public class OAuthSocialController {
     }
 
     private String buildFbAuthUrl(String callbackUri, String state, String platform) {
-        String scope = "INSTAGRAM".equals(platform)
-            ? "pages_show_list,instagram_basic,instagram_content_publish,instagram_manage_comments,pages_read_engagement"
-            : "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_metadata,public_profile";
+        // Scopes configurés par l'administrateur (dashboard) ; repli sur les
+        // valeurs par défaut si rien n'a été saisi.
+        List<String> configured = platformConfig.resolveScopes(platform);
+        String scope = !configured.isEmpty()
+            ? String.join(",", configured)
+            : "INSTAGRAM".equals(platform)
+                ? "pages_show_list,instagram_basic,instagram_content_publish,instagram_manage_comments,pages_read_engagement"
+                : "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_metadata,public_profile";
         return UriComponentsBuilder.fromHttpUrl(FB_AUTH_URL)
             .queryParam("client_id",     clientIdOr("FACEBOOK", "YOUR_FB_APP_ID"))
             .queryParam("redirect_uri",  callbackUri)
@@ -721,7 +724,7 @@ public class OAuthSocialController {
         String channelId = entry.channelId();
 
         try {
-            String callbackUri = publicUrl + "/api/oauth/social/" + platform.toLowerCase() + "/callback";
+            String callbackUri = resolveCallbackUri(platform);
             Map<String, Object> credentials =
                 exchangeCodeForCredentials(platform, code, callbackUri, entry.codeVerifier());
             String accountName = (String) credentials.getOrDefault("accountName", platform + " Account");
@@ -797,6 +800,16 @@ public class OAuthSocialController {
     //  Échange du code OAuth contre les tokens selon la plateforme
     // ═════════════════════════════════════════════════════════════════════════
 
+    /**
+     * URI de redirection OAuth à transmettre à la plateforme : celle que
+     * l'administrateur a saisie dans le dashboard (domaine + chemin), avec
+     * repli sur {@code APP_PUBLIC_URL} + chemin par défaut. Résolue à chaque
+     * appel pour qu'un changement de domaine prenne effet sans redémarrage.
+     */
+    private String resolveCallbackUri(String platform) {
+        return platformConfig.resolveCallback(platform).uri();
+    }
+
     private Map<String, Object> exchangeCodeForCredentials(String platform, String code,
                                                             String callbackUri, String codeVerifier) throws Exception {
         return switch (platform) {
@@ -833,13 +846,35 @@ public class OAuthSocialController {
         JsonNode llNode = objectMapper.readTree(llResp.getBody());
         String longToken = llNode.path("access_token").asText(shortToken);
 
+        Map<String, Object> creds = new LinkedHashMap<>();
+        creds.put("userAccessToken", longToken);
+        // Durée de vie du long-lived token (Meta renvoie expires_in en secondes) :
+        // conservée pour que le job de refresh sache quand prolonger via
+        // fb_exchange_token.
+        long expiresIn = llNode.path("expires_in").asLong(0);
+        if (expiresIn > 0) {
+            creds.put("expiresIn", expiresIn);
+        }
+
+        // 2bis. Identifiant Meta app-scoped de l'utilisateur : indispensable pour
+        // traiter le webhook deauthorize (RGPD) — Meta nous le renvoie quand
+        // l'utilisateur supprime l'app. Best-effort : sans lui, la publication
+        // et le refresh restent fonctionnels.
+        try {
+            String meUrl = FB_ME_URL + "?fields=id&access_token=" + longToken;
+            JsonNode meNode = objectMapper.readTree(restTemplate.getForEntity(meUrl, String.class).getBody());
+            String fbUserId = meNode.path("id").asText(null);
+            if (fbUserId != null && !fbUserId.isBlank()) {
+                creds.put("fbUserId", fbUserId);
+            }
+        } catch (Exception e) {
+            log.warn("[OAUTH_{}] Impossible de récupérer l'identifiant Meta : {}", platform, e.getMessage());
+        }
+
         // 3. Récupérer les pages Facebook
         String pagesUrl = FB_PAGES_URL + "?access_token=" + longToken;
         ResponseEntity<String> pagesResp = restTemplate.getForEntity(pagesUrl, String.class);
         JsonNode pagesNode = objectMapper.readTree(pagesResp.getBody());
-
-        Map<String, Object> creds = new LinkedHashMap<>();
-        creds.put("userAccessToken", longToken);
 
         // Prendre la première page
         JsonNode data = pagesNode.path("data");

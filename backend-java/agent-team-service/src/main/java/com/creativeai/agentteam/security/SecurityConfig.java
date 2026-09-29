@@ -40,6 +40,10 @@ public class SecurityConfig {
                     // sans JWT. La sécurité est portée par le `state` à usage unique lié à
                     // l'utilisateur qui a démarré le flow — PAS par un permitAll large.
                     "/api/oauth/social/*/callback",
+                    // Webhook de désautorisation Facebook : Meta le POSTe sans JWT,
+                    // la confiance tient entièrement dans le signed_request
+                    // HMAC-SHA256 validé en temps constant par le contrôleur.
+                    "/api/oauth/social/facebook/deauthorize",
                     // Webhooks entrants : authentifiés par leur propre jeton
                     // (verify_token Meta, secret Telegram/WhatsApp) dans le handler.
                     "/api/facebook/webhook/**",

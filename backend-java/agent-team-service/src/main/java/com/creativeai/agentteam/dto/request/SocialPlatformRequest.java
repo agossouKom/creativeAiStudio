@@ -41,6 +41,18 @@ public class SocialPlatformRequest {
 
     private String refreshEndpoint;
 
+    /**
+     * Domaine public de redirection OAuth (ex : https://api.ai.labibpro.com).
+     * Vide → repli sur APP_PUBLIC_URL pour la plateforme.
+     */
+    private String baseRedirectUrl;
+
+    /**
+     * Chemin du callback OAuth (ex : /api/oauth/social/facebook/callback).
+     * Vide → chemin par défaut de la plateforme.
+     */
+    private String callbackPath;
+
     private Long accessTokenTtl;
 
     private Long refreshTokenTtl;

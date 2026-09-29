@@ -69,6 +69,24 @@ public class SocialPlatform {
     @Column(name = "refresh_endpoint", length = 500)
     private String refreshEndpoint;
 
+    /**
+     * Domaine de redirection OAuth, saisissable dans le dashboard :
+     * l'administrateur peut changer de domaine (https://ai.labibpro.com →
+     * https://api.ai.labibpro.com) ou de réseau sans redéployer, exactement
+     * comme les identifiants applicatifs. Vide → repli sur
+     * {@code APP_PUBLIC_URL} (l'historique).
+     */
+    @Column(name = "base_redirect_url", length = 500)
+    private String baseRedirectUrl;
+
+    /**
+     * Chemin de l'endpoint callback, ex : /api/oauth/social/facebook/callback.
+     * Vide → chemin par défaut de la plateforme. L'URI finale vaut
+     * {@code base_redirect_url + callback_path}.
+     */
+    @Column(name = "callback_path", length = 300)
+    private String callbackPath;
+
     /** Durée de vie de l'access token, en secondes. */
     @Column(name = "access_token_ttl")
     private Long accessTokenTtl;

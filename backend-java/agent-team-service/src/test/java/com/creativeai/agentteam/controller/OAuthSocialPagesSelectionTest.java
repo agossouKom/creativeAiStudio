@@ -72,12 +72,18 @@ class OAuthSocialPagesSelectionTest {
     void setUp() {
         controller = new OAuthSocialController(channelService, channelRepo, agentRepo,
             encryptionService, new OAuthStateStore(600, 1000), new ObjectMapper(), platformConfig, userSocialAccounts);
-        ReflectionTestUtils.setField(controller, "publicUrl", "https://app.test");
         ReflectionTestUtils.setField(controller, "frontendUrl", "https://app.test");
         // Résolution de la config plateforme : sans stub, le mock renvoie null
         // et le contrôleur-plantait sur un NPE avant même d'atteindre sa logique.
         lenient().when(platformConfig.resolve(anyString())).thenReturn(
             new SocialPlatformConfigService.Credentials("client-id", "client-secret", false));
+        // URI de callback résolue via la config : reproduit le repli par défaut.
+        lenient().when(platformConfig.resolveCallback(anyString())).thenAnswer(inv -> {
+            String p = inv.getArgument(0);
+            return new SocialPlatformConfigService.CallbackConfig("https://app.test",
+                "/api/oauth/social/" + p.toLowerCase() + "/callback", false);
+        });
+        lenient().when(platformConfig.resolveScopes(anyString())).thenReturn(java.util.List.of());
         ReflectionTestUtils.setField(controller, "fbAppId", "fb-id");
         ReflectionTestUtils.setField(controller, "fbAppSecret", "fb-secret");
         ReflectionTestUtils.setField(controller, "linkedinClientId", "");

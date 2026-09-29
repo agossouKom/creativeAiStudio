@@ -8,7 +8,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -57,11 +59,29 @@ public class SocialPlatformConfigService {
     @Value("${GMAIL_CLIENT_SECRET:}")
     private String googleClientSecret;
 
+    /** Repli si le dashboard n'a pas renseigné de domaine public. */
+    @Value("${app.public-url:http://localhost:8480}")
+    private String publicUrl;
+
     /** Résultat de résolution, avec la provenance pour que l'admin sache quoi corriger. */
     public record Credentials(String clientId, String clientSecret, boolean fromDatabase) {
         public boolean isPresent() {
             return clientId != null && !clientId.isBlank()
                 && clientSecret != null && !clientSecret.isBlank();
+        }
+    }
+
+    /**
+     * Domaine + chemin de callback OAuth d'une plateforme. Saisissables dans le
+     * dashboard (zéro hardcoding) ; tant que vides, on retombe sur
+     * {@code APP_PUBLIC_URL} + le chemin par défaut — le comportement d'origine.
+     */
+    public record CallbackConfig(String baseUrl, String path, boolean fromDatabase) {
+        public String uri() {
+            String b = baseUrl;
+            while (b != null && b.endsWith("/")) b = b.substring(0, b.length() - 1);
+            String p = (path == null || path.isBlank()) ? "/" : path;
+            return (p.startsWith("/") || b == null || b.isBlank()) ? b + p : b + "/" + p;
         }
     }
 
@@ -115,6 +135,61 @@ public class SocialPlatformConfigService {
             case "YOUTUBE"   -> new Credentials(googleClientId, googleClientSecret, false);
             default -> new Credentials(null, null, false);
         };
+    }
+
+    /**
+     * Résout l'URI de callback OAuth : la ligne du dashboard fait foi, sinon
+     * {@code APP_PUBLIC_URL} + chemin par défaut (l'existant, jamais cassé).
+     * Utile pour les échanges de code ET pour afficher l'URL à déclarer dans la
+     * console de la plateforme.
+     */
+    @Transactional(readOnly = true)
+    public CallbackConfig resolveCallback(String platform) {
+        String platformId = resolvePlatformId(platform);
+        if (platformId == null) {
+            return new CallbackConfig(publicUrl, defaultCallbackPath(platform), false);
+        }
+        SocialPlatform sp = repository.findById(platformId).orElse(null);
+        if (sp != null && (sp.getBaseRedirectUrl() != null || sp.getCallbackPath() != null)) {
+            return new CallbackConfig(
+                sp.getBaseRedirectUrl() == null ? publicUrl : sp.getBaseRedirectUrl(),
+                sp.getCallbackPath() == null ? defaultCallbackPath(platform) : sp.getCallbackPath(),
+                true);
+        }
+        return new CallbackConfig(publicUrl, defaultCallbackPath(platform), false);
+    }
+
+    private String defaultCallbackPath(String platform) {
+        if (platform == null) return "/";
+        // resolvePlatformId normalise INSTAGRAM→facebook : il ne faut PAS
+        // l'utiliser ici, chaque plateforme a son propre chemin de callback.
+        return "/api/oauth/social/" + platform.toLowerCase() + "/callback";
+    }
+
+    /**
+     * Scopes demandés au consentement OAuth : ce que l'administrateur a saisi
+     * dans le dashboard (colonne {@code scopes}) fait foi. Repli : liste par
+     * défaut de la plateforme — l'existant, jamais cassé.
+     *
+     * <p>Instagram partage la ligne « facebook » : si l'admin n'a rien saisi de
+     * spécifique (aucun scope {@code instagram_*}), on renvoie ses défauts à lui
+     * pour ne pas casser la publication de vidéos.
+     */
+    @Transactional(readOnly = true)
+    public List<String> resolveScopes(String platform) {
+        if (platform == null) return new ArrayList<>();
+        String platformId = resolvePlatformId(platform);
+        SocialPlatform sp = platformId == null ? null : repository.findById(platformId).orElse(null);
+        List<String> fromDb = (sp == null || sp.getScopes() == null || sp.getScopes().isBlank())
+            ? new ArrayList<>() : sp.scopeList();
+
+        if ("INSTAGRAM".equals(platform.toUpperCase())
+            && fromDb.stream().noneMatch(s -> s.startsWith("instagram_"))) {
+            return List.of(
+                "pages_show_list", "instagram_basic", "instagram_content_publish",
+                "instagram_manage_comments", "pages_read_engagement");
+        }
+        return fromDb;
     }
 
     /**

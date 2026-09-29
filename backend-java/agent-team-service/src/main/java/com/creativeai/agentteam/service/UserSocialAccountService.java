@@ -112,6 +112,11 @@ public class UserSocialAccountService {
             account.setLastError("Chiffrement du jeton impossible");
         }
 
+        // Alimentation des colonnes de pilotage du refresh depuis le JSON des
+        // credentials, sans changer la signature : le contrôleur ajoute déjà
+        // `expiresIn`, `refreshToken` et `fbUserId` aux plateformes concernées.
+        populateTokenMetadata(account, credentialsJson);
+
         if (scopes != null && !scopes.isEmpty()) {
             account.setScopesGranted(toJson(scopes));
         }
@@ -120,6 +125,46 @@ public class UserSocialAccountService {
         log.info("[USER_SOCIAL] Compte {} {} pour {} ({})",
             nouveau ? "créé" : "mis à jour", platformAccountId, userId, platform.getId());
         return saved;
+    }
+
+    /**
+     * Récupère dans le JSON chiffré les métadonnées utiles au job de refresh :
+     *   • {@code expiresIn} (secondes) → {@link UserSocialAccount#tokenExpiresAt} ;
+     *   • {@code refreshToken} → {@link UserSocialAccount#refreshTokenEnc} ;
+     *   • {@code fbUserId} → {@code extra_account_data} (mapping du deauthorize).
+     * Toutes ces clés sont optionnelles, on ne réécrit que les champs présents.
+     */
+    private void populateTokenMetadata(UserSocialAccount account, String credentialsJson) {
+        if (credentialsJson == null || credentialsJson.isBlank()) return;
+        try {
+            var node = objectMapper.readTree(credentialsJson);
+
+            long expiresIn = node.path("expiresIn").asLong(0);
+            if (expiresIn > 0) {
+                account.setTokenExpiresAt(LocalDateTime.now().plusSeconds(expiresIn));
+            }
+
+            String refreshToken = node.path("refreshToken").asText(null);
+            if (refreshToken != null && !refreshToken.isBlank()) {
+                account.setRefreshTokenEnc(encryptionService.encrypt(refreshToken));
+            }
+
+            String fbUserId = node.path("fbUserId").asText(null);
+            if (fbUserId != null && !fbUserId.isBlank()) {
+                try {
+                    Map<?, ?> existing = account.getExtraAccountData() == null
+                        ? Map.of() : objectMapper.readValue(account.getExtraAccountData(), Map.class);
+                    Map<String, Object> meta = new java.util.LinkedHashMap<>();
+                    existing.forEach((k, v) -> meta.put(String.valueOf(k), v));
+                    meta.put("metaUserId", fbUserId);
+                    account.setExtraAccountData(objectMapper.writeValueAsString(meta));
+                } catch (Exception e) {
+                    log.warn("[USER_SOCIAL] extra_account_data illisible, metaUserId ignoré", e);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[USER_SOCIAL] Credentials non interprétables, métadonnées ignorées: {}", e.getMessage());
+        }
     }
 
     /** Passe un canal en soft-delete quand l'utilisateur déconnecte son compte. */

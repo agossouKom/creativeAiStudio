@@ -1,11 +1,13 @@
 package com.creativeai.agentteam.security;
 
+import com.creativeai.agentteam.controller.FacebookDeauthorizeController;
 import com.creativeai.agentteam.controller.FacebookWebhookController;
 import com.creativeai.agentteam.controller.MediaController;
 import com.creativeai.agentteam.controller.OAuthSocialController;
 import com.creativeai.agentteam.model.Agent;
 import com.creativeai.agentteam.repository.AgentRepository;
 import com.creativeai.agentteam.repository.ChannelRepository;
+import com.creativeai.agentteam.repository.UserSocialAccountRepository;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
 import com.creativeai.agentteam.service.MinioService;
@@ -31,6 +33,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -43,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * JWT cessait de s'appliquer.
  */
 @WebMvcTest(controllers = {MediaController.class, OAuthSocialController.class,
-    FacebookWebhookController.class})
+    FacebookWebhookController.class, FacebookDeauthorizeController.class})
 @Import({SecurityConfig.class, JwtAuthFilter.class, WebhookVerifier.class})
 class SecurityConfigPermitAllTest {
 
@@ -60,6 +63,7 @@ class SecurityConfigPermitAllTest {
     @MockBean private TaskService taskService;
     @MockBean private SocialPlatformConfigService platformConfig;
     @MockBean private UserSocialAccountService userSocialAccounts;
+    @MockBean private UserSocialAccountRepository accountRepository;
 
     /**
      * L'app ne déclare aucun AuthenticationEntryPoint : une requête sans
@@ -76,6 +80,14 @@ class SecurityConfigPermitAllTest {
         // service ; sans stub il renvoie null et l'endpoint tombe en 500.
         when(platformConfig.resolve(anyString())).thenReturn(
             new SocialPlatformConfigService.Credentials("client-id", "client-secret", false));
+        // L'URI de callback est résolue via la config : reproduit le repli défaut.
+        when(platformConfig.resolveCallback(anyString())).thenAnswer(inv -> {
+            String p = inv.getArgument(0);
+            return new SocialPlatformConfigService.CallbackConfig("http://localhost:8480",
+                "/api/oauth/social/" + p.toLowerCase() + "/callback", false);
+        });
+        // Scopes : vide → repli sur les valeurs par défaut de la plateforme.
+        when(platformConfig.resolveScopes(anyString())).thenReturn(java.util.List.of());
         when(agentRepo.findByIdAndOwnerIdAndDeletedFalse(anyString(), anyString()))
             .thenReturn(Optional.of(org.mockito.Mockito.mock(Agent.class)));
     }
@@ -169,5 +181,20 @@ class SecurityConfigPermitAllTest {
                 .param("hub.verify_token", "jeton-incorrect")
                 .param("hub.challenge", "42"))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deauthorizeFacebookRestePublicEtSeValideLuiMeme() throws Exception {
+        // Meta POSTe le deauthorize callback sans JWT : la chaîne doit laisser
+        // passer TOUT LE MONDE jusqu'au handler, qui valide le signed_request.
+        // Sans secret Facebook configuré dans ce contexte, le handler répond en
+        // fail-closed 503 — un 401/403 de la chaîne signifierait que le filtre
+        // JWT s'applique à un webhook qui ne peut pas en porter.
+        when(platformConfig.resolve("FACEBOOK"))
+            .thenReturn(new SocialPlatformConfigService.Credentials(null, null, false));
+        mockMvc.perform(post("/api/oauth/social/facebook/deauthorize")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .content("signed_request=aaa.bbb"))
+            .andExpect(status().isServiceUnavailable());
     }
 }

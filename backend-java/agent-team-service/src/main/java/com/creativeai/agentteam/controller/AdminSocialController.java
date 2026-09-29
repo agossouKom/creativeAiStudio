@@ -119,6 +119,14 @@ public class AdminSocialController {
         if (request.getRefreshEndpoint() != null) {
             sp.setRefreshEndpoint(blankToNull(request.getRefreshEndpoint()));
         }
+        // Domaine + chemin de callback : saisissables dans le dashboard, repli
+        // env/défaut si laissés vides (comportement historique conservé).
+        if (request.getBaseRedirectUrl() != null) {
+            sp.setBaseRedirectUrl(blankToNull(request.getBaseRedirectUrl()));
+        }
+        if (request.getCallbackPath() != null) {
+            sp.setCallbackPath(blankToNull(request.getCallbackPath()));
+        }
         if (request.getAccessTokenTtl() != null)   sp.setAccessTokenTtl(request.getAccessTokenTtl());
         if (request.getRefreshTokenTtl() != null)  sp.setRefreshTokenTtl(request.getRefreshTokenTtl());
         if (request.getExtraConfig() != null) {
