@@ -2,6 +2,8 @@ package com.creativeai.agentteam.service;
 
 import com.creativeai.agentteam.model.SocialPlatform;
 import com.creativeai.agentteam.repository.SocialPlatformRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +33,8 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class SocialPlatformConfigService {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final SocialPlatformRepository repository;
     private final EncryptionService encryptionService;
@@ -190,6 +194,47 @@ public class SocialPlatformConfigService {
                 "instagram_manage_comments", "pages_read_engagement");
         }
         return fromDb;
+    }
+
+    /**
+     * Facebook Login for Business : identifiant de configuration Meta, lu dans
+     * {@code extra_config.fbBusinessConfigId}.
+     *
+     * <p>Meta veut désormais les permissions Pages demandées via une
+     * configuration créée dans le dashboard ({@code config_id}) et non via un
+     * {@code scope} brut. La configuration porte à la fois les permissions et
+     * les assets (Pages, comptes Instagram) : elle est donc propre à une
+     * plateforme. Facebook et Instagram partagent la même ligne en base, mais
+     * pas les mêmes permissions ({@code pages_*} contre {@code instagram_*}) :
+     * seule Facebook lit sa configuration ici, sinon on enverrait les scopes
+     * Instagram à un dialog Facebook.
+     *
+     * @return l'identifiant, ou {@code null} → repli sur le Facebook Login classique
+     */
+    @Transactional(readOnly = true)
+    public String resolveFacebookConfigId(String platform) {
+        String platformId = resolvePlatformId(platform);
+        if (platformId == null || !"facebook".equals(platformId) || platform == null) {
+            return null;
+        }
+        return repository.findById(platformId)
+            .map(SocialPlatform::getExtraConfig)
+            .map(SocialPlatformConfigService::readStringField)
+            .orElse(null);
+    }
+
+    /** Lit un champ texte de l'{@code extra_config} JSON, sans jamais planter. */
+    private static String readStringField(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            JsonNode node = MAPPER.readTree(json).get("fbBusinessConfigId");
+            if (node == null || node.isNull()) return null;
+            String value = node.asText();
+            return (value == null || value.isBlank()) ? null : value.trim();
+        } catch (Exception e) {
+            log.warn("extra_config illisible, fbBusinessConfigId ignoré : {}", e.getMessage());
+            return null;
+        }
     }
 
     /**

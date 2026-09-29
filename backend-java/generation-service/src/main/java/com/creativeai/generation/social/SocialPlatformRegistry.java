@@ -34,12 +34,15 @@ public class SocialPlatformRegistry {
             .requiresProfessionalAccount(true)
             .requiresAppReview(true)
             .requiredScopes(List.of("pages_show_list", "pages_read_engagement",
-                "pages_manage_posts", "pages_manage_video_posts"))
+                "pages_manage_posts", "public_profile"))
             .maxDurationSeconds(14400)
             .allowedAspectRatios(List.of("16:9", "9:16", "1:1", "4:5"))
             .notes("Publication déléguée à agent-team-service (Graph API) sur une Page liée. "
                 + "Le média est téléchargé par nos soins puis uploadé en binaire : "
-                + "aucune URL publique n'est nécessaire.")
+                + "aucune URL publique n'est nécessaire. "
+                + "Publier sur /{page-id}/feed et /{page-id}/videos n'exige que "
+                + "pages_manage_posts + pages_read_engagement + pages_show_list ; chacune "
+                + "de ces scopes exige une App Review avant d'être accordée à un tiers.")
             .build());
 
         register(builder()

@@ -623,21 +623,35 @@ public class OAuthSocialController {
     }
 
     private String buildFbAuthUrl(String callbackUri, String state, String platform) {
-        // Scopes configurés par l'administrateur (dashboard) ; repli sur les
-        // valeurs par défaut si rien n'a été saisi.
+        UriComponentsBuilder url = UriComponentsBuilder.fromHttpUrl(FB_AUTH_URL)
+            .queryParam("client_id",     clientIdOr("FACEBOOK", "YOUR_FB_APP_ID"))
+            .queryParam("redirect_uri",  callbackUri)
+            .queryParam("state",         state)
+            .queryParam("response_type", "code");
+
+        // ── Facebook Login for Business (prioritaire) ──────────────────────
+        // Meta veut les permissions Pages demandées via une configuration
+        // créée dans le dashboard : config_id REMPLACE scope. Envoyer les deux
+        // fait échouer le dialog, et c'est ce dialogue qui accordait les
+        // permissions que Facebook refusait ensuite en « Invalid Scopes ».
+        String configId = platformConfig.resolveFacebookConfigId(platform);
+        if (configId != null) {
+            log.info("[OAUTH] Facebook Login for Business : config_id={} (scope ignoré)", configId);
+            return url.queryParam("config_id", configId)
+                // Force le code même si la configuration Meta déclare un autre
+                // response_type par défaut : l'échange se fait côté serveur.
+                .queryParam("override_default_response_type", "true")
+                .build(false).toUriString();
+        }
+
+        // ── Facebook Login classique : scopes du dashboard, sinon défauts ──
         List<String> configured = platformConfig.resolveScopes(platform);
         String scope = !configured.isEmpty()
             ? String.join(",", configured)
             : "INSTAGRAM".equals(platform)
                 ? "pages_show_list,instagram_basic,instagram_content_publish,instagram_manage_comments,pages_read_engagement"
-                : "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_metadata,public_profile";
-        return UriComponentsBuilder.fromHttpUrl(FB_AUTH_URL)
-            .queryParam("client_id",     clientIdOr("FACEBOOK", "YOUR_FB_APP_ID"))
-            .queryParam("redirect_uri",  callbackUri)
-            .queryParam("state",         state)
-            .queryParam("scope",         scope)
-            .queryParam("response_type", "code")
-            .build(false).toUriString();
+                : "pages_show_list,pages_read_engagement,pages_manage_posts,public_profile";
+        return url.queryParam("scope", scope).build(false).toUriString();
     }
 
     private String buildLinkedinAuthUrl(String callbackUri, String state) {
