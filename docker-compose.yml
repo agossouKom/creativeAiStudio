@@ -654,6 +654,9 @@ services:
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:8480}
+      # Secret partagé avec generation-service pour la publication programmée.
+      # Doit être identique des deux côtés (cf. INTERNAL_SERVICE_TOKEN ci-dessus).
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -706,6 +709,8 @@ services:
       # delegués a agent-team-service qui détient les credentials Meta.
       SOCIAL_PUBLISH_ENABLED: ${SOCIAL_PUBLISH_ENABLED:-false}
       AGENT_TEAM_BASE_URL: http://agent-team-service:8087
+      # Secret partagé avec agent-team-service pour la publication programmée.
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
       postgres:

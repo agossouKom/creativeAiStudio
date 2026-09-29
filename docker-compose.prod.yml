@@ -156,6 +156,8 @@ services:
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      # Publication programmée : secret partagé des deux côtés (fail-closed si absent).
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
 
   # ── Scanner de fichiers ────────────────────────────────────────────────────
   # Les uploads de agent-team-service sont fail-closed : sans ce service, tout
@@ -184,6 +186,8 @@ services:
       AGENT_TEAM_BASE_URL: ${AGENT_TEAM_BASE_URL:-http://agent-team-service:8087}
       SOCIAL_PUBLISH_ENABLED: ${SOCIAL_PUBLISH_ENABLED:-false}
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+      # Publication programmée : secret partagé des deux côtés (fail-closed si absent).
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
 
   # ── Telegram MCP ───────────────────────────────────────────────────────────
 
