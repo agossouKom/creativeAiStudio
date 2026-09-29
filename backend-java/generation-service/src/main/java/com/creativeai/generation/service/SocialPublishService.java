@@ -115,6 +115,53 @@ public class SocialPublishService {
         return dispatch(entity, capabilities, entity.getCaption(), mediaReference, callerToken);
     }
 
+    /**
+     * Exécute une publication venue du planificateur.
+     *
+     * <p>Rejoue intégralement les contrôles d'une publication immédiate (job
+     * terminé, adaptateur disponible, format accepté, agent identifié) puis
+     * délègue à {@link #dispatch} : la seule différence est l'authentification,
+     * qui passe par le secret de service au lieu du jeton de l'appelant.
+     *
+     * <p>Ces contrôles sont refaits ici, et non calculés à l'heure de la
+     * programmation, pour une raison précise : entre la programmation et
+     * l'échéance, le job a pu être relancé, son format modifié, ou l'adaptateur
+     * retiré. Valider au moment de programmer donnerait une promesse que
+     * l'exécution ne pourrait pas tenir.
+     */
+    public SocialPublishRequestResponse publishScheduled(String jobId, Integer executionVersion,
+                                                         int outputIndex, String userEmail,
+                                                         SocialPlatform platform,
+                                                         String agentId, String caption) {
+        GenerationJob job = requireJob(jobId, userEmail);
+        // La version figée à la programmation, pas la version courante : si le
+        // job a été relancé entre-temps, l'utilisateur doit obtenir le média
+        // qu'il avait choisi, pas un rendu différent de celui de son écran.
+        GenerationOutput output = requireOutput(jobId, executionVersion, outputIndex);
+        PlatformCapabilities capabilities = requirePublishable(platform, job);
+        requireAgentId(agentId);
+
+        String mediaReference = referenceResolver.resolve(capabilities, output);
+        String effectiveCaption = caption != null ? caption : "";
+
+        SocialPublishRequest entity = store.create(SocialPublishRequest.builder()
+            .requestId(UUID.randomUUID().toString())
+            .jobId(jobId)
+            .executionVersion(executionVersion != null ? executionVersion : job.getExecutionVersion())
+            .outputIndex(outputIndex)
+            .userEmail(userEmail)
+            .platform(platform)
+            .agentId(agentId)
+            .status(PublishStatus.PENDING)
+            .caption(effectiveCaption)
+            .attempts(0)
+            .build());
+
+        return dispatch(entity, capabilities, effectiveCaption, mediaReference,
+            () -> agentTeamClient.publishInternal(agentId, platform, effectiveCaption,
+                List.of(mediaReference), userEmail));
+    }
+
     public SocialPublishRequestResponse get(String requestId, String userEmail) {
         return toResponse(publishRepository.findByRequestIdAndUserEmail(requestId, userEmail)
             .orElseThrow(() -> ResourceNotFoundException.of("Demande de publication", requestId)));
@@ -136,14 +183,36 @@ public class SocialPublishService {
 
     // ── interne ────────────────────────────────────────────────────────────────
 
+    /**
+     * Envoi effectif vers agent-team, pour un texte et un média déjà validés.
+     *
+     * <p>Les deux modes d'appel (immédiat et programmé) ne diffèrent que par la
+     * façon de s'authentifier. Tout le reste — résolution du média, contrôle des
+     * capacités de la plateforme, écriture de l'historique, qualification des
+     * erreurs — passe par ce code commun, pour qu'une publication programmée ne
+     * puisse pas devenir un chemin qui court-circuite les vérifications.
+     */
+    @FunctionalInterface
+    private interface Transport {
+        AgentTeamSocialClient.AgentPostResult send();
+    }
+
     private SocialPublishRequestResponse dispatch(SocialPublishRequest entity,
                                                   PlatformCapabilities capabilities,
                                                   String caption, String mediaReference,
                                                   String callerToken) {
+        return dispatch(entity, capabilities, caption, mediaReference,
+            () -> agentTeamClient.publish(entity.getAgentId(), entity.getPlatform(),
+                caption, List.of(mediaReference), callerToken));
+    }
+
+    private SocialPublishRequestResponse dispatch(SocialPublishRequest entity,
+                                                  PlatformCapabilities capabilities,
+                                                  String caption, String mediaReference,
+                                                  Transport transport) {
         store.markDispatched(entity.getId(), null);
         try {
-            AgentTeamSocialClient.AgentPostResult result = agentTeamClient.publish(
-                entity.getAgentId(), entity.getPlatform(), caption, List.of(mediaReference), callerToken);
+            AgentTeamSocialClient.AgentPostResult result = transport.send();
             if (!result.success()) {
                 String error = result.error() != null ? result.error() : "réponse négative de la plateforme";
                 throw new PlatformApiException("PLATFORM_REJECTED", error);

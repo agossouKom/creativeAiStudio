@@ -63,6 +63,27 @@ generation:
     enabled: ${SOCIAL_PUBLISH_ENABLED:false}
     agent-team-base-url: ${AGENT_TEAM_BASE_URL:http://agent-team-service:8087}
     request-timeout-seconds: ${SOCIAL_PUBLISH_TIMEOUT_SECONDS:120}
+    # Secret partagé avec agent-team-service, utilisé uniquement par le
+    # planificateur : une publication programmée part à l'heure dite, sans
+    # navigateur, donc sans jeton de session. Volontairement SANS valeur par
+    # défaut — sans secret configuré, l'exécution programmée échoue franchement
+    # (fail-closed) au lieu d'envoyer une requête qui serait refusée en 401.
+    # Doit être identique des deux côtés : INTERNAL_SERVICE_TOKEN.
+    internal-service-token: ${INTERNAL_SERVICE_TOKEN:}
+
+  # ── Planning (publication différée) ─────────────────────────────────────────
+  scheduling:
+    enabled: ${SCHEDULING_ENABLED:true}
+    # 30 s : compromis entre précision (l'utilisateur demande « à 14 h ») et
+    # charge. Un tick plus serré n'apporte rien de visible à l'échelle d'un
+    # réseau social.
+    tick-millis: ${SCHEDULING_TICK_MILLIS:30000}
+    # Publications traitées par tick. Borné : après une panne longue, la file
+    # d'attente peut contenir des centaines de lignes, et tout charger en
+    # mémoire ferait tomber le service.
+    batch-size: ${SCHEDULING_BATCH_SIZE:20}
+    # Au-delà, la programmation est abandonnée et signalée à l'utilisateur.
+    max-attempts: ${SCHEDULING_MAX_ATTEMPTS:3}
 
 agent:
   jwt-secret: ${JWT_SECRET:creativeaistudio-super-secret-key-that-is-long-enough-for-hs256}
