@@ -68,8 +68,10 @@ class TokenRefreshServiceTest {
         UserSocialAccount account = facebookAccount();
 
         MockRestServiceServer server = MockRestServiceServer.bindTo(service.restTemplate).build();
+        // La version vient de la configuration de la plateforme, plus d'un littéral
+        // figé dans le code : on vérifie donc l'URL résolue, pas "v19.0".
         server.expect(requestTo(org.hamcrest.Matchers.startsWith(
-                "https://graph.facebook.com/v19.0/oauth/access_token")))
+                "https://graph.facebook.com/v24.0/oauth/access_token")))
             .andExpect(method(HttpMethod.GET))
             .andRespond(withSuccess("{\"access_token\":\"nouveau-long\",\"expires_in\":5184000}",
                 org.springframework.http.MediaType.APPLICATION_JSON));
@@ -77,6 +79,8 @@ class TokenRefreshServiceTest {
         lenient().doReturn(
             new SocialPlatformConfigService.Credentials("app-1", "sec", false))
             .when(configService).resolve("FACEBOOK");
+        lenient().when(configService.graphBaseUrl("FACEBOOK"))
+            .thenReturn("https://graph.facebook.com/v24.0");
 
         Channel ch = new Channel();
         ch.setId("ch-1");

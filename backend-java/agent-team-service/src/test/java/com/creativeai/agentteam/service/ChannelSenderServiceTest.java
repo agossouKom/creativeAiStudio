@@ -22,6 +22,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,13 +39,15 @@ class ChannelSenderServiceTest {
     @Mock private MinioService         minioService;
     @Mock private MediaSecurityService mediaSecurity;
     @Mock private InstagramService     instagramService;
+    @Mock private SocialPlatformConfigService platformConfig;
 
     private ChannelSenderService service;
 
     @BeforeEach
     void setUp() {
         service = new ChannelSenderService(channelRepo, inboxService, encryptionService, mailSender,
-            webClientBuilder, new ObjectMapper(), minioService, mediaSecurity, instagramService);
+            webClientBuilder, new ObjectMapper(), minioService, mediaSecurity, instagramService, platformConfig);
+        when(platformConfig.graphBaseUrl(anyString())).thenReturn("https://graph.facebook.com/v24.0");
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage((jakarta.mail.Session) null));
         when(channelRepo.findByAgentIdAndDeletedFalse(any())).thenReturn(List.of());
     }

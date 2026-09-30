@@ -56,7 +56,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TokenRefreshService {
 
-    private static final String FB_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token";
     private static final String LI_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken";
     private static final String TT_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/";
     private static final String YT_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -148,7 +147,7 @@ public class TokenRefreshService {
         if (resolved.clientId() == null || resolved.clientSecret() == null) {
             throw new IllegalStateException("Identifiants Facebook non configurés");
         }
-        String url = FB_TOKEN_URL
+        String url = configService.graphBaseUrl("FACEBOOK") + "/oauth/access_token"
             + "?grant_type=fb_exchange_token"
             + "&client_id=" + resolved.clientId()
             + "&client_secret=" + resolved.clientSecret()

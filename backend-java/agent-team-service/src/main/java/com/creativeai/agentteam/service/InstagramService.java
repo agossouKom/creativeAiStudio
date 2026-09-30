@@ -32,12 +32,16 @@ import java.util.*;
 @RequiredArgsConstructor
 public class InstagramService {
 
-    private static final String IG_API = "https://graph.facebook.com/v19.0";
-
     private final ChannelRepository    channelRepo;
     private final EncryptionService    encryptionService;
     private final ObjectMapper         objectMapper;
     private final WebClient.Builder    webClientBuilder;
+    private final SocialPlatformConfigService platformConfig;
+
+    /** Racine de l'API Instagram : version gérée par l'administrateur, pas figée ici. */
+    private String igApi() {
+        return platformConfig.graphBaseUrl("INSTAGRAM");
+    }
 
     @Value("${app.public-url:http://localhost:8480}")
     private String appPublicUrl;
@@ -153,7 +157,7 @@ public class InstagramService {
         String containerResp;
         try {
             containerResp = client.post()
-                .uri(IG_API + "/" + igUserId + "/media")
+                .uri(igApi() + "/" + igUserId + "/media")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(containerParams)
                 .retrieve()
@@ -183,7 +187,7 @@ public class InstagramService {
         String publishResp;
         try {
             publishResp = client.post()
-                .uri(IG_API + "/" + igUserId + "/media_publish")
+                .uri(igApi() + "/" + igUserId + "/media_publish")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(publishParams)
                 .retrieve()
@@ -210,7 +214,7 @@ public class InstagramService {
         String accessToken = (String) creds.get("accessToken");
         String igUserId    = (String) creds.get("igUserId");
 
-        String url = IG_API + "/" + igUserId + "/media"
+        String url = igApi() + "/" + igUserId + "/media"
             + "?fields=id,caption,media_type,timestamp,media_url,thumbnail_url,permalink"
             + "&limit=" + Math.min(limit, 50)
             + "&access_token=" + accessToken;
@@ -253,7 +257,7 @@ public class InstagramService {
         String accessToken = (String) creds.get("accessToken");
 
         // Pas de sous-champ replies{} : les accolades sont interprétées comme templates URI par WebClient
-        String url = IG_API + "/" + mediaId + "/comments"
+        String url = igApi() + "/" + mediaId + "/comments"
             + "?fields=id,text,username,timestamp,like_count"
             + "&limit=" + Math.min(limit, 100)
             + "&access_token=" + accessToken;
@@ -301,7 +305,7 @@ public class InstagramService {
         try {
             String resp = webClientBuilder.build()
                 .post()
-                .uri(IG_API + "/" + commentId + "/replies")
+                .uri(igApi() + "/" + commentId + "/replies")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
@@ -332,7 +336,7 @@ public class InstagramService {
         try {
             String resp = webClientBuilder.build()
                 .post()
-                .uri(IG_API + "/" + mediaId + "/comments")
+                .uri(igApi() + "/" + mediaId + "/comments")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
@@ -359,7 +363,7 @@ public class InstagramService {
         try {
             String resp = webClientBuilder.build()
                 .delete()
-                .uri(IG_API + "/" + mediaId + "?access_token=" + accessToken)
+                .uri(igApi() + "/" + mediaId + "?access_token=" + accessToken)
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
@@ -378,7 +382,7 @@ public class InstagramService {
      * Utilise GET /{page-id}?fields=instagram_business_account&access_token=...
      */
     public String fetchIgUserIdFromPage(String pageId, String accessToken) {
-        String url = IG_API + "/" + pageId
+        String url = igApi() + "/" + pageId
             + "?fields=instagram_business_account"
             + "&access_token=" + accessToken;
         try {
@@ -418,7 +422,7 @@ public class InstagramService {
             try {
                 Thread.sleep(1000);
                 String resp = client.get()
-                    .uri(IG_API + "/" + containerId + "?fields=status_code&access_token=" + accessToken)
+                    .uri(igApi() + "/" + containerId + "?fields=status_code&access_token=" + accessToken)
                     .retrieve().bodyToMono(String.class).block();
                 JsonNode node = objectMapper.readTree(resp);
                 String status = node.path("status_code").asText("");

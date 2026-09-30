@@ -132,10 +132,10 @@ public class OAuthSocialController {
 
     // ── Constantes ───────────────────────────────────────────────────────────
 
-    private static final String FB_AUTH_URL   = "https://www.facebook.com/v19.0/dialog/oauth";
-    private static final String FB_TOKEN_URL  = "https://graph.facebook.com/v19.0/oauth/access_token";
-    private static final String FB_PAGES_URL  = "https://graph.facebook.com/v19.0/me/accounts";
-    private static final String FB_ME_URL     = "https://graph.facebook.com/v19.0/me";
+    // Les URLs Meta ne figent plus la version : elle est lue en base
+    // (extra_config.graphVersion, cf. SocialPlatformConfigService#resolveGraphVersion).
+    // Une version en dur se périme sans bruit et Meta re-route alors les appels
+    // vers une autre version sans prévenir.
 
     private static final String LI_AUTH_URL   = "https://www.linkedin.com/oauth/v2/authorization";
     private static final String LI_TOKEN_URL  = "https://www.linkedin.com/oauth/v2/accessToken";
@@ -562,7 +562,7 @@ public class OAuthSocialController {
     }
 
     private String fetchIgBusinessId(String pageId, String pageAccessToken) {
-        String igUrl = "https://graph.facebook.com/v19.0/" + pageId
+        String igUrl = platformConfig.graphBaseUrl("INSTAGRAM") + "/" + pageId
             + "?fields=instagram_business_account&access_token=" + pageAccessToken;
         try {
             ResponseEntity<String> igResp = restTemplate.getForEntity(igUrl, String.class);
@@ -623,7 +623,8 @@ public class OAuthSocialController {
     }
 
     private String buildFbAuthUrl(String callbackUri, String state, String platform) {
-        UriComponentsBuilder url = UriComponentsBuilder.fromHttpUrl(FB_AUTH_URL)
+        String version = platformConfig.resolveGraphVersion(platform);
+        UriComponentsBuilder url = UriComponentsBuilder.fromHttpUrl("https://www.facebook.com/" + version + "/dialog/oauth")
             .queryParam("client_id",     clientIdOr("FACEBOOK", "YOUR_FB_APP_ID"))
             .queryParam("redirect_uri",  callbackUri)
             .queryParam("state",         state)
@@ -837,8 +838,10 @@ public class OAuthSocialController {
     }
 
     private Map<String, Object> exchangeFbCode(String platform, String code, String callbackUri) throws Exception {
+        String fbTokenUrl = platformConfig.graphBaseUrl("FACEBOOK") + "/oauth/access_token";
+
         // 1. Échanger le code contre un Short-Lived Token
-        String url = UriComponentsBuilder.fromHttpUrl(FB_TOKEN_URL)
+        String url = UriComponentsBuilder.fromHttpUrl(fbTokenUrl)
             .queryParam("client_id",     clientId("FACEBOOK"))
             .queryParam("redirect_uri",  callbackUri)
             .queryParam("client_secret", clientSecret("FACEBOOK"))
@@ -850,7 +853,7 @@ public class OAuthSocialController {
         String shortToken = tokenNode.path("access_token").asText();
 
         // 2. Échanger contre un Long-Lived Token (60 jours)
-        String llUrl = UriComponentsBuilder.fromHttpUrl(FB_TOKEN_URL)
+        String llUrl = UriComponentsBuilder.fromHttpUrl(fbTokenUrl)
             .queryParam("grant_type",        "fb_exchange_token")
             .queryParam("client_id",         clientId("FACEBOOK"))
             .queryParam("client_secret",     clientSecret("FACEBOOK"))
@@ -875,7 +878,7 @@ public class OAuthSocialController {
         // l'utilisateur supprime l'app. Best-effort : sans lui, la publication
         // et le refresh restent fonctionnels.
         try {
-            String meUrl = FB_ME_URL + "?fields=id&access_token=" + longToken;
+            String meUrl = platformConfig.graphBaseUrl("FACEBOOK") + "/me?fields=id&access_token=" + longToken;
             JsonNode meNode = objectMapper.readTree(restTemplate.getForEntity(meUrl, String.class).getBody());
             String fbUserId = meNode.path("id").asText(null);
             if (fbUserId != null && !fbUserId.isBlank()) {
@@ -886,7 +889,7 @@ public class OAuthSocialController {
         }
 
         // 3. Récupérer les pages Facebook
-        String pagesUrl = FB_PAGES_URL + "?access_token=" + longToken;
+        String pagesUrl = platformConfig.graphBaseUrl("FACEBOOK") + "/me/accounts?access_token=" + longToken;
         ResponseEntity<String> pagesResp = restTemplate.getForEntity(pagesUrl, String.class);
         JsonNode pagesNode = objectMapper.readTree(pagesResp.getBody());
 
@@ -922,7 +925,7 @@ public class OAuthSocialController {
 
             if ("INSTAGRAM".equals(platform)) {
                 // Récupérer l'Instagram Business Account
-                String igUrl = "https://graph.facebook.com/v19.0/" + pageId
+                String igUrl = platformConfig.graphBaseUrl("INSTAGRAM") + "/" + pageId
                     + "?fields=instagram_business_account&access_token=" + pageAccessToken;
                 try {
                     ResponseEntity<String> igResp = restTemplate.getForEntity(igUrl, String.class);

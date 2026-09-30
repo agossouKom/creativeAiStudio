@@ -84,6 +84,9 @@ class OAuthSocialPagesSelectionTest {
                 "/api/oauth/social/" + p.toLowerCase() + "/callback", false);
         });
         lenient().when(platformConfig.resolveScopes(anyString())).thenReturn(java.util.List.of());
+        // L'URL est bâtie sur la version de la plateforme, plus sur un littéral.
+        lenient().when(platformConfig.graphBaseUrl(anyString()))
+            .thenReturn("https://graph.facebook.com/v24.0");
         ReflectionTestUtils.setField(controller, "fbAppId", "fb-id");
         ReflectionTestUtils.setField(controller, "fbAppSecret", "fb-secret");
         ReflectionTestUtils.setField(controller, "linkedinClientId", "");
@@ -354,7 +357,7 @@ class OAuthSocialPagesSelectionTest {
 
         ArgumentCaptor<String> url = ArgumentCaptor.forClass(String.class);
         verify(rest).getForEntity(url.capture(), org.mockito.ArgumentMatchers.eq(String.class));
-        assertTrue(url.getValue().startsWith("https://graph.facebook.com/v19.0/222?"),
+        assertTrue(url.getValue().startsWith("https://graph.facebook.com/v24.0/222?"),
             "l'igUserId doit être demandé pour la page 222, pas pour l'ancienne : " + url.getValue());
         assertTrue(url.getValue().contains("access_token=token-page-b"),
             "il faut utiliser le token de la page 222 : " + url.getValue());

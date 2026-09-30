@@ -36,6 +36,16 @@ public class SocialPlatformConfigService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    private static final String GRAPH_HOST = "https://graph.facebook.com";
+
+    /**
+     * Repli quand l'administrateur n'a pas saisi de version. v24.0 : publiée
+     * le 8 octobre 2025, supportée jusqu'au 18 février 2028. Volontairement pas
+     * la dernière (v26.0, juillet 2026) — un major tout neuf est le pire choix
+     * pour une intégration de publication.
+     */
+    static final String DEFAULT_GRAPH_VERSION = "v24.0";
+
     private final SocialPlatformRepository repository;
     private final EncryptionService encryptionService;
 
@@ -219,20 +229,61 @@ public class SocialPlatformConfigService {
         }
         return repository.findById(platformId)
             .map(SocialPlatform::getExtraConfig)
-            .map(SocialPlatformConfigService::readStringField)
+            .map(json -> readStringField(json, "fbBusinessConfigId"))
             .orElse(null);
     }
 
+    /**
+     * Version de la Graph API Meta, lue dans {@code extra_config.graphVersion}.
+     *
+     * <p>Meta ne garde chaque version que deux ans, et une version expirée ne
+     * provoque <em>aucune</em> erreur : les appels y sont silencieusement
+     * re-routés vers la plus ancienne version encore vivante. Un numéro en dur
+     * dans le code est donc une dette invisible — c'est ce qui faisait tourner
+     * l'app en v19.0 (expirée le 21 mai 2026) sans que rien ne le signale. La
+     * version est donc une donnée, saisie par l'administrateur, comme les
+     * scopes.
+     *
+     * @return la version, ou {@link #DEFAULT_GRAPH_VERSION} si la plateforme est
+     *         absente ou mal renseignée
+     */
+    @Transactional(readOnly = true)
+    public String resolveGraphVersion(String platform) {
+        String version = null;
+        String platformId = resolvePlatformId(platform);
+        if (platformId != null) {
+            version = repository.findById(platformId)
+                .map(SocialPlatform::getExtraConfig)
+                .map(json -> readStringField(json, "graphVersion"))
+                .orElse(null);
+        }
+        return isUsableGraphVersion(version) ? version : DEFAULT_GRAPH_VERSION;
+    }
+
+    /** Racine de l'API pour une plateforme, version comprise. */
+    @Transactional(readOnly = true)
+    public String graphBaseUrl(String platform) {
+        return GRAPH_HOST + "/" + resolveGraphVersion(platform);
+    }
+
+    /**
+     * Une version se valide sur sa forme ({@code vNN.N}) : un champ vide, un
+     * slash ou une chaîne tronquée produirait une URL cassée en silence.
+     */
+    private static boolean isUsableGraphVersion(String value) {
+        return value != null && value.matches("v\\d{2}\\.\\d+");
+    }
+
     /** Lit un champ texte de l'{@code extra_config} JSON, sans jamais planter. */
-    private static String readStringField(String json) {
+    private static String readStringField(String json, String field) {
         if (json == null || json.isBlank()) return null;
         try {
-            JsonNode node = MAPPER.readTree(json).get("fbBusinessConfigId");
+            JsonNode node = MAPPER.readTree(json).get(field);
             if (node == null || node.isNull()) return null;
             String value = node.asText();
             return (value == null || value.isBlank()) ? null : value.trim();
         } catch (Exception e) {
-            log.warn("extra_config illisible, fbBusinessConfigId ignoré : {}", e.getMessage());
+            log.warn("extra_config illisible, {} ignoré : {}", field, e.getMessage());
             return null;
         }
     }

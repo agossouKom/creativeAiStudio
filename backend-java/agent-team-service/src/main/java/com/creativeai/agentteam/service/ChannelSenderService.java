@@ -44,6 +44,12 @@ public class ChannelSenderService {
     private final MinioService         minioService;
     private final MediaSecurityService mediaSecurity;
     private final InstagramService     instagramService;
+    private final SocialPlatformConfigService platformConfig;
+
+    /** Racine de l'API Facebook : version gérée par l'administrateur, pas figée ici. */
+    private String fbApi() {
+        return platformConfig.graphBaseUrl("FACEBOOK");
+    }
 
     @Value("${spring.mail.username}")
     private String mailFrom;
@@ -51,7 +57,6 @@ public class ChannelSenderService {
     @Value("${minio.public-url:http://localhost:9400}")
     private String minioPublicUrl;
 
-    private static final String FB_API = "https://graph.facebook.com/v19.0";
 
     public record SendResult(boolean success, String messageId, String error) {}
 
@@ -222,7 +227,7 @@ public class ChannelSenderService {
         WebClient client = webClientBuilder.build();
         String resp;
         try {
-            String url = FB_API + "/" + pageId + "/posts"
+            String url = fbApi() + "/" + pageId + "/posts"
                 + "?fields=id,message,created_time"
                 + "&since=" + sinceUnixSeconds
                 + "&limit=" + Math.min(limit, 50)
@@ -271,7 +276,7 @@ public class ChannelSenderService {
         WebClient client = webClientBuilder.build();
         String resp;
         try {
-            String url = FB_API + "/" + postId + "/comments"
+            String url = fbApi() + "/" + postId + "/comments"
                 + "?fields=id,message,from,created_time,like_count"
                 + "&limit=" + limit
                 + "&access_token=" + accessToken;
@@ -334,7 +339,7 @@ public class ChannelSenderService {
 
             WebClient client = webClientBuilder.build();
             String resp = client.post()
-                    .uri(FB_API + "/" + pureCommentId + "/comments")
+                    .uri(fbApi() + "/" + pureCommentId + "/comments")
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(body)
                     .retrieve()
@@ -383,7 +388,7 @@ public class ChannelSenderService {
 
             String resp = webClientBuilder.build()
                     .post()
-                    .uri(FB_API + "/" + postId + "/comments")
+                    .uri(fbApi() + "/" + postId + "/comments")
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(body)
                     .retrieve()
@@ -427,7 +432,7 @@ public class ChannelSenderService {
 
             String resp = webClientBuilder.build()
                     .delete()
-                    .uri(FB_API + "/" + postId + "?access_token=" + accessToken)
+                    .uri(fbApi() + "/" + postId + "?access_token=" + accessToken)
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
@@ -458,7 +463,7 @@ public class ChannelSenderService {
 
             String resp = webClientBuilder.build()
                     .post()
-                    .uri(FB_API + "/" + postId)
+                    .uri(fbApi() + "/" + postId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(body)
                     .retrieve()
@@ -519,7 +524,7 @@ public class ChannelSenderService {
             body.put("caption", content);
             body.put("access_token", accessToken);
             String resp = client.post()
-                    .uri(FB_API + "/" + pageId + "/photos")
+                    .uri(fbApi() + "/" + pageId + "/photos")
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(body)
                     .retrieve()
@@ -534,7 +539,7 @@ public class ChannelSenderService {
         body.put("message", content);
         body.put("access_token", accessToken);
         String resp = client.post()
-                .uri(FB_API + "/" + pageId + "/feed")
+                .uri(fbApi() + "/" + pageId + "/feed")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
@@ -564,8 +569,8 @@ public class ChannelSenderService {
         }).contentType(org.springframework.http.MediaType.parseMediaType(contentType));
 
         String endpoint = isVideo
-                ? FB_API + "/" + pageId + "/videos"
-                : FB_API + "/" + pageId + "/photos";
+                ? fbApi() + "/" + pageId + "/videos"
+                : fbApi() + "/" + pageId + "/photos";
 
         String resp = client.post()
                 .uri(endpoint)
@@ -607,8 +612,8 @@ public class ChannelSenderService {
         }).contentType(org.springframework.http.MediaType.parseMediaType(contentType));
 
         String endpoint = isVideo
-                ? FB_API + "/" + pageId + "/videos"
-                : FB_API + "/" + pageId + "/photos";
+                ? fbApi() + "/" + pageId + "/videos"
+                : fbApi() + "/" + pageId + "/photos";
 
         String resp = client.post()
                 .uri(endpoint)
@@ -682,7 +687,7 @@ public class ChannelSenderService {
         Object expiresIn    = exchangeData.get("expires_in");
 
         // Étape 2 : récupérer le Page Access Token via /me/accounts
-        String accountsUrl = FB_API + "/me/accounts?access_token=" + longUserToken;
+        String accountsUrl = fbApi() + "/me/accounts?access_token=" + longUserToken;
         String accountsResp;
         try {
             accountsResp = client.get().uri(accountsUrl).retrieve().bodyToMono(String.class).block();
