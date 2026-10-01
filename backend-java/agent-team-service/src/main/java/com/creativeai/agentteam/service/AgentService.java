@@ -187,6 +187,25 @@ public class AgentService {
             .stream().map(AgentResponse::from).toList();
     }
 
+    /**
+     * Vérifie que l'agent appartient à l'appelant et le renvoie.
+     *
+     * <p>Utilisé par les endpoints qui lisent une donnée dérivée de l'agent
+     * (quota LLM, providers) et qui, faute de contrôle, laissaient un
+     * utilisateur authentifié lire ou révéler la configuration d'un agent
+     * d'autrui. 404 plutôt que 403 : un agent appartenant à quelqu'un d'autre ne
+     * doit pas être distinguable d'un agent inexistant, sous peine de transformer
+     * l'endpoint en oracle d'existence.
+     */
+    @Transactional(readOnly = true)
+    public Agent requireOwnedAgent(String ownerId, String agentId) {
+        if (ownerId == null || ownerId.isBlank()) {
+            throw new ResourceNotFoundException("Agent non trouvé: " + agentId);
+        }
+        return agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, ownerId)
+            .orElseThrow(() -> new ResourceNotFoundException("Agent non trouvé: " + agentId));
+    }
+
     @Transactional(readOnly = true)
     public List<AgentResponse> listDeletedAgents(String ownerId) {
         return agentRepo.findByOwnerIdAndDeletedTrueOrderByUpdatedAtDesc(ownerId)
@@ -340,20 +359,41 @@ public class AgentService {
     }
 
     public String revealLlmApiKey(String ownerId, String agentId, String llmId) {
-        agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, ownerId)
-            .orElseThrow(() -> new ResourceNotFoundException("Agent non trouvé: " + agentId));
-        LlmProvider llm = llmRepo.findById(llmId)
-            .orElseThrow(() -> new ResourceNotFoundException("LLM provider non trouvé: " + llmId));
+        requireOwnedAgent(ownerId, agentId);
+        LlmProvider llm = requireAgentLlm(agentId, llmId, true);
         if (llm.getEncryptedApiKey() == null || llm.getEncryptedApiKey().isBlank()) return "";
+        auditService.log(ownerId, "REVEAL_LLM_API_KEY", "agent", agentId, true,
+            AuditService.details("provider", llm.getType(), "model", llm.getModelId()));
         return encryptionService.decrypt(llm.getEncryptedApiKey());
+    }
+
+    /**
+     * Charge un LLM provider en vérifiant qu'il appartient bien à l'agent.
+     *
+     * <p>Sans ce scope, {@code llmRepo.findById(llmId)} acceptait n'importe quel
+     * provider de la base : le propriétaire d'un agent pouvait passer l'agentId
+     * d'un de ses agents et le llmId d'un autre, révélant en clair une clé API
+     * qui ne lui appartenait pas. Le message reste « non trouvé » pour ne pas
+     * révéler l'existence du provider.
+     *
+     * @param includeDeleted les providers soft-deleted sont ils acceptés
+     *                       (nécessaire pour la restauration)
+     */
+    private LlmProvider requireAgentLlm(String agentId, String llmId, boolean includeDeleted) {
+        List<LlmProvider> candidates = includeDeleted
+            ? llmRepo.findByAgentIdOrderByPrimaryDescCreatedAtDesc(agentId)
+            : llmRepo.findByAgentIdAndDeletedFalseOrderByPrimaryDesc(agentId);
+        return candidates.stream()
+            .filter(p -> p.getId().equals(llmId))
+            .findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("LLM provider non trouvé: " + llmId));
     }
 
     @Transactional
     public void deleteLlmProvider(String ownerId, String agentId, String llmId) {
         Agent agent = agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, ownerId)
             .orElseThrow(() -> new ResourceNotFoundException("Agent non trouvé: " + agentId));
-        LlmProvider llm = llmRepo.findById(llmId)
-            .orElseThrow(() -> new ResourceNotFoundException("LLM provider non trouvé: " + llmId));
+        LlmProvider llm = requireAgentLlm(agentId, llmId, true);
         llm.setDeleted(true);
         llm.setPrimary(false);
         llmRepo.save(llm);
@@ -365,8 +405,7 @@ public class AgentService {
     public LlmProviderResponse restoreLlmProvider(String ownerId, String agentId, String llmId) {
         agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, ownerId)
             .orElseThrow(() -> new ResourceNotFoundException("Agent non trouvé: " + agentId));
-        LlmProvider llm = llmRepo.findById(llmId)
-            .orElseThrow(() -> new ResourceNotFoundException("LLM provider non trouvé: " + llmId));
+        LlmProvider llm = requireAgentLlm(agentId, llmId, true);
         llm.setDeleted(false);
         return LlmProviderResponse.from(llmRepo.save(llm));
     }
@@ -379,8 +418,7 @@ public class AgentService {
         llmRepo.findByAgentIdAndDeletedFalseOrderByPrimaryDesc(agentId)
             .forEach(p -> { p.setPrimary(false); llmRepo.save(p); });
         // Définir ce provider comme principal
-        LlmProvider llm = llmRepo.findById(llmId)
-            .orElseThrow(() -> new ResourceNotFoundException("LLM provider non trouvé: " + llmId));
+        LlmProvider llm = requireAgentLlm(agentId, llmId, true);
         llm.setPrimary(true);
         llm.setDeleted(false);
         return LlmProviderResponse.from(llmRepo.save(llm));
