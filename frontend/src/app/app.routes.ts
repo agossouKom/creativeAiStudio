@@ -46,6 +46,7 @@ import { GameMarbleComponent }      from './features/games/game-marble.component
 import { FootballPrototypeComponent } from './features/games/football-prototype.component';
 import { PenaltyShootoutComponent } from './features/games/penalty-shootout.component';
 import { FootballComponent } from './features/games/football/football.component';
+import { PrivacyComponent }  from './features/privacy/privacy.component';
 
 export const routes: Routes = [
   { path: '',                component: SearchComponent },
@@ -55,6 +56,8 @@ export const routes: Routes = [
   { path: 'results',         component: ResultsComponent },
   { path: 'contact',         component: ContactComponent },
   { path: 'pricing',         component: PricingComponent },
+  { path: 'privacy',         component: PrivacyComponent },
+  { path: 'confidentialite', redirectTo: '/privacy', pathMatch: 'full' },
   { path: 'history',         component: HistoryComponent, canActivate: [authGuard] },
   { path: 'docfusion',       component: DocFusionComponent },
   { path: 'cv-builder',      component: CvBuilderComponent },
