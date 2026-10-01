@@ -143,10 +143,33 @@ public class ChannelSenderService {
 
     // ── Social Media ──────────────────────────────────────────────────────────
 
+    /**
+     * Plateformes réellement publiées. Les autres ont bien un canal possible et
+     * un jeton valide, mais aucun adaptateur d'envoi : les refuser ici est la
+     * seule façon d'éviter qu'un appelant — en particulier l'outil
+     * {@code post_social}, qui passe par cette méthode sans passer par le filtre
+     * de {@code SocialPostController} — ne rapporte un succès pour un contenu
+     * jamais publié.
+     */
+    private static final java.util.Set<PlatformType> PUBLISHABLE_PLATFORMS =
+        java.util.Set.of(PlatformType.FACEBOOK, PlatformType.INSTAGRAM);
+
     public SendResult postSocial(String userId, String agentId, String platform,
                                  String content, List<String> mediaUrls) {
         String platformUpper = platform != null ? platform.toUpperCase().trim() : "";
         PlatformType platformType = resolvePlatformType(platformUpper);
+
+        if (platformType == null || !PUBLISHABLE_PLATFORMS.contains(platformType)) {
+            // Refus avant toute résolution de canal et avant l'archivage : ni le
+            // token de la Page n'est déchiffré, ni l'inbox n'est alimentée d'une
+            // entrée sortante qui n'a pas eu lieu.
+            log.warn("[SOCIAL] Publication refusée sur {} — aucun adaptateur d'envoi. Adaptateurs: {}",
+                platformUpper.isEmpty() ? "(vide)" : platformUpper, PUBLISHABLE_PLATFORMS);
+            return new SendResult(false, null,
+                "Aucun adaptateur de publication pour " + platformUpper
+                    + ". Plateformes réellement publiées : " + PUBLISHABLE_PLATFORMS);
+        }
+
         Channel channel = findSocialChannelForAgent(agentId, platformType);
 
         log.info("[SOCIAL] Posting on {} from agent={}", platform, agentId);
@@ -171,7 +194,11 @@ public class ChannelSenderService {
                         platformPostId = instagramService.publish(agentId, content, mediaUrls);
                         log.info("[INSTAGRAM] Published mediaId={}", platformPostId);
                     }
-                    default -> log.info("[SOCIAL] Stub post on {} — length={}", platform, content.length());
+                    default -> {
+                        log.warn("[SOCIAL] Publication refusée sur {} — aucun adaptateur d'envoi", platformUpper);
+                        return new SendResult(false, null,
+                            "Aucun adaptateur de publication pour " + platformUpper);
+                    }
                 }
             } catch (WebClientResponseException e) {
                 log.error("[SOCIAL] {} API HTTP {}: {}", platform, e.getStatusCode(), e.getResponseBodyAsString());

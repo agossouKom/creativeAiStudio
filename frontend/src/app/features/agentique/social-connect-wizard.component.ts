@@ -37,6 +37,16 @@ interface PlatformMeta {
    * raccrocher, et l'échec n'apparaît qu'au moment de publier.
    */
   requires?: string[];
+  /**
+   * L'agent peut-il RÉELLEMENT publier sur cette plateforme ?
+   *
+   * L'OAuth est implémenté pour les 5 plateformes, mais la publication n'existe
+   * que pour Facebook et Instagram : `ChannelSenderService.PUBLISHABLE_PLATFORMS`
+   * refuse les autres en 409 PLATFORM_NOT_AVAILABLE. Sans ce drapeau, l'écran
+   * annonçait « votre agent peut maintenant publier sur LinkedIn » pour une
+   * connexion qui, elle, aboutirait.
+   */
+  publishable?: boolean;
 }
 
 const PLATFORMS: PlatformMeta[] = [
@@ -85,10 +95,11 @@ const PLATFORMS: PlatformMeta[] = [
       'Cliquez "Connecter YouTube" — une fenêtre Google s\'ouvre',
       'Connectez-vous avec le compte Google de votre chaîne',
       'Autorisez l\'accès à YouTube',
-      'Votre agent peut maintenant uploader des vidéos.'
+      'Votre compte est connecté. La publication automatique n\'est pas encore activée sur cette plateforme.'
     ],
     docsUrl: 'https://console.cloud.google.com/',
-    docsSummary: 'Si vous êtes développeur : Google Cloud Console → YouTube Data API v3 → OAuth 2.0.'
+    docsSummary: 'Si vous êtes développeur : Google Cloud Console → YouTube Data API v3 → OAuth 2.0.',
+    publishable: false,
   },
   {
     key: 'LINKEDIN',
@@ -100,10 +111,11 @@ const PLATFORMS: PlatformMeta[] = [
       'Vous avez besoin d\'un compte LinkedIn (profil personnel ou Page)',
       'Cliquez "Connecter LinkedIn" — une fenêtre LinkedIn s\'ouvre',
       'Autorisez l\'accès à votre profil',
-      'Votre agent peut maintenant publier sur LinkedIn.'
+      'Votre compte est connecté. La publication automatique n\'est pas encore activée sur cette plateforme.'
     ],
     docsUrl: 'https://www.linkedin.com/developers/apps',
-    docsSummary: 'Si vous êtes développeur : LinkedIn Developers → Créer une app → Products → Share on LinkedIn.'
+    docsSummary: 'Si vous êtes développeur : LinkedIn Developers → Créer une app → Products → Share on LinkedIn.',
+    publishable: false,
   },
   {
     key: 'TWITTER_X',
@@ -115,10 +127,11 @@ const PLATFORMS: PlatformMeta[] = [
       'Vous avez besoin d\'un compte X',
       'Cliquez "Connecter X" — une fenêtre X s\'ouvre',
       'Autorisez l\'accès à votre compte',
-      'Votre agent peut maintenant tweeter en votre nom.'
+      'Votre compte est connecté. La publication automatique n\'est pas encore activée sur cette plateforme.'
     ],
     docsUrl: 'https://developer.twitter.com/en/portal/dashboard',
-    docsSummary: 'Si vous êtes développeur : X Developer Portal → Project → App → OAuth 2.0 PKCE.'
+    docsSummary: 'Si vous êtes développeur : X Developer Portal → Project → App → OAuth 2.0 PKCE.',
+    publishable: false,
   },
   {
     key: 'TIKTOK',
@@ -130,10 +143,11 @@ const PLATFORMS: PlatformMeta[] = [
       'Vous avez besoin d\'un compte TikTok',
       'Cliquez "Connecter TikTok" — une fenêtre TikTok s\'ouvre',
       'Autorisez l\'accès à votre compte',
-      'Votre agent peut maintenant publier des vidéos TikTok.'
+      'Votre compte est connecté. La publication automatique n\'est pas encore activée sur cette plateforme.'
     ],
     docsUrl: 'https://developers.tiktok.com/apps',
-    docsSummary: 'Si vous êtes développeur : TikTok for Developers → App → Products → Login Kit + Content Posting API.'
+    docsSummary: 'Si vous êtes développeur : TikTok for Developers → App → Products → Login Kit + Content Posting API.',
+    publishable: false,
   }
 ];
 
@@ -174,6 +188,15 @@ const PLATFORMS: PlatformMeta[] = [
 
         <!-- Nom & description -->
         <h3>{{ pm.label }}</h3>
+
+        <!-- Connexion possible, publication pas encore implémentée. -->
+        @if (pm.publishable === false) {
+          <div class="config-warning">
+            <i class="fas fa-info-circle"></i>
+            Connexion seule — la publication automatique sur {{ pm.label }} n'est pas encore disponible.
+          </div>
+        }
+
         @if (isConnected(pm.key)) {
           <p class="account-name"><i class="fas fa-user"></i> {{ getAccountName(pm.key) || 'Compte connecté' }}</p>
 

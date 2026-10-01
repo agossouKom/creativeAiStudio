@@ -27,15 +27,15 @@ public class PostSocialTool implements AgentTool {
     @Override
     public String getDescription() {
         return "Publie un post sur un réseau social via le canal configuré pour cet agent. "
-             + "Plateformes supportées : INSTAGRAM, LINKEDIN, TWITTER_X, FACEBOOK, TIKTOK, SLACK, TELEGRAM. "
-             + "Archive automatiquement la publication dans l'inbox.";
+             + "Seules Facebook et Instagram sont publiées réellement. "
+             + "Archive automatiquement la publication dans l'inbox, et renvoie une erreur si aucun canal CONNECTED n'existe ou si la plateforme n'a pas d'adaptateur d'envoi.";
     }
 
     @Override
     public String getParametersSchema() {
         return """
             {
-              "platform":  "string (obligatoire) — plateforme cible: INSTAGRAM, LINKEDIN, TWITTER_X, FACEBOOK, TIKTOK, SLACK, TELEGRAM",
+              "platform":  "string (obligatoire) — plateforme cible: FACEBOOK, INSTAGRAM",
               "content":   "string (obligatoire) — texte du post (hashtags, emojis autorisés)",
               "mediaUrls": "array<string> (optionnel) — URLs des médias à joindre (images, vidéos)"
             }
