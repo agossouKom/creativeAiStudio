@@ -148,6 +148,29 @@ public class ChannelService {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    /**
+     * Vérifie que l'agent appartient bien à l'appelant et le renvoie.
+     *
+     * <p>Point d'entrée unique pour les endpoints qui agissent sur les canaux
+     * <em>sans</em> passer par le CRUD : c'est le seul moyen fiable dEMPêcher
+     * qu'un utilisateur authentifié agisse sur l'agent d'un autre. Le refus est
+     * un 404 et non un 403 — un agent existant mais appartenant à quelqu'un
+     * d'autre ne doit pas être distinguable d'un agent inexistant, sinon
+     * l'endpoint devient un oracle d'existence.
+     *
+     * <p>Les services qui résolvent un canal par {@code agentId} seul
+     * (ChannelSenderService, InstagramService) ne peuvent pas s'en servir
+     * eux-mêmes : c'est au contrôleur, seul à posséder l'identité de
+     * l'appelant, d'appeler ce garde-fou avant de leur déléguer.
+     */
+    @Transactional(readOnly = true)
+    public Agent requireOwnedAgent(String userId, String agentId) {
+        if (userId == null || userId.isBlank()) {
+            throw new ResourceNotFoundException("Agent introuvable : " + agentId);
+        }
+        return resolveAgent(userId, agentId);
+    }
+
     private Agent resolveAgent(String userId, String agentId) {
         return agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, userId)
             .orElseThrow(() -> new ResourceNotFoundException("Agent introuvable : " + agentId));

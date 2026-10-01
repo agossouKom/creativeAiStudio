@@ -1,5 +1,6 @@
 package com.creativeai.agentteam.controller;
 
+import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.InstagramCommentPollerService;
 import com.creativeai.agentteam.service.InstagramService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,6 +17,14 @@ import java.util.Map;
 /**
  * Gestion des publications et commentaires Instagram.
  * Prérequis : canal SOCIAL_MEDIA / INSTAGRAM CONNECTED avec credentials {accessToken, igUserId}.
+ *
+ * <p><b>Contrôle d'accès.</b> Même règle que {@code FacebookCommentsController} :
+ * {@code InstagramService.findChannel(agentId)} résout le canal par
+ * {@code agentId} seul, sans identité de l'appelant. Sans le garde-fou
+ * {@link ChannelService#requireOwnedAgent} en tête de chaque endpoint, un
+ * utilisateur authentifié pouvait lire, commenter, supprimer et publier sur
+ * l'Instagram d'un agent lui appartenant pas. Le refus est un 404, qui ne
+ * distingue pas « agent d'autrui » de « agent inexistant ».
  */
 @Slf4j
 @Tag(name = "Instagram", description = "Publication et gestion des commentaires Instagram")
@@ -25,7 +34,16 @@ import java.util.Map;
 public class InstagramController {
 
     private final InstagramService                            instagramService;
+    private final ChannelService                              channelService;
     private final java.util.Optional<InstagramCommentPollerService> poller;
+
+    /**
+     * Vérifie que l'agent est bien celui de l'appelant. À appeler avant toute
+     * délégation à un service qui résout le canal par agentId.
+     */
+    private void requireOwnership(String userId, String agentId) {
+        channelService.requireOwnedAgent(userId, agentId);
+    }
 
     // ── Médias récents ──────────────────────────────────────────────────────────
 
@@ -35,6 +53,8 @@ public class InstagramController {
             @AuthenticationPrincipal String userId,
             @PathVariable String agentId,
             @RequestParam(defaultValue = "10") int limit) {
+
+        requireOwnership(userId, agentId);
 
         log.info("[IG_API] GET media agentId={} limit={}", agentId, limit);
         List<Map<String, Object>> media = instagramService.fetchRecentMedia(agentId, limit);
@@ -54,6 +74,8 @@ public class InstagramController {
             @PathVariable String agentId,
             @PathVariable String mediaId,
             @RequestParam(defaultValue = "25") int limit) {
+
+        requireOwnership(userId, agentId);
 
         log.info("[IG_API] GET comments agentId={} mediaId={} limit={}", agentId, mediaId, limit);
         List<Map<String, Object>> comments = instagramService.fetchComments(agentId, mediaId, limit);
@@ -79,6 +101,8 @@ public class InstagramController {
         if (message == null || message.isBlank())
             return ResponseEntity.badRequest().body(Map.of("error", "Le champ 'message' est obligatoire"));
 
+        requireOwnership(userId, agentId);
+
         log.info("[IG_API] REPLY agentId={} commentId={}", agentId, commentId);
         try {
             String replyId = instagramService.replyToComment(agentId, commentId, message);
@@ -103,6 +127,8 @@ public class InstagramController {
         if (message == null || message.isBlank())
             return ResponseEntity.badRequest().body(Map.of("error", "Le champ 'message' est obligatoire"));
 
+        requireOwnership(userId, agentId);
+
         log.info("[IG_API] COMMENT ON MEDIA agentId={} mediaId={}", agentId, mediaId);
         try {
             String commentId = instagramService.commentOnMedia(agentId, mediaId, message);
@@ -121,6 +147,8 @@ public class InstagramController {
             @AuthenticationPrincipal String userId,
             @PathVariable String agentId,
             @PathVariable String mediaId) {
+
+        requireOwnership(userId, agentId);
 
         log.info("[IG_API] DELETE media agentId={} mediaId={}", agentId, mediaId);
         try {
@@ -145,6 +173,8 @@ public class InstagramController {
         @SuppressWarnings("unchecked")
         List<String> mediaUrls = body.get("mediaUrls") instanceof List<?> list
             ? (List<String>) list : List.of();
+
+        requireOwnership(userId, agentId);
 
         log.info("[IG_API] PUBLISH agentId={} mediaUrls={}", agentId, mediaUrls.size());
         try {
@@ -186,6 +216,8 @@ public class InstagramController {
             @AuthenticationPrincipal String userId,
             @PathVariable String agentId) {
 
+        requireOwnership(userId, agentId);
+
         if (poller.isEmpty())
             return ResponseEntity.ok(Map.of("message", "Polling désactivé (instagram.polling-enabled=false)", "newTasks", 0));
         int newTasks = poller.get().triggerNow(agentId);
@@ -198,6 +230,8 @@ public class InstagramController {
             @AuthenticationPrincipal String userId,
             @PathVariable String agentId,
             @PathVariable String mediaId) {
+
+        requireOwnership(userId, agentId);
 
         if (poller.isEmpty())
             return ResponseEntity.ok(Map.of("message", "Polling désactivé", "newTasks", 0));

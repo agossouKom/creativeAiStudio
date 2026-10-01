@@ -461,6 +461,12 @@ public class AgentController {
     public ResponseEntity<com.creativeai.agentteam.llm.LlmGateway.QuotaStatus> getQuota(
             @AuthenticationPrincipal String userId,
             @PathVariable String agentId) {
+        // Le userId était reçu puis ignoré : getQuotaStatus résout le provider
+        // jusqu'au provider admin par défaut, donc n'importe quel utilisateur
+        // authentifié lisait le type de modèle et les limites d'un agent
+        // appartient à quelqu'un d'autre. 404, pas 403 : un agent existant mais
+        // possédé par autrui ne doit pas être distinguable d'un agent absent.
+        agentService.requireOwnedAgent(userId, agentId);
         return ResponseEntity.ok(llmGateway.getQuotaStatus(agentId));
     }
 

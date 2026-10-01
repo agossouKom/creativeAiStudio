@@ -78,6 +78,11 @@ public class AnalyticsController {
         @AuthenticationPrincipal String userId,
         @PathVariable String taskId
     ) {
+        // Le userId était reçu puis ignoré : la timeline d'une tâche était
+        // lisible par tout utilisateur authentifié capable d'énumérer des
+        // taskId. Elle contient le détail des outils appelés, les délégations et
+        // les extraits de réponse des agents.
+        analyticsService.requireOwnedTask(userId, taskId);
         return ResponseEntity.ok(analyticsService.getTaskTimeline(taskId));
     }
 }

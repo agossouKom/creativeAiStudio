@@ -1,6 +1,7 @@
 package com.creativeai.agentteam.controller;
 
 import com.creativeai.agentteam.service.ChannelSenderService;
+import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.FacebookCommentPollerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -22,6 +23,14 @@ import java.util.Map;
  *
  * Prérequis : un canal SOCIAL_MEDIA / FACEBOOK CONNECTED doit exister pour l'agent ciblé.
  * Les credentials (Page Access Token) sont récupérées depuis le canal chiffré.
+ *
+ * <p><b>Contrôle d'accès.</b> Chaque endpoint commence par
+ * {@link ChannelService#requireOwnedAgent} : les services sous-jacents
+ * ({@code ChannelSenderService}, le poller) résolvent le canal par
+ * {@code agentId} seul, donc sans ce garde-fou un utilisateur authentifié
+ * pouvait lire, modifier, supprimer les publications — et réécrire le token de
+ * la Page — d'un agent appartenant à quelqu'un d'autre, en devinant son
+ * identifiant. Le refus est un 404 indistinguable d'un agent inexistant.
  */
 @Slf4j
 @Tag(name = "Facebook Comments", description = "Lecture et réponse aux commentaires d'une page Facebook")
@@ -31,7 +40,16 @@ import java.util.Map;
 public class FacebookCommentsController {
 
     private final ChannelSenderService channelSender;
+    private final ChannelService        channelService;
     private final java.util.Optional<FacebookCommentPollerService> poller;
+
+    /**
+     * Vérifie que l'agent est bien celui de l'appelant. À appeler avant toute
+     * délégation à un service qui résout le canal par agentId.
+     */
+    private void requireOwnership(String userId, String agentId) {
+        channelService.requireOwnedAgent(userId, agentId);
+    }
 
     @Operation(
         summary = "Posts récents d'une page Facebook",
@@ -50,6 +68,8 @@ public class FacebookCommentsController {
             @RequestParam(defaultValue = "24") int sinceHours,
             @Parameter(description = "Nombre max de posts (défaut 10, max 50)", example = "10")
             @RequestParam(defaultValue = "10") int limit) {
+
+        requireOwnership(userId, agentId);
 
         sinceHours = Math.min(sinceHours, 168);
         limit      = Math.min(limit, 50);
@@ -84,6 +104,8 @@ public class FacebookCommentsController {
             @Parameter(description = "Nombre max de commentaires (défaut 25, max 100)", example = "25")
             @RequestParam(defaultValue = "25") int limit) {
 
+        requireOwnership(userId, agentId);
+
         limit = Math.min(limit, 100);
 
         log.info("[FB_COMMENTS_API] GET comments agentId={} postId={} limit={}", agentId, postId, limit);
@@ -102,6 +124,7 @@ public class FacebookCommentsController {
     public ResponseEntity<Map<String, Object>> triggerScan(
             @AuthenticationPrincipal String userId,
             @PathVariable String agentId) {
+        requireOwnership(userId, agentId);
         if (poller.isEmpty())
             return ResponseEntity.ok(Map.of("message", "Polling désactivé (FACEBOOK_POLLING_ENABLED=false)", "newTasks", 0));
         int channels = poller.get().triggerNow(agentId);
@@ -114,6 +137,7 @@ public class FacebookCommentsController {
             @AuthenticationPrincipal String userId,
             @PathVariable String agentId,
             @PathVariable String postId) {
+        requireOwnership(userId, agentId);
         if (poller.isEmpty())
             return ResponseEntity.ok(Map.of("message", "Polling désactivé", "newTasks", 0));
         int newTasks = poller.get().scanPost(agentId, postId);
@@ -130,6 +154,8 @@ public class FacebookCommentsController {
             @PathVariable String agentId,
             @PathVariable String postId,
             @RequestBody Map<String, String> body) {
+
+        requireOwnership(userId, agentId);
 
         String message = body != null ? body.get("message") : null;
         if (message == null || message.isBlank())
@@ -154,6 +180,8 @@ public class FacebookCommentsController {
             @PathVariable String agentId,
             @PathVariable String postId) {
 
+        requireOwnership(userId, agentId);
+
         log.info("[FB_COMMENTS_API] DELETE post agentId={} postId={}", agentId, postId);
         ChannelSenderService.SendResult result = channelSender.deleteFacebookPost(agentId, postId);
         if (result.success())
@@ -169,6 +197,8 @@ public class FacebookCommentsController {
             @PathVariable String agentId,
             @PathVariable String postId,
             @RequestBody Map<String, String> body) {
+
+        requireOwnership(userId, agentId);
 
         String message = body != null ? body.get("message") : null;
         if (message == null || message.isBlank())
@@ -188,6 +218,8 @@ public class FacebookCommentsController {
             @AuthenticationPrincipal String userId,
             @PathVariable String agentId,
             @RequestBody Map<String, String> body) {
+
+        requireOwnership(userId, agentId);
 
         String appId      = body != null ? body.get("appId")      : null;
         String appSecret  = body != null ? body.get("appSecret")  : null;
@@ -221,6 +253,8 @@ public class FacebookCommentsController {
             @Parameter(description = "UUID de l'agent") @PathVariable String agentId,
             @Parameter(description = "ID du commentaire Facebook") @PathVariable String commentId,
             @RequestBody Map<String, String> body) {
+
+        requireOwnership(userId, agentId);
 
         String message = body != null ? body.get("message") : null;
         if (message == null || message.isBlank()) {

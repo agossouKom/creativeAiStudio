@@ -11,6 +11,7 @@ import com.creativeai.agentteam.repository.TaskExecutionEventRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -126,6 +127,22 @@ public class AnalyticsService {
      */
     public List<TaskExecutionEvent> getTaskTimeline(String taskId) {
         return eventRepo.findByTaskIdOrderByCreatedAtAsc(taskId);
+    }
+
+    /**
+     * Vérifie que la tâche appartient à l'appelant avant d'en lire la timeline.
+     *
+     * <p>Le contrôle est fait sur {@code userId} et non sur l'agent : c'est la
+     * tâche qui porte la propriété ({@code AgentTask.userId}), et une tâche
+     * peut être assignée à un agent d'un autre compte. Un 404, jamais un 403 —
+     * « tâche d'autrui » ne doit pas être distinguable de « tâche inexistante ».
+     */
+    @Transactional(readOnly = true)
+    public void requireOwnedTask(String userId, String taskId) {
+        if (userId == null || userId.isBlank()
+                || taskRepo.findByIdAndUserIdAndDeletedFalse(taskId, userId).isEmpty()) {
+            throw new ResourceNotFoundException("Tâche introuvable : " + taskId);
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
