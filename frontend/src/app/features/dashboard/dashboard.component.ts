@@ -1805,7 +1805,7 @@ const blankSocialPlatform = () => ({
 
             <div class="form-group">
               <label>Config supplémentaire <span class="text-slate-400">(JSON)</span></label>
-              <textarea name="spextra" rows="3" [(ngModel)]="currSocialPlatform.extraConfig" placeholder='{"graphVersion":"v19.0"}'></textarea>
+              <textarea name="spextra" rows="3" [(ngModel)]="currSocialPlatform.extraConfig" placeholder='{"graphVersion":"v24.0"}'></textarea>
             </div>
 
             <div class="flex items-center gap-3">
