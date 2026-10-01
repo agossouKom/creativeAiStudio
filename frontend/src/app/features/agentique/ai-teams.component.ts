@@ -2282,8 +2282,11 @@ export class AiTeamsComponent implements OnInit {
     this.scrumStreaming     = true;
     this.scrumResponseText = '';
     this.streamAbort = new AbortController();
-    // Timeout 60s pour éviter de saturer le pool de connexions DB
-    const timeoutId = setTimeout(() => this.streamAbort?.abort(), 60_000);
+    // Timeout de garde : au-delà, on coupe le flux (le message est déjà parti,
+    // le backend continue de traiter en arrière-plan). Le timer était à 60s,
+    // ce qui tranchait les réponses LLM longues alors que le serveur envoie un
+    // marqueur [PING] pour maintenir la connexion ouverte pendant la génération.
+    const timeoutId = setTimeout(() => this.streamAbort?.abort(), 15 * 60_000);
 
     // Lire le token depuis localStorage
     let token = '';
@@ -2321,8 +2324,11 @@ export class AiTeamsComponent implements OnInit {
           if (!trimmed) continue;
           if (trimmed.startsWith('data:')) {
             const data = trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed.slice(5);
-            // Ignorer les marqueurs internes
-            if (!data || data === '[DONE]' || data.startsWith('[SESSION:') || data.startsWith('[DONE]')) continue;
+            // Ignorer les marqueurs internes. [PING] est envoyé par le serveur
+            // toutes les ~15s pour maintenir le flux ouvert pendant que le LLM
+            // génère ; il ne l'était pas, donc il s'affichait littéralement dans
+            // la réponse du Scrum Manager.
+            if (!data || data === '[DONE]' || data.startsWith('[SESSION:') || data.startsWith('[PING')) continue;
             try {
               // Format JSON SSE: {"content":"..."} ou {"choices":[{"delta":{"content":"..."}}]}
               const obj = JSON.parse(data);
