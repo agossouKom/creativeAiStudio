@@ -138,7 +138,9 @@ services:
       RAG_SERVICE_HOST: creativeai-rag
       AGENT_TEAM_SERVICE_HOST: agent-team-service
       REDIS_HOST: redis
-      JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
+      # Surchargeable par .env ; la valeur par défaut est identique à celle
+      # qui était figée en dur, donc le comportement local est inchangé.
+      JWT_SECRET: ${JWT_SECRET:-creativeai-super-secret-key-that-is-long-enough-for-hs256}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       # Hôtes acceptés pour l'URL de sortie du callback OnlyOffice (anti-SSRF).
       # 'onlyoffice' = service du réseau Docker. Voir AUDIT-2026-09-27.md.
@@ -164,7 +166,9 @@ services:
       DB_HOST: postgres
       DB_USER: creativeai
       DB_PASSWORD: creativeai123
-      JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
+      # Surchargeable par .env ; la valeur par défaut est identique à celle
+      # qui était figée en dur, donc le comportement local est inchangé.
+      JWT_SECRET: ${JWT_SECRET:-creativeai-super-secret-key-that-is-long-enough-for-hs256}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       MINIO_URL: http://minio:9000
       # Doit être le MÊME hôte que pour generation-service : agent-team reconnaît
@@ -233,7 +237,9 @@ services:
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9400}
       MINIO_ACCESS_KEY: creativeai
       MINIO_SECRET_KEY: creativeai123
-      JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
+      # Surchargeable par .env ; la valeur par défaut est identique à celle
+      # qui était figée en dur, donc le comportement local est inchangé.
+      JWT_SECRET: ${JWT_SECRET:-creativeai-super-secret-key-that-is-long-enough-for-hs256}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
       postgres:
@@ -617,7 +623,9 @@ services:
       DB_PASSWORD: creativeai123
       REDIS_HOST: redis
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-      JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
+      # Surchargeable par .env ; la valeur par défaut est identique à celle
+      # qui était figée en dur, donc le comportement local est inchangé.
+      JWT_SECRET: ${JWT_SECRET:-creativeai-super-secret-key-that-is-long-enough-for-hs256}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-Q3JlYXRpdmVBSVN0dWRpb0tleUNoYW5nZU1lSW5Qcm9k}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
@@ -643,6 +651,11 @@ services:
       FACEBOOK_POLL_DELAY_MS: ${FACEBOOK_POLL_DELAY_MS:-60000}
       INSTAGRAM_POLLING_ENABLED: ${INSTAGRAM_POLLING_ENABLED:-true}
       INSTAGRAM_POLL_DELAY_MS: ${INSTAGRAM_POLL_DELAY_MS:-60000}
+      # Repli de configuration OAuth : l'app-id et le secret Meta ne servent que
+      # si l'administrateur n'a rien saisi dans /dashboard (console admin). Il
+      # faut transmettre les deux, sinon oauth.facebook.app-id reste vide alors
+      # que l'app-secret est présent.
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
       # Secrets webhook. Absents = endpoint REFUSÉ (fail-closed, 503) : c'est
       # volontaire. Avant, un secret manquant signifiait « signature non
@@ -654,6 +667,10 @@ services:
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:8480}
+      # Cible de la redirection navigateur après le callback OAuth. Doit pointer
+      # sur le frontend réellement servi, sinon l'utilisateur est renvoyé vers
+      # localhost et hors de l'application.
+      APP_FRONTEND_URL: ${APP_FRONTEND_URL:-http://localhost:4400}
       # Secret partagé avec generation-service pour la publication programmée.
       # Doit être identique des deux côtés (cf. INTERNAL_SERVICE_TOKEN ci-dessus).
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
@@ -693,7 +710,9 @@ services:
       DB_USER: creativeai
       DB_PASSWORD: creativeai123
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-      JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
+      # Surchargeable par .env ; la valeur par défaut est identique à celle
+      # qui était figée en dur, donc le comportement local est inchangé.
+      JWT_SECRET: ${JWT_SECRET:-creativeai-super-secret-key-that-is-long-enough-for-hs256}
       MINIO_URL: http://minio:9000
       # Endpoint signe pour les URLs presignees : doit etre joignable depuis le
       # navigateur et les API de Meta. En local, MinIO est expose sur 9400.
@@ -740,7 +759,9 @@ services:
       REDIS_HOST: redis
       AGENT_TEAM_BASE_URL: http://agent-team-service:8087
       AUTH_SERVICE_BASE_URL: http://auth-service:8081
-      JWT_SECRET: creativeai-super-secret-key-that-is-long-enough-for-hs256
+      # Surchargeable par .env ; la valeur par défaut est identique à celle
+      # qui était figée en dur, donc le comportement local est inchangé.
+      JWT_SECRET: ${JWT_SECRET:-creativeai-super-secret-key-that-is-long-enough-for-hs256}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_NAME: ${TELEGRAM_BOT_NAME:-creativeai_bot}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}

@@ -143,6 +143,10 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-https://ai.labibpro.com}
+      # URL du frontend servi par le vhost nginx : cible de la redirection
+      # navigateur au retour du callback OAuth. Fail-fast : une valeur absente
+      # renverrait l'utilisateur vers localhost:4400, hors de l'application.
+      APP_FRONTEND_URL: ${APP_FRONTEND_URL:?APP_FRONTEND_URL requis dans .env}
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
@@ -151,6 +155,7 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       # Secrets webhook : laissés optionnels, mais ABSENTS = webhooks fermés.
       # Les définir est ce qui active les réceptions Meta/Telegram.
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
       FACEBOOK_VERIFY_TOKEN: ${FACEBOOK_VERIFY_TOKEN:-}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
