@@ -165,6 +165,12 @@ public class AgentOrchestrator {
 
             // Exécution sur bounded elastic — libère le thread de souscription
             Schedulers.boundedElastic().schedule(() -> {
+                // Contexte de l'appelant capturé AVANT le set : chatAsSubAgent
+                // ré-entre dans ce même flux sur le même thread, et le clear()
+                // du finally imbriqué effacerait sinon le contexte du parent —
+                // isSubAgent() repasserait à faux et les outils d'orchestration
+                // seraient ré-ouverts pour le reste de la conversation.
+                AgentContext.ExecutionContext previousContext = AgentContext.current();
                 try {
                     AgentContext.set(agentId, userId, sid, patronTaskId, subAgent);
                     if (patronTaskId != null) historyService.logTaskStarted(patronTaskId, agentId, userId);
@@ -254,7 +260,7 @@ public class AgentOrchestrator {
                     sink.next("[DONE]");
                     sink.complete();
                 } finally {
-                    AgentContext.clear();
+                    AgentContext.restore(previousContext);
                     llmDone.set(true);
                 }
             });

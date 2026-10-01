@@ -33,6 +33,26 @@ public final class AgentContext {
         HOLDER.set(new ExecutionContext(agentId, userId, sessionId, taskId, subAgent));
     }
 
+    /**
+     * Contexte courant, ou {@code null} si aucun. À capturer <b>avant</b> un
+     * {@link #set} imbriqué, puis à rendre par {@link #restore} : un
+     * {@code clear()} en fin d'exécution imbriquée détruirait le contexte du
+     * parent, et l'indicateur {@code subAgent} retomberait à faux — les garde-fous
+     * d'orchestration seraient alors contournés pour la suite de la conversation.
+     */
+    public static ExecutionContext current() {
+        return HOLDER.get();
+    }
+
+    /** Rétablit un contexte captéré par {@link #current}, ou nettoie si null. */
+    public static void restore(ExecutionContext previous) {
+        if (previous == null) {
+            HOLDER.remove();
+        } else {
+            HOLDER.set(previous);
+        }
+    }
+
     public static boolean isSubAgent() {
         ExecutionContext ctx = HOLDER.get();
         return ctx != null && ctx.subAgent();
