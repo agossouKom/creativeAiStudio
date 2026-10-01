@@ -1,6 +1,10 @@
 package com.creativeai.agentteam.controller;
 
+import com.creativeai.agentteam.model.Channel;
 import com.creativeai.agentteam.model.UserSocialAccount;
+import com.creativeai.agentteam.model.enums.ChannelStatus;
+import com.creativeai.agentteam.model.enums.PlatformType;
+import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.repository.UserSocialAccountRepository;
 import com.creativeai.agentteam.service.SocialPlatformConfigService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -23,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,7 +40,8 @@ import java.util.Map;
  * secret applicatif Facebook — rien d'autre ne fait foi. On compare la
  * signature en temps constant pour ne pas se transformer en oracle de timing,
  * puis on désactive tous les comptes Facebook/Instagram de cet utilisateur
- * (soft-delete + jetons purgés).
+ * (soft-delete + jetons purgés), ainsi que les canaux agents qui en portent une
+ * copie dans leurs credentials.
  *
  * <p>Endpoint <b>public</b> par nécessité (Meta ne s'authentifie pas) : la
  * sécurité, comme pour le callback OAuth, tient tout entière dans la signature
@@ -52,6 +58,7 @@ public class FacebookDeauthorizeController {
 
     private final SocialPlatformConfigService configService;
     private final UserSocialAccountRepository accountRepository;
+    private final ChannelRepository channelRepository;
     private final ObjectMapper objectMapper;
 
     @Operation(
@@ -137,8 +144,40 @@ public class FacebookDeauthorizeController {
             account.setLastError("Désautorisé via Meta (deauthorize callback)");
             account.setLastRefreshedAt(LocalDateTime.now());
             accountRepository.save(account);
+            // Les canaux rattachés portent une COPIE des mêmes credentials dans
+            // encrypted_credentials : sans ce purge, le jeton révoqué reste
+            // lisible et l'échec n'apparaît qu'au moment de publier, sous forme
+            // d'erreur API inexpliquée pour l'utilisateur.
+            revokeChannels(platformId, account.getPlatformAccountId());
         }
         return accounts.size();
+    }
+
+    /**
+     * Purge les credentials de tous les canaux d'un compte réseau et les passe en
+     * DISCONNECTED, quel que soit leur état : un canal EXPIRED ou déjà
+     * déconnecté conserve sinon un jeton mort.
+     */
+    private void revokeChannels(String platformId, String platformAccountId) {
+        if (platformAccountId == null || platformAccountId.isBlank()) return;
+        PlatformType platformType;
+        try {
+            platformType = PlatformType.valueOf(platformId.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        List<Channel> channels = channelRepository
+            .findByAccountIdAndPlatformTypeAndDeletedFalse(platformAccountId, platformType);
+        for (Channel channel : channels) {
+            channel.setEncryptedCredentials(null);
+            channel.setStatus(ChannelStatus.DISCONNECTED);
+            channel.setTokenExpiresAt(null);
+            channel.setSocialAccount(null);
+            channelRepository.save(channel);
+        }
+        if (!channels.isEmpty()) {
+            log.info("[DEAUTH] {} canal(s) {} déconnecté(s) et purgés", channels.size(), platformType);
+        }
     }
 
     private static byte[] hmacSha256(byte[] data, String key) throws Exception {

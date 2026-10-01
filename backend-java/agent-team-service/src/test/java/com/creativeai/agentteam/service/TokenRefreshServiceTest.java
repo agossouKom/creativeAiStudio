@@ -31,6 +31,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 /**
@@ -40,10 +41,15 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
  *   2. un succès réécrit les credentials du compte ET ceux des channels
  *      connectés (le channel est ce que lit la publication) ;
  *   3. une plateforme sans refresh automatique (Twitter/X) est ignorée sans
- *      faire échouer les autres.
+ *      faire échouer les autres ;
+ *   4. un rejet DÉFINITIF du fournisseur (jeton révoqué, session invalidée)
+ *      fait passer le compte et ses canaux en EXPIRED, alors qu'une panne
+ *      réseau, qui se résoudra d'elle-même, ne doit rien changer.
  */
 @ExtendWith(MockitoExtension.class)
 class TokenRefreshServiceTest {
+
+    private static final String FB_REFRESH_URL = "https://graph.facebook.com/v24.0/oauth/access_token";
 
     @Mock private UserSocialAccountRepository accountRepository;
     @Mock private ChannelRepository channelRepository;
@@ -124,6 +130,66 @@ class TokenRefreshServiceTest {
         service.refreshExpiringTokens();
 
         verify(accountRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void unJetonRevoqueDefinitivementMarqueCompteEtCanauxExpired() {
+        UserSocialAccount account = facebookAccount();
+        account.setNeedsRefresh(true);
+        account.setStatus("CONNECTED");
+
+        // Meta répond que la session a été invalidée : aucun retry ne le sauvera : c'est une déconnexion à refaire.
+        when(accountRepository.findRefreshCandidates(any(LocalDateTime.class)))
+            .thenReturn(List.of(account));
+        when(configService.resolve("FACEBOOK"))
+            .thenReturn(new SocialPlatformConfigService.Credentials("app-1", "sec", false));
+        MockRestServiceServer server = MockRestServiceServer.bindTo(service.restTemplate).build();
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(FB_REFRESH_URL)))
+            .andRespond(withSuccess(
+                "{\"error\":{\"message\":\"Error validating access token: The session has "
+                    + "been invalidated because the user changed their password\","
+                    + "\"type\":\"OAuthException\",\"code\":190}}",
+                org.springframework.http.MediaType.APPLICATION_JSON));
+        lenient().when(configService.graphBaseUrl("FACEBOOK"))
+            .thenReturn("https://graph.facebook.com/v24.0");
+
+        Channel ch = new Channel();
+        ch.setId("ch-1");
+        ch.setStatus(ChannelStatus.CONNECTED);
+        when(channelRepository.findByAccountIdAndPlatformTypeAndDeletedFalse(
+                eq("page-1"), eq(PlatformType.FACEBOOK)))
+            .thenReturn(List.of(ch));
+
+        service.refreshExpiringTokens();
+        server.verify();
+
+        assertThat(account.getStatus()).isEqualTo("EXPIRED");
+        assertThat(account.getLastError()).contains("session has been invalidated");
+        assertThat(ch.getStatus()).isEqualTo(ChannelStatus.EXPIRED);
+        verify(channelRepository).save(ch);
+    }
+
+    @Test
+    void unePanneReseauNeMarquePasLeCompteExpired() {
+        UserSocialAccount account = facebookAccount();
+        account.setNeedsRefresh(true);
+
+        when(accountRepository.findRefreshCandidates(any(LocalDateTime.class)))
+            .thenReturn(List.of(account));
+        when(configService.resolve("FACEBOOK"))
+            .thenReturn(new SocialPlatformConfigService.Credentials("app-1", "sec", false));
+        MockRestServiceServer server = MockRestServiceServer.bindTo(service.restTemplate).build();
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(FB_REFRESH_URL)))
+            .andRespond(withException(new java.net.SocketTimeoutException("timeout")));
+        lenient().when(configService.graphBaseUrl("FACEBOOK"))
+            .thenReturn("https://graph.facebook.com/v24.0");
+
+        service.refreshExpiringTokens();
+        server.verify();
+
+        // Le compte garde son état : le retry de demain peut réussir.
+        assertThat(account.getStatus()).isNotEqualTo("EXPIRED");
+        verify(channelRepository, org.mockito.Mockito.never()).save(any(Channel.class));
     }
 
     private UserSocialAccount facebookAccount() {

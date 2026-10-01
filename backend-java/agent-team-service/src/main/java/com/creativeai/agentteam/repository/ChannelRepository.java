@@ -19,4 +19,13 @@ public interface ChannelRepository extends JpaRepository<Channel, String> {
 
     List<Channel> findByAccountIdAndPlatformTypeAndStatusAndDeletedFalse(
             String accountId, PlatformType platformType, ChannelStatus status);
+
+    /**
+     * Tous les canaux d'un compte réseau, tous états confondus. Utilisé par le
+     * webhook de désautorisation Meta : un canal laissé DISCONNECTED ou EXPIRED
+     * garde quand même un jeton révoqué dans ses credentials, il doit être purgé
+     * lui aussi.
+     */
+    List<Channel> findByAccountIdAndPlatformTypeAndDeletedFalse(
+            String accountId, PlatformType platformType);
 }

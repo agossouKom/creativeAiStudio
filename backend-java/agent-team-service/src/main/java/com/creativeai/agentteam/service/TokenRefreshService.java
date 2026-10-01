@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Renouvellement automatique des jetons d'accès (cahier des charges : « gestion
@@ -47,9 +48,12 @@ import java.util.Map;
  * les mêmes credentials : le channel est ce que lit la publication, le compte
  * est ce que supervise l'admin ; les deux restent synchronisés.
  *
- * <p>Toute erreur est laissée à la vue de l'admin (le compte garde son état), et
- * l'exécution continue sur les suivants : un jeton YouTube en échec ne doit pas
- * empêcher de rafraîchir les pages Facebook.
+ * <p>Une erreur réseau est laissée à la vue de l'admin (le compte garde son
+ * état, il retentira demain) et l'exécution continue sur les suivants : un jeton
+ * YouTube en échec ne doit pas empêcher de rafraîchir les pages Facebook. Seule
+ * une <em>reconnaissance explicite</em> d'un jeton refusé par le fournisseur fait
+ * basculer le compte et ses canaux en {@code EXPIRED} : c'est le seul cas où
+ * rejouer ne servirait à rien et où l'utilisateur doit reconnecter son canal.
  */
 @Slf4j
 @Service
@@ -95,11 +99,96 @@ public class TokenRefreshService {
             } catch (Exception e) {
                 errors.add(account.getPlatformAccountName() + " (" + account.getPlatform().getId() + ")");
                 log.warn("[TOKEN_REFRESH] Échec pour {} : {}", account.getPlatformAccountName(), e.getMessage());
+                // Un rejet définitif du fournisseur (jeton révoqué, session
+                // invalidée, permission retirée) ne se réessaiera pas : on
+                // marque le compte et ses canaux EXPIRED pour que l'interface
+                // propose une reconnexion au lieu de laisser un canal affiché
+                // CONNECTED qui échouera à la publication.
+                if (isDefinitiveRejection(e.getMessage())) {
+                    markExpired(account, e.getMessage());
+                }
             }
         }
         if (!errors.isEmpty()) {
             log.warn("[TOKEN_REFRESH] {} échec(s) : {}", errors.size(), errors);
         }
+    }
+
+    /**
+     * Reconnaît un refus que le temps ne résoudra pas. Volontairement étroit :
+     * une panne réseau ou un 500 se traduisent par des messages libres, qui ne
+     * doivent surtout pas faire basculer des canaux en EXPIRED — seul compte un
+     * rejet explicite du jeton par le fournisseur.
+     */
+    private boolean isDefinitiveRejection(String message) {
+        if (message == null) return false;
+        String m = message.toLowerCase();
+        return m.contains("invalid_grant")
+            || m.contains("invalid access token")
+            || m.contains("error validating access token")
+            || m.contains("invalid oauth token")
+            || m.contains("session has been invalidated")
+            || m.contains("token has expired")
+            || m.contains("unauthorized_client")
+            || m.contains("code\":190")
+            || m.contains("code:190");
+    }
+
+    /** Compte et canaux passés en EXPIRED, jetons conservés pour un audit. */
+    @Transactional
+    public void markExpired(UserSocialAccount account, String reason) {
+        String motif = (reason == null || reason.isBlank())
+            ? "Jeton refusé par le fournisseur"
+            : truncate(reason, 500);
+        try {
+            account.setStatus("EXPIRED");
+            account.setNeedsRefresh(false);
+            account.setLastError(motif);
+            accountRepository.save(account);
+        } catch (RuntimeException e) {
+            log.error("[TOKEN_REFRESH] Compte non marqué EXPIRED : {}", e.getMessage());
+            return;
+        }
+        // Les canaux portent une copie des credentials : sans ce second passage,
+        // la publication continuerait d'utiliser un jeton que Meta a révoqué.
+        Optional<PlatformType> platformType = platformTypeOf(account);
+        if (platformType.isEmpty()) {
+            return;
+        }
+        try {
+            List<Channel> channels = channelRepository
+                .findByAccountIdAndPlatformTypeAndDeletedFalse(
+                    account.getPlatformAccountId(), platformType.get());
+            int touched = 0;
+            for (Channel channel : channels) {
+                if (channel.getStatus() == ChannelStatus.DISCONNECTED) continue;
+                channel.setStatus(ChannelStatus.EXPIRED);
+                channelRepository.save(channel);
+                touched++;
+            }
+            log.warn("[TOKEN_REFRESH] {} ({}) marqué EXPIRED — {} canal(s) concerné(s)",
+                account.getPlatformAccountName(), account.getPlatform().getId(), touched);
+        } catch (RuntimeException e) {
+            log.error("[TOKEN_REFRESH] Canaux non marqués EXPIRED : {}", e.getMessage());
+        }
+    }
+
+    /** Le type d'énumération peut ne pas exister (plateforme en lecture seule). */
+    private Optional<PlatformType> platformTypeOf(UserSocialAccount account) {
+        if (account.getPlatform() == null || account.getPlatform().getId() == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(PlatformType.valueOf(account.getPlatform().getId().toUpperCase()));
+        } catch (IllegalArgumentException e) {
+            log.debug("[TOKEN_REFRESH] Aucun type de canal pour la plateforme {}",
+                account.getPlatform().getId());
+            return Optional.empty();
+        }
+    }
+
+    private static String truncate(String value, int max) {
+        return value.length() <= max ? value : value.substring(0, max);
     }
 
     /** Point d'entrée testable : une seule ligne de compte. */
@@ -234,6 +323,11 @@ public class TokenRefreshService {
                     channelCreds.put("refreshToken", newRefreshToken);
                 }
                 channel.setEncryptedCredentials(encryptionService.encrypt(objectMapper.writeValueAsString(channelCreds)));
+                if (expiresIn > 0) {
+                    // Même échéance que le compte : c'est elle que l'interface
+                    // affiche avant de proposer une reconnexion.
+                    channel.setTokenExpiresAt(account.getTokenExpiresAt());
+                }
                 channelRepository.save(channel);
             } catch (Exception e) {
                 log.warn("[TOKEN_REFRESH] Channel {} non mis à jour : {}", channel.getId(), e.getMessage());

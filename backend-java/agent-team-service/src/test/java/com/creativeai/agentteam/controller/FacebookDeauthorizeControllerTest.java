@@ -1,6 +1,10 @@
 package com.creativeai.agentteam.controller;
 
+import com.creativeai.agentteam.model.Channel;
 import com.creativeai.agentteam.model.UserSocialAccount;
+import com.creativeai.agentteam.model.enums.ChannelStatus;
+import com.creativeai.agentteam.model.enums.PlatformType;
+import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.repository.UserSocialAccountRepository;
 import com.creativeai.agentteam.service.SocialPlatformConfigService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -32,7 +37,10 @@ import static org.mockito.Mockito.when;
  *      temps constant (sinon n'importe qui pourrait purger des comptes) ;
  *   2. un user_id Meta valide déclenche la révocation des jetons. Il répond 200
  *      à Meta même si aucun compte local ne matche (la suppression a déjà eu
- *      lieu côté l'application).
+ *      lieu côté l'application) ;
+ *   3. les canaux agents rattachés au compte sont eux aussi purgés : ils portent
+ *      une copie des credentials, sinon le jeton révoqué continuerait d'être
+ *      utilisé à la publication.
  */
 @ExtendWith(MockitoExtension.class)
 class FacebookDeauthorizeControllerTest {
@@ -42,15 +50,22 @@ class FacebookDeauthorizeControllerTest {
 
     @Mock private SocialPlatformConfigService configService;
     @Mock private UserSocialAccountRepository accountRepository;
+    @Mock private ChannelRepository channelRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private FacebookDeauthorizeController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new FacebookDeauthorizeController(configService, accountRepository, objectMapper);
+        controller = new FacebookDeauthorizeController(
+            configService, accountRepository, channelRepository, objectMapper);
         lenient().doAnswer(inv -> inv.getArgument(0))
             .when(accountRepository).save(any(UserSocialAccount.class));
+        lenient().doAnswer(inv -> inv.getArgument(0))
+            .when(channelRepository).save(any(Channel.class));
+        lenient().when(channelRepository
+            .findByAccountIdAndPlatformTypeAndDeletedFalse(anyString(), any()))
+            .thenReturn(List.of());
     }
 
     @Test
@@ -72,6 +87,45 @@ class FacebookDeauthorizeControllerTest {
         assertThat(a.getStatus()).isEqualTo("DISCONNECTED");
         assertThat(a.getAccessTokenEnc()).isNull();
         assertThat(a.getRefreshTokenEnc()).isNull();
+    }
+
+    @Test
+    void lesCanauxDuCompteSontPurgesEtsPassesDisconnected() throws Exception {
+        String body = signedRequest("HMAC-SHA256", META_USER);
+        when(configService.resolve("FACEBOOK"))
+            .thenReturn(new SocialPlatformConfigService.Credentials("app-1", APP_SECRET, false));
+        when(accountRepository.findByMetaUserId(eq("facebook"), eq(META_USER)))
+            .thenReturn(List.of(account()));
+
+        Channel connectee = channel("page-1", ChannelStatus.CONNECTED);
+        Channel expiree  = channel("page-1", ChannelStatus.EXPIRED);
+        when(channelRepository.findByAccountIdAndPlatformTypeAndDeletedFalse(
+                eq("page-1"), eq(PlatformType.FACEBOOK)))
+            .thenReturn(List.of(connectee, expiree));
+
+        controller.deauthorize(body);
+
+        // Tous états confondus : un canal EXPIRED garde lui aussi un jeton mort.
+        assertThat(connectee.getStatus()).isEqualTo(ChannelStatus.DISCONNECTED);
+        assertThat(expiree.getStatus()).isEqualTo(ChannelStatus.DISCONNECTED);
+        assertThat(connectee.getEncryptedCredentials())
+            .as("credentials du canal purgées").isNull();
+        assertThat(connectee.getTokenExpiresAt()).isNull();
+        verify(channelRepository, atLeastOnce()).save(any(Channel.class));
+    }
+
+    @Test
+    void aucunCompteMetaNeDeclencheAucuneRequeteSurLesCanaux() throws Exception {
+        when(configService.resolve("FACEBOOK"))
+            .thenReturn(new SocialPlatformConfigService.Credentials("app-1", APP_SECRET, false));
+        when(accountRepository.findByMetaUserId(eq("facebook"), eq(META_USER)))
+            .thenReturn(List.of());
+
+        var reponse = controller.deauthorize(signedRequest("HMAC-SHA256", META_USER));
+
+        assertThat(reponse.getStatusCode().value()).isEqualTo(200);
+        verify(channelRepository, never())
+            .findByAccountIdAndPlatformTypeAndDeletedFalse(anyString(), any());
     }
 
     @Test
@@ -103,6 +157,16 @@ class FacebookDeauthorizeControllerTest {
         var reponse = controller.deauthorize(signedRequest("HMAC-SHA256", META_USER));
 
         assertThat(reponse.getStatusCode().value()).isEqualTo(503);
+    }
+
+    private Channel channel(String accountId, ChannelStatus status) {
+        Channel c = new Channel();
+        c.setId(java.util.UUID.randomUUID().toString());
+        c.setStatus(status);
+        c.setAccountId(accountId);
+        c.setEncryptedCredentials("enc:page-token");
+        c.setTokenExpiresAt(java.time.LocalDateTime.now().plusDays(30));
+        return c;
     }
 
     private UserSocialAccount account() {
