@@ -4,6 +4,13 @@ server:
 # URL publique de la plateforme — utilisée pour générer les URLs de webhook Facebook par canal
 app:
   public-url: ${APP_PUBLIC_URL:http://localhost:8480}
+  # URL du frontend Angular. Après un OAuth, le navigateur est redirigé ici avec
+  # ?oauth_success=… ou ?oauth_error=… : sans cette valeur, la redirection
+  # part sur localhost et l'utilisateur retombe hors de l'application.
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:4400}
+  # Route Angular qui affiche le résultat de la connexion (le wizard de
+  # SocialConnectWizardComponent y lit les query params au chargement).
+  frontend-oauth-return-path: ${APP_FRONTEND_OAUTH_RETURN_PATH:/generation/studio}
 
 spring:
   application:

@@ -61,6 +61,13 @@ import java.util.*;
 @Tag(name = "OAuth Social", description = "Connexion guidée OAuth des réseaux sociaux — aucun copier-coller requis")
 public class OAuthSocialController {
 
+    /**
+     * Route de retour OAuth par défaut. Volontairement en dur ET dans le
+     * placeholder : le code doit rester correct même si la variable
+     * d'environnement est absente ou vide.
+     */
+    private static final String DEFAULT_OAUTH_RETURN_PATH = "/generation/studio";
+
     private final ChannelService channelService;
     private final ChannelRepository channelRepo;
     private final AgentRepository agentRepo;
@@ -85,6 +92,15 @@ public class OAuthSocialController {
 
     @Value("${app.frontend-url:http://localhost:4400}")
     private String frontendUrl;
+
+    /**
+     * Route Angular qui recoit le résultat de la connexion. Elle doit exister
+     * dans {@code app.routes.ts} : c'est là que le wizard lit
+     * {@code oauth_success} / {@code oauth_error}. La valeur est normalisée
+     * (barre finale retirée) pour éviter un double slash dans l'URL redirigée.
+     */
+    @Value("${app.frontend-oauth-return-path:" + DEFAULT_OAUTH_RETURN_PATH + "}")
+    private String frontendOAuthReturnPath;
 
     // Facebook / Instagram
     @Value("${oauth.facebook.app-id:}")
@@ -646,13 +662,24 @@ public class OAuthSocialController {
         }
 
         // ── Facebook Login classique : scopes du dashboard, sinon défauts ──
+        return url.queryParam("scope", String.join(",", consentScopes(platform)))
+            .build(false).toUriString();
+    }
+
+    /**
+     * Scopes réellement demandés au consentement, pour Facebook/Instagram.
+     * Source unique de vérité : l'authorize et le callback l'appellent, sinon
+     * scopes_granted enregistrerait autre chose que ce que l'utilisateur a
+     * réellement accepté.
+     */
+    private List<String> consentScopes(String platform) {
         List<String> configured = platformConfig.resolveScopes(platform);
-        String scope = !configured.isEmpty()
-            ? String.join(",", configured)
-            : "INSTAGRAM".equals(platform)
-                ? "pages_show_list,instagram_basic,instagram_content_publish,instagram_manage_comments,pages_read_engagement"
-                : "pages_show_list,pages_read_engagement,pages_manage_posts,public_profile";
-        return url.queryParam("scope", scope).build(false).toUriString();
+        if (!configured.isEmpty()) return configured;
+        return "INSTAGRAM".equalsIgnoreCase(platform)
+            ? List.of("pages_show_list", "instagram_basic", "instagram_content_publish",
+                      "instagram_manage_comments", "pages_read_engagement")
+            : List.of("pages_show_list", "pages_read_engagement", "pages_manage_posts",
+                      "public_profile");
     }
 
     private String buildLinkedinAuthUrl(String callbackUri, String state) {
@@ -707,7 +734,7 @@ public class OAuthSocialController {
     // ═════════════════════════════════════════════════════════════════════════
 
     private ResponseEntity<Void> handleOAuthCallback(String code, String state, String error, String platform) {
-        String redirectBase = frontendUrl + "/agentique/reseaux";
+        String redirectBase = frontendUrl + returnPath();
 
         // Erreur renvoyée par la plateforme
         if (error != null || code == null || code.isBlank()) {
@@ -745,6 +772,11 @@ public class OAuthSocialController {
             String accountName = (String) credentials.getOrDefault("accountName", platform + " Account");
             String accountId   = (String) credentials.getOrDefault("accountId", "");
             String credsJson   = objectMapper.writeValueAsString(credentials);
+            // Expiration du jeton utilisateur, lue dans les credentials. Elle est
+            // reportée sur le canal : c'est elle que le workspace affiche en
+            // compte à rebours, et elle était absente des bases écrites avant ce
+            // correctif.
+            var tokenExpiry = resolveTokenExpiry(credentials);
 
             if (channelId != null && !channelId.isBlank()) {
                 // Mettre à jour un canal existant (createChannel/connect revalident
@@ -758,6 +790,7 @@ public class OAuthSocialController {
                     ch.setAccountName(accountName);
                     ch.setAccountId(accountId);
                     ch.setLastSyncAt(java.time.LocalDateTime.now());
+                    if (tokenExpiry != null) ch.setTokenExpiresAt(tokenExpiry);
                     channelRepo.save(ch);
                     log.info("[OAUTH_{}] Canal {} mis à jour et connecté", platform, channelId);
                 }
@@ -776,6 +809,12 @@ public class OAuthSocialController {
                 channelId = resp.id();
                 // Marquer comme connecté
                 channelService.connect(userId, agentId, channelId);
+                if (tokenExpiry != null) {
+                    channelRepo.findByIdAndDeletedFalse(channelId).ifPresent(ch -> {
+                        ch.setTokenExpiresAt(tokenExpiry);
+                        channelRepo.save(ch);
+                    });
+                }
                 log.info("[OAUTH_{}] Nouveau canal {} créé et connecté pour agent {}", platform, channelId, agentId);
             }
 
@@ -803,12 +842,42 @@ public class OAuthSocialController {
     private void linkUserSocialAccount(String userId, String platform, String accountId,
                                       String accountName, String credsJson) {
         try {
+            // Scopes réellement demandés au consentement : ceux de la plateforme
+            // (saisie par l'admin, ou liste par défaut du code). Sans ce
+            // troisième argument, scopes_granted restait à '[]' et la console
+            // admin n'affichait jamais les permissions accordées. Meta ne
+            // renvoie pas la liste obtenue dans la réponse d'échange : on
+            // enregistre donc le jeu demandé, qui est le seul que nous
+            // connaissions.
+            List<String> scopes = consentScopes(platform);
             userSocialAccounts.recordFromOauth(userId, platform, accountId,
-                accountName, credsJson, null);
+                accountName, credsJson, scopes);
         } catch (RuntimeException e) {
             log.error("[OAUTH_{}] Enregistrement du compte unifié impossible pour {} : {}",
                 platform, userId, e.getMessage(), e);
         }
+    }
+
+    /**
+     * Date d'expiration du jeton utilisateur déduite du {@code expiresIn} des
+     * credentials, ou {@code null} quand le fournisseur n'en donne pas (jeton
+     * sans durée annoncée) : on ne devine jamais une durée de vie.
+     */
+    private java.time.LocalDateTime resolveTokenExpiry(Map<String, Object> credentials) {
+        Object raw = credentials.get("expiresIn");
+        long expiresIn;
+        if (raw instanceof Number n) {
+            expiresIn = n.longValue();
+        } else if (raw != null) {
+            try {
+                expiresIn = Long.parseLong(String.valueOf(raw));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        } else {
+            return null;
+        }
+        return expiresIn > 0 ? java.time.LocalDateTime.now().plusSeconds(expiresIn) : null;
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -1135,6 +1204,20 @@ public class OAuthSocialController {
         HttpHeaders headers = new HttpHeaders();
         headers.setLocation(java.net.URI.create(url));
         return new ResponseEntity<>(headers, HttpStatus.FOUND);
+    }
+
+    /**
+     * Chemin de retour OAuth, garanti commençant par un slash et sans slash
+     * final. Une valeur mal saisie (vide ou sans slash initial) retombe sur la
+     * route du studio plutôt que de produire une URL relative que le navigateur
+     * interpréterait par rapport à la page courante.
+     */
+    private String returnPath() {
+        String path = frontendOAuthReturnPath == null ? "" : frontendOAuthReturnPath.trim();
+        if (path.isEmpty()) return DEFAULT_OAUTH_RETURN_PATH;
+        if (!path.startsWith("/")) path = "/" + path;
+        while (path.length() > 1 && path.endsWith("/")) path = path.substring(0, path.length() - 1);
+        return path;
     }
 
     private String encode(String value) {

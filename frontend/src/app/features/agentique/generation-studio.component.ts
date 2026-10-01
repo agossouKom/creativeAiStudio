@@ -1088,7 +1088,26 @@ export class GenerationStudioComponent implements OnInit, OnDestroy {
     this.loadPlatforms();
     this.loadJobs();
     this.loadPublishHistory();
+    this.openSocialTabIfOAuthReturned();
     this.refreshTimer = setInterval(() => this.loadJobs(), 15000);
+  }
+
+  /**
+   * Après un aller-retour OAuth, le composant revient sur l'onglet par défaut
+   * ('generation'). Or le wizard de connexion — seul lecteur des query params
+   * `oauth_success` / `oauth_error` — vit dans `*ngIf="activeTab === 'social'"` :
+   * il n'était jamais instancié, donc le retour de Meta n'affichait ni message
+   * de succès ni d'erreur, et l'utilisateur avait l'impression que rien ne s'était
+   * passé. On bascule sur l'onglet social avant que le wizard ne se monte.
+   *
+   * Le nettoyage de l'URL (remplacement de l'historique) reste la responsabilité
+   * du wizard : il ne faut pas le faire ici, sinon il perdrait les paramètres.
+   */
+  private openSocialTabIfOAuthReturned(): void {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('oauth_success') || params.has('oauth_error')) {
+      this.activeTab = 'social';
+    }
   }
 
   ngOnDestroy(): void {
