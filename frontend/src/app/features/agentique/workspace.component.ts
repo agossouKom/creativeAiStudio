@@ -5373,9 +5373,11 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
     if (!this.fbAgentId || !this.fbRenewForm.appId || !this.fbRenewForm.appSecret || !this.fbRenewForm.shortToken) return;
     this.fbRenewing    = true;
     this.fbRenewResult = null;
-    // Mémoriser appId et appSecret (pas le token court)
-    localStorage.setItem('fb_renew_appId',     this.fbRenewForm.appId);
-    localStorage.setItem('fb_renew_appSecret', this.fbRenewForm.appSecret);
+    // Seul l'appId est mémorisé. L'appSecret ne doit jamais être écrit dans
+    // le localStorage : il est de toute façon déjà présent côté serveur, dans
+    // la configuration de plateforme.
+    localStorage.setItem('fb_renew_appId', this.fbRenewForm.appId);
+    localStorage.removeItem('fb_renew_appSecret');
     this.cd.markForCheck();
     this.http.post<any>(
       `${API}/api/facebook/${this.fbAgentId}/renew-token`,
@@ -5403,9 +5405,10 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
     this.fbSelectedPost = null;
     this.fbRenewResult = null;
     if (!agentId) return;
-    // Restaurer APP_ID / APP_SECRET mémorisés
-    this.fbRenewForm.appId     = localStorage.getItem('fb_renew_appId')     || '';
-    this.fbRenewForm.appSecret = localStorage.getItem('fb_renew_appSecret') || '';
+    // Restaurer l'APP_ID mémorisé. L'appSecret reste saisi à chaque fois :
+    // il n'est jamais persisté dans le navigateur.
+    this.fbRenewForm.appId = localStorage.getItem('fb_renew_appId') || '';
+    this.fbRenewForm.appSecret = '';
     this.http.get<any[]>(`${API}/api/agents/${agentId}/channels`, { headers: this.authHeaders() }).subscribe({
       next: (channels) => {
         const fbChannel = (channels || []).find((c: any) =>
