@@ -36,6 +36,14 @@ public class TaskSchedulerService {
     @Value("${minio.public-url:http://localhost:9400}")
     private String minioPublicUrl;
 
+    /**
+     * Délai au-delà duquel une tâche IN_PROGRESS est considérée comme orpheline et
+     * remise en PENDING. Un agent qui plante, ou un conteneur qui redémarre
+     * entre le claim et la fin, laisserait sinon la tâche bloquée pour toujours.
+     */
+    @Value("${agent.task-stale-after-minutes:30}")
+    private long staleAfterMinutes;
+
     @Scheduled(cron = "0 * * * * *")
     @Transactional
     public void processScheduledTasks() {
@@ -51,8 +59,7 @@ public class TaskSchedulerService {
             } catch (Exception e) {
                 log.error("[TASK-SCHEDULER] Erreur dispatch tâche id={} title='{}': {}",
                           task.getId(), task.getTitle(), e.getMessage(), e);
-                task.setStatus(TaskStatus.FAILED);
-                taskRepo.save(task);
+                markFailed(task.getId());
             }
         }
     }
@@ -71,24 +78,56 @@ public class TaskSchedulerService {
                 dispatchTask(task);
             } catch (Exception e) {
                 log.error("[TASK-SCHEDULER] Erreur dispatch social task id={}: {}", task.getId(), e.getMessage());
-                task.setStatus(TaskStatus.FAILED);
-                taskRepo.save(task);
+                markFailed(task.getId());
             }
         }
     }
 
+    /**
+     * Remet en PENDING les tâches qu'aucun agent n'a terminées dans les temps.
+     * Le claim atomique de {@link #dispatchTask} rend la tâche invisible aux deux
+     * pollers pendant son exécution ; sans ce rattrapage, un agent mort la
+     * laisserait IN_PROGRESS à jamais.
+     */
+    @Scheduled(fixedDelay = 300000, initialDelay = 300000)
+    @Transactional
+    public void releaseStaleTasks() {
+        LocalDateTime threshold = LocalDateTime.now().minusMinutes(staleAfterMinutes);
+        int released = taskRepo.releaseStuckTasks(threshold);
+        if (released > 0) {
+            log.warn("[TASK-SCHEDULER] {} tâche(s) IN_PROGRESS depuis plus de {} min remise(s) en PENDING",
+                released, staleAfterMinutes);
+        }
+    }
+
+    /**
+     * Prend la responsabilité d'une tâche avant de l'exécuter, puis la lance.
+     *
+     * <p>Le passage en IN_PROGRESS est un UPDATE conditionnel sur le statut :
+     * seul le poller dont l'écriture modifie réellement une ligne reçoit 1 et
+     * continue. L'autre reçoit 0 et saute la tâche. C'est ce qui rend la
+     * publication sociale idempotente entre les deux pollers, qui lisent les
+     * mêmes lignes à la même seconde.
+     *
+     * <p>Le {@code taskId} est transmis à l'orchestrateur : sans lui, la tâche
+     * restait IN_PROGRESS même en cas de succès, l'agent devant appeler
+     * lui-même {@code update_task_status} pour la clore.
+     */
     private void dispatchTask(AgentTask task) {
         String agentId = task.getAssignedAgentId();
         if (agentId == null || agentId.isBlank()) {
             log.warn("[TASK-SCHEDULER] Tâche {} sans agentId assigné — ignorée", task.getId());
-            task.setStatus(TaskStatus.FAILED);
-            taskRepo.save(task);
+            markFailed(task.getId());
             return;
         }
 
-        task.setStatus(TaskStatus.IN_PROGRESS);
-        task.setStartedAt(LocalDateTime.now());
-        taskRepo.save(task);
+        if (taskRepo.claimTask(task.getId(), LocalDateTime.now()) == 0) {
+            // Claim perdu : un autre poller, ou une passe précédente, a déjà
+            // pris cette tâche. Ne surtout pas exécuter — pour une tâche sociale
+            // cela publierait deux fois.
+            log.debug("[TASK-SCHEDULER] Tâche {} déjà claimée — ignorée", task.getId());
+            return;
+        }
 
         String prompt = buildPrompt(task);
         String sessionId = "scheduled-" + task.getId();
@@ -96,7 +135,7 @@ public class TaskSchedulerService {
         log.info("[TASK-SCHEDULER] Démarrage tâche id={} title='{}' agent={}",
                  task.getId(), task.getTitle(), agentId);
 
-        orchestrator.chat(agentId, task.getUserId(), prompt, sessionId, null)
+        orchestrator.chat(agentId, task.getUserId(), prompt, sessionId, task.getId())
             .subscribe(
                 token -> {},
                 err -> {
@@ -191,6 +230,15 @@ public class TaskSchedulerService {
             t.setStatus(status);
             taskRepo.save(t);
         });
+    }
+
+    /**
+     * Échec de dispatch : la tâche est déjà IN_PROGRESS (claim effectué), un save
+     * sur l'entité sélectionnée avant le claim écraserait le statut de tout le
+     * monde — d'où une relecture par id.
+     */
+    private void markFailed(String taskId) {
+        updateStatus(taskId, TaskStatus.FAILED);
     }
 
     private boolean isSemiAutomatic(AgentTask task) {

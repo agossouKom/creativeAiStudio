@@ -7,6 +7,7 @@ import com.creativeai.agentteam.model.enums.TaskType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -46,6 +47,35 @@ public interface AgentTaskRepository extends JpaRepository<AgentTask, String> {
            "AND t.status = com.creativeai.agentteam.model.enums.TaskStatus.PENDING " +
            "AND t.assignedAgentId IS NOT NULL")
     List<AgentTask> findPendingSocialMediaTasks();
+
+    // ── Claim atomique (anti-double-dispatch) ─────────────────────────────────
+    //
+    // Les deux pollers (@Scheduled) lisent les mêmes lignes PENDING et un claim
+    // par simple setStatus + save n'exclut rien : entre la lecture et l'écriture
+    // les deux peuvent voir la même tâche, et l'agent s'exécute deux fois. Pour
+    // une tâche SOCIAL_MEDIA cela signifie deux publications sur le réseau. Le
+    // UPDATE conditionnel ci-dessous fait porter l'exclusion par la base : une
+    // seule des deux transactions voit une ligne modifiée, l'autre reçoit 0 et
+    // saute la tâche. Return true = je suis propriétaire du claim.
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE agent_tasks SET status = 'IN_PROGRESS', started_at = :now " +
+                  "WHERE id = :id AND status = 'PENDING' AND deleted = false",
+           nativeQuery = true)
+    int claimTask(@Param("id") String id, @Param("now") LocalDateTime now);
+
+    /**
+     * Remet une tâche en PENDING si elle est restée IN_PROGRESS plus longtemps
+     * que le délai donné. Sans cela, un crash entre le claim et la fin de
+     * l'exécution laisse une tâche définitivement IN_PROGRESS : invisible des
+     * deux pollers (qui ne lisent que PENDING) et jamais rattrapée.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE agent_tasks SET status = 'PENDING' " +
+                  "WHERE status = 'IN_PROGRESS' AND deleted = false " +
+                  "AND started_at IS NOT NULL AND started_at < :threshold",
+           nativeQuery = true)
+    int releaseStuckTasks(@Param("threshold") LocalDateTime threshold);
 
     // Soft-delete / restore
     List<AgentTask>     findByUserIdAndDeletedTrueOrderByUpdatedAtDesc(String userId);
