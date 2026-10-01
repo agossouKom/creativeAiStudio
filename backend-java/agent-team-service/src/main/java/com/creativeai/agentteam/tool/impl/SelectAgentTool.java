@@ -96,7 +96,12 @@ public class SelectAgentTool implements AgentTool {
 
         // Chercher dans l'équipe si fournie
         if (teamId != null && !teamId.isBlank()) {
-            return teamRepo.findByIdAndDeletedFalse(teamId)
+            // teamId venait du LLM et était résolu par findByIdAndDeletedFalse,
+            // sans contrainte de propriété : il suffisait de nommer l'ID d'une
+            // équipe d'un autre compte pour recevoir la liste de ses agents (et
+            // leur ID, réutilisable par delegate_to_agent). Même règle
+            // d'accessibilité que pour un agent.
+            return teamRepo.findByIdAndOwnerIdAndDeletedFalse(teamId, userId)
                 .map(team -> {
                     List<String> memberIds = parseMemberIds(team.getMemberAgentIds());
                     List<Agent> members = new ArrayList<>();

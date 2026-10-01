@@ -8,6 +8,8 @@ import com.creativeai.agentteam.model.enums.TaskType;
 import com.creativeai.agentteam.orchestrator.AgentOrchestrator;
 import com.creativeai.agentteam.repository.AgentRepository;
 import com.creativeai.agentteam.repository.AgentTaskRepository;
+import com.creativeai.agentteam.service.QuotaExceededException;
+import com.creativeai.agentteam.service.QuotaService;
 import com.creativeai.agentteam.tool.AgentTool;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,7 @@ public class DelegateToAgentTool implements AgentTool {
     private final AgentRepository     agentRepo;
     private final AgentTaskRepository taskRepo;
     private final ObjectMapper        objectMapper;
+    private final QuotaService        quotaService;
 
     // @Lazy casse le cycle: AgentOrchestrator → ToolRegistry → DelegateToAgentTool → AgentOrchestrator
     @Lazy
@@ -42,10 +45,12 @@ public class DelegateToAgentTool implements AgentTool {
 
     public DelegateToAgentTool(AgentRepository agentRepo,
                                AgentTaskRepository taskRepo,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               QuotaService quotaService) {
         this.agentRepo    = agentRepo;
         this.taskRepo     = taskRepo;
         this.objectMapper = objectMapper;
+        this.quotaService = quotaService;
     }
 
     @Override public String getName() { return "delegate_to_agent"; }
@@ -84,8 +89,21 @@ public class DelegateToAgentTool implements AgentTool {
             return "{\"error\":\"targetAgentId est obligatoire\"}";
         if (message == null || message.isBlank())
             return "{\"error\":\"message est obligatoire\"}";
-        if (agentRepo.findByIdAndDeletedFalse(targetAgentId).isEmpty())
+        // La cible était résolue par simple findByIdAndDeletedFalse : le LLM
+        // pouvait choisir l'ID d'un agent d'un autre compte et lui injecter une
+        // consigne, exécutée avec les outils et le budget de cet agent. Même
+        // message qu'un agent inexistant, pour ne pas faire d'oracle d'existence.
+        if (agentRepo.findAccessibleToUser(targetAgentId, userId).isEmpty())
             return "{\"error\":\"Agent introuvable: " + targetAgentId + "\"}";
+
+        // La délégation crée elle aussi une tâche : sans ce contrôle, la boucle
+        // Scrum → delegate_to_agent permit de dépasser le quota d'abonnement,
+        // ce chemin ne passant pas par TaskService.createTask.
+        try {
+            quotaService.checkTaskQuota(userId);
+        } catch (QuotaExceededException e) {
+            return "{\"error\":\"" + e.getMessage() + "\"}";
+        }
 
         Priority priority = parsePriority(priorityStr);
 
@@ -106,6 +124,7 @@ public class DelegateToAgentTool implements AgentTool {
             .build();
         task = taskRepo.save(task);
         final String taskId = task.getId();
+        quotaService.incrementTaskUsage(userId);
 
         log.info("[DELEGATE] step4: task created taskId={} | caller={} → target={}",
             taskId, callerAgentId, targetAgentId);
