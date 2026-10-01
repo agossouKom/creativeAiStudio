@@ -98,6 +98,31 @@
             </extension>
         </extensions>
         <plugins>
+            <!--
+                Failsafe : exécute les tests d'intégration (*IT.java) lors de
+                `mvn verify`. Sans ce plugin, les fichiers *IT ne sont jamais
+                runnés — Surefire (défaut `*Test`) les ignorait, et rien d'autre
+                ne les prenait. `TaskCreationFlowIT` était donc du code mort
+                vert : il donnait l'illusion d'une couverture d'intégration.
+                L'exécution est lié à `verify`, donc `mvn test` reste rapide.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.xolstice.maven.plugins</groupId>
                 <artifactId>protobuf-maven-plugin</artifactId>

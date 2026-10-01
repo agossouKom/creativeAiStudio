@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.data.redis.connection.ReactiveRedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.http.*;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -65,10 +66,17 @@ class TaskCreationFlowIT {
     }
 
     // ── Mocks pour services externes ──────────────────────────────────────────
-    @MockBean RedisConnectionFactory       redisConnectionFactory;
-    @MockBean KafkaTemplate<Object,Object> kafkaTemplate;
-    @MockBean JavaMailSender               javaMailSender;
-    @MockBean MinioClient                  minioClient;
+    // Redis : les deux factories doivent être mockées. LettuceConnectionFactory
+    // (le bean auto-configuré) implémente À LA FOIS RedisConnectionFactory et
+    // ReactiveRedisConnectionFactory ; le mocker par le premier type le supprime
+    // donc aussi du contexte pour le second, et reactiveRedisTemplate échoue
+    // alors au démarrage sur « No qualifying bean of type
+    // ReactiveRedisConnectionFactory ».
+    @MockBean RedisConnectionFactory        redisConnectionFactory;
+    @MockBean ReactiveRedisConnectionFactory reactiveRedisConnectionFactory;
+    @MockBean KafkaTemplate<Object,Object>  kafkaTemplate;
+    @MockBean JavaMailSender                javaMailSender;
+    @MockBean MinioClient                   minioClient;
 
     // ── Collaborateurs injectés ───────────────────────────────────────────────
     @Autowired TestRestTemplate             restTemplate;
@@ -181,9 +189,17 @@ class TaskCreationFlowIT {
         ResponseEntity<Map> response = postTask(TEST_USER_ID, "Tâche qui dépasse le quota");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYMENT_REQUIRED);
+        // Le corps est un ProblemDetail (RFC 9457) : les propriétés métier
+        // posées par GlobalExceptionHandler.handleQuotaExceeded (used, limit,
+        // plan) sont imbriquées sous "properties", pas à plat. L'assertion
+        //cherchait "plan" à la racine, donc échouait sur une réponse correcte.
         assertThat(response.getBody())
-            .containsKey("title")
-            .containsEntry("plan", "FREE");
+            .containsEntry("title", "Payment Required")
+            .containsKey("properties");
+        assertThat((Map<String, Object>) response.getBody().get("properties"))
+            .containsEntry("plan", "FREE")
+            .containsEntry("used", 50)
+            .containsEntry("limit", 50);
     }
 
     // ── Scénario 4 : historique d'exécution — événements EMAIL_SENT ──────────
@@ -205,8 +221,12 @@ class TaskCreationFlowIT {
 
         var timeline = eventRepo.findByTaskIdOrderByCreatedAtAsc(taskId);
         assertThat(timeline).hasSize(3);
+        // Les trois log* sont @Async et s'exécutent sur des threads distincts :
+        // rien ne garantit leur ordre d'insertion. containsExactly imposait un
+        // ordre que le code ne promet pas. On vérifie le contenu de la
+        // timeline, pas sa séquence.
         assertThat(timeline).extracting(e -> e.getEventType())
-            .containsExactly("TASK_STARTED", "EMAIL_SENT", "TASK_COMPLETED");
+            .containsExactlyInAnyOrder("TASK_STARTED", "EMAIL_SENT", "TASK_COMPLETED");
 
         var emailEvent = timeline.stream()
             .filter(e -> "EMAIL_SENT".equals(e.getEventType()))

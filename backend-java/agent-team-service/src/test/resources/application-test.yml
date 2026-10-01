@@ -49,3 +49,19 @@ logging:
     com.creativeai: DEBUG
     org.springframework.security: WARN
     org.flywaydb: WARN
+
+management:
+  health:
+    mail:
+      # TaskCreationFlowIT déclare @MockBean JavaMailSender, ce qui REMPLACE le
+      # bean JavaMailSenderImpl. MailHealthIndicatorAutoConfiguration ne peut
+      # alors plus construire son indicateur, et MailHealthContributor
+      # échoue au démarrage du contexte sur "Beans must not be empty" — les 5
+      # tests du IT échouaient avant même d'exécuter une seule assertion.
+      # L'indicateur mail n'a aucun intérêt dans un test où l'envoi est mocké.
+      enabled: false
+    redis:
+      # Même cause que pour le mail : @MockBean RedisConnectionFactory remplace
+      # le bean que RedisHealthContributorAutoConfiguration attend, et le
+      # composite échoue sur la même assertion.
+      enabled: false
