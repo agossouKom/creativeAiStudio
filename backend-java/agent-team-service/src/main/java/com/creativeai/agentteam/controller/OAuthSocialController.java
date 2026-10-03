@@ -10,6 +10,7 @@ import com.creativeai.agentteam.repository.AgentRepository;
 import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
+import com.creativeai.agentteam.service.MetaWebhookSubscriptionService;
 import com.creativeai.agentteam.service.OAuthStateStore;
 import com.creativeai.agentteam.service.SocialPlatformConfigService;
 import com.creativeai.agentteam.service.UserSocialAccountService;
@@ -87,6 +88,13 @@ public class OAuthSocialController {
      * faire échouer une connexion qui fonctionne déjà.
      */
     private final UserSocialAccountService userSocialAccounts;
+
+    /**
+     * Abonnement de l'application Meta aux événements de la Page / du compte
+     * Instagram. Appelé après chaque échange OAuth et chaque changement de Page :
+     * sans lui, Meta ne livre aucun événement (voir le service).
+     */
+    private final MetaWebhookSubscriptionService metaSubscriptions;
 
     // ── Config ───────────────────────────────────────────────────────────────
 
@@ -482,6 +490,10 @@ public class OAuthSocialController {
                 .body(Map.of("error", "Impossible d'enregistrer la sélection"));
         }
 
+        // L'abonnement webhook porte sur la Page : changer de Page sans réabonner
+        // laisserait les commentaires de la nouvelle Page non livrés.
+        metaSubscriptions.subscribeQuietly(platform, creds);
+
         log.info("[OAUTH_{}] Canal {} basculé sur la page {} ({})",
             platform, channelId, creds.get("accountName"), wanted);
         Map<String, Object> body2 = pagesPayload(channel);
@@ -822,6 +834,14 @@ public class OAuthSocialController {
             // état de transaction : si cette étape échoue, la publication
             // fonctionne toujours via les credentials du canal.
             linkUserSocialAccount(userId, platform, accountId, accountName, credsJson);
+
+            // Abonnement aux événements Meta. Vérifier l'URL du webhook ne suffit
+            // pas : sans cet appel, aucun commentaire n'arrive, silencieusement.
+            // Après un changement de Page l'abonnement pointe encore sur l'ancienne,
+            // il est donc refait dans selectPage().
+            if ("FACEBOOK".equals(platform) || "INSTAGRAM".equals(platform)) {
+                metaSubscriptions.subscribeQuietly(platform, credentials);
+            }
 
             return redirect(redirectBase + "?oauth_success=true&platform=" + platform + "&account=" + encode(accountName));
 

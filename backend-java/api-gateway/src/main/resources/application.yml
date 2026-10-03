@@ -240,6 +240,10 @@ spring:
             - RewritePath=/api/facebook/(?<segment>.*), /api/facebook/${segment}
 
         # Instagram Graph API (connexion de compte, médias, publication)
+        # + webhook Instagram. Route PUBLIQUE : Meta POSTe les notifications
+        # sans JWT, et l'agent-team les valide lui-même (verify_token au GET,
+        # X-Hub-Signature-256 au POST). Aucun AuthenticationFilter ici, sinon
+        # Meta recevrait 401 et abandonnerait l'abonnement.
         - id: agent-team-instagram
           uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
           predicates:
@@ -349,8 +353,10 @@ spring:
             - RewritePath=/api/v1/oauth/facebook/callback, /api/oauth/social/facebook/callback
 
         # Webhook de désautorisation Facebook (deauthorize callback) : Meta le
-        # POSTe sans JWT, la confiance vient du signed_request HMAC-SHA256. Doit
-        # rester PUBLIC — le routeur global ajoute AuthenticationFilter par défaut.
+        # POSTe sans JWT, la confiance vient du signed_request HMAC-SHA256.
+        # Doit rester PUBLIC — `default-filters` ne contient QUE RequestSize,
+        # AuthenticationFilter n'est appliqué que là où il est nommé
+        # explicitement. Ne pas l'ajouter ici.
         - id: oauth-social-deauthorize
           uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
           predicates:

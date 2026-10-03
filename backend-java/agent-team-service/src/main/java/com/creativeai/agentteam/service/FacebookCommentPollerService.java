@@ -44,9 +44,11 @@ import java.util.Map;
 @ConditionalOnProperty(name = "facebook.polling-enabled", havingValue = "true")
 public class FacebookCommentPollerService {
 
-    private static final String SEEN_PREFIX        = "fb:seen:";
-    private static final Duration SEEN_TTL         = Duration.ofDays(7);
-    private static final long DEFAULT_INTERVAL_MS  = 300_000L; // 5 min par défaut
+    // Préfixe et TTL partagés avec le webhook Facebook : les deux chemins écrivent
+    // le même marqueur, donc un commentaire vu par l'un n'est pas rejoué par l'autre.
+    private static final String   SEEN_PREFIX        = WebhookEventDeduplicator.FB_SEEN_PREFIX;
+    private static final Duration SEEN_TTL           = Duration.ofDays(7);
+    private static final long     DEFAULT_INTERVAL_MS  = 300_000L; // 5 min par défaut
     private static final int POSTS_LOOKBACK_HOURS  = 24;
     private static final int MAX_POSTS             = 10;
     private static final int MAX_COMMENTS          = 50;

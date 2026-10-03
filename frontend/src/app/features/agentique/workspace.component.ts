@@ -1659,9 +1659,10 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
       <div *ngIf="channelAgentId && loadingChannels" class="ws-loading"><div class="ws-spinner"></div></div>
       <div class="ws-table-wrap" *ngIf="channelAgentId && !loadingChannels">
         <table class="ws-table">
-          <thead><tr><th>Type</th><th>Plateforme</th><th>Nom</th><th>Page ID / Compte</th><th>Token</th><th>Statut</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Type</th><th>Plateforme</th><th>Nom</th><th>Page ID / Compte</th><th>Token</th><th>Statut</th><th>Webhook</th><th>Actions</th></tr></thead>
           <tbody>
-            <tr *ngFor="let ch of channels">
+            <ng-container *ngFor="let ch of channels">
+            <tr>
               <td data-label="Type"><span class="ws-type-badge ws-type-badge--sm">{{ ch.type }}</span></td>
               <td data-label="Plateforme">{{ ch.platformType || '—' }}</td>
               <td data-label="Nom" class="ws-cell-name">{{ ch.displayName }}</td>
@@ -1673,6 +1674,13 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
               <td data-label="Statut">
                 <span class="ws-ch-status" [attr.data-s]="ch.status">{{ ch.status }}</span>
               </td>
+              <td data-label="Webhook">
+                <button *ngIf="ch.webhookUrl" class="ws-webhook-toggle" [class.open]="openWebhookId === ch.id"
+                        (click)="toggleWebhook(ch)">
+                  <span class="dot"></span>{{ openWebhookId === ch.id ? 'Masquer' : 'Configurer' }}
+                </button>
+                <span *ngIf="!ch.webhookUrl" class="ws-cell-sub">—</span>
+              </td>
               <td data-label="Actions">
                 <div class="ws-row-actions">
                   <button class="ws-act-btn ws-act-edit" title="Modifier" (click)="editChannel(ch)">✏</button>
@@ -1682,8 +1690,63 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
                 </div>
               </td>
             </tr>
+            <tr class="ws-webhook-detail" *ngIf="openWebhookId === ch.id">
+              <td colspan="8">
+                <div class="ws-ch-hint">
+                  Declarez <strong>une seule fois</strong> l'URL applicative dans le dashboard Meta
+                  (Developpeurs → Webhooks), puis cochez les champs à écouter.
+                  Le routage vers ce canal se fait automatiquement via <code>entry.id</code>.
+                </div>
+
+                <div class="ws-webhook-grid">
+                  <div class="ws-webhook-field">
+                    <label>URL de callback (tous les canaux)</label>
+                    <div class="ws-webhook-value">
+                      <code>{{ globalWebhookUrl(ch) }}</code>
+                      <button class="ws-copy-btn" [class.copied]="copiedWebhookKey === ch.id + ':g'"
+                              (click)="copyWebhook(globalWebhookUrl(ch), ch.id + ':g')" title="Copier">
+                        <svg *ngIf="copiedWebhookKey !== ch.id + ':g'" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 1 1 2 2v1"/></svg>
+                        <svg *ngIf="copiedWebhookKey === ch.id + ':g'" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="ws-webhook-field">
+                    <label>URL dédiée à ce canal</label>
+                    <div class="ws-webhook-value">
+                      <code>{{ ch.webhookUrl }}</code>
+                      <button class="ws-copy-btn" [class.copied]="copiedWebhookKey === ch.id + ':c'"
+                              (click)="copyWebhook(ch.webhookUrl, ch.id + ':c')" title="Copier">
+                        <svg *ngIf="copiedWebhookKey !== ch.id + ':c'" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 1 1 2 2v1"/></svg>
+                        <svg *ngIf="copiedWebhookKey === ch.id + ':c'" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="ws-webhook-field">
+                    <label>Verify token</label>
+                    <div class="ws-webhook-value">
+                      <code>{{ ch.verifyToken || '— non défini —' }}</code>
+                      <button class="ws-copy-btn" *ngIf="ch.verifyToken" [class.copied]="copiedWebhookKey === ch.id + ':t'"
+                              (click)="copyWebhook(ch.verifyToken, ch.id + ':t')" title="Copier">
+                        <svg *ngIf="copiedWebhookKey !== ch.id + ':t'" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 1 1 2 2v1"/></svg>
+                        <svg *ngIf="copiedWebhookKey === ch.id + ':t'" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="ws-ch-hint" style="margin-bottom:0">
+                  <strong>Facebook</strong> : champs « messages », « comments », « feed » (et « mentions » si l'appli l'expose).
+                  <strong>Instagram</strong> : champs « comments » et « live_comments ».
+                  L'abonnement est déclenché automatiquement à la connexion du compte ; sinon le handshake
+                  (<code>GET</code> avec <code>hub.verify_token</code>) suffit à valider l'URL, pas à recevoir d'événements.
+                </div>
+              </td>
+            </tr>
+            </ng-container>
             <tr *ngIf="channels.length === 0">
-              <td colspan="7"><div class="ws-empty" style="padding:1rem">Aucun canal configuré pour cet agent.</div></td>
+              <td colspan="8"><div class="ws-empty" style="padding:1rem">Aucun canal configuré pour cet agent.</div></td>
             </tr>
           </tbody>
         </table>
@@ -2942,6 +3005,20 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 .ws-chat-msg:hover .ws-copy-btn { opacity:1; }
 .ws-copy-btn:hover { color:#a5b4fc; }
 .ws-copy-btn.copied { color:#34d399; opacity:1; }
+/* Bloc « webhook » déplié : les valeurs sont l'objet du clic, donc toujours visibles. */
+.ws-webhook-toggle { display:inline-flex; align-items:center; gap:.4rem; background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.25); color:#a5b4fc; font-size:.7rem; font-family:inherit; padding:.25rem .55rem; border-radius:999px; cursor:pointer; transition:background .2s,border-color .2s; }
+.ws-webhook-toggle:hover, .ws-webhook-toggle.open { background:rgba(99,102,241,.18); border-color:rgba(99,102,241,.5); color:#c7d2fe; }
+.ws-webhook-toggle .dot { width:5px; height:5px; border-radius:50%; background:#34d399; box-shadow:0 0 6px rgba(52,211,153,.8); }
+.ws-webhook-detail td { padding:1rem 1.25rem 1.25rem; background:rgba(15,23,42,.35); }
+.ws-webhook-detail .ws-ch-hint { margin-bottom:.6rem; }
+.ws-webhook-detail .ws-ch-hint strong { color:#c7d2fe; }
+.ws-webhook-detail code { font-size:.7rem; color:#94a3b8; word-break:break-all; }
+.ws-webhook-grid { display:grid; gap:.6rem; margin-bottom:.75rem; }
+@media (min-width:1100px) { .ws-webhook-grid { grid-template-columns:1fr 1fr 1fr; } }
+.ws-webhook-field { min-width:0; }
+.ws-webhook-field > label { display:block; font-size:.64rem; text-transform:uppercase; letter-spacing:.06em; color:#64748b; margin-bottom:.25rem; }
+.ws-webhook-value { display:flex; align-items:center; gap:.35rem; background:rgba(2,6,23,.6); border:1px solid rgba(99,102,241,.2); border-radius:6px; padding:.35rem .5rem; }
+.ws-webhook-detail .ws-copy-btn { opacity:1; flex:none; }
 .ws-msg-text { background:#1e293b; border-radius:10px; color:#e2e8f0; font-size:.85rem; line-height:1.6; padding:.65rem .9rem; word-break:break-word; }
 .ws-msg-text strong { color:#c7d2fe; font-weight:700; }
 .ws-msg-text em { color:#a5b4fc; font-style:italic; }
@@ -3830,6 +3907,10 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   private chatAbort: AbortController | null = null;
   private _typewriterResolve: (() => void) | null = null;
   copiedMsgIdx: number | null = null;
+  /** Clé du couple canal/valeur dont le texte vient d'être copié (webhookUrl / verifyToken). */
+  copiedWebhookKey: string | null = null;
+  /** Détail « webhook » déplié pour un canal Meta. */
+  openWebhookId: string | null = null;
   chatFocused = false;
   chatDevice: 'phone' | 'tablet' = 'phone';
   chatFontFamily = "'Roboto',system-ui,sans-serif";
@@ -6317,6 +6398,34 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
       this.cd.markForCheck();
       setTimeout(() => { this.copiedMsgIdx = null; this.cd.markForCheck(); }, 1800);
     });
+  }
+
+  /**
+   * Affiche / masque le bloc « webhook » d'un canal.
+   * Un seul bloc ouvert à la fois : les URL sont longues et la table est déjà dense.
+   */
+  toggleWebhook(ch: any): void {
+    this.openWebhookId = this.openWebhookId === ch.id ? null : ch.id;
+    this.cd.markForCheck();
+  }
+
+  /** Copie l'URL de callback ou le verify token affiché pour un canal Meta. */
+  copyWebhook(value: string, key: string): void {
+    if (!value) return;
+    navigator.clipboard.writeText(value).then(() => {
+      this.copiedWebhookKey = key;
+      this.cd.markForCheck();
+      setTimeout(() => { this.copiedWebhookKey = null; this.cd.markForCheck(); }, 1800);
+    });
+  }
+
+  /**
+   * URL « applicative » du webhook Meta : celle qu'on ne déclare qu'une fois dans
+   * le dashboard, et qui route automatiquement l'événement vers le bon canal.
+   * L'API renvoie l'URL par canal (…/webhook/{channelId}), on retire le dernier segment.
+   */
+  globalWebhookUrl(ch: any): string {
+    return (ch?.webhookUrl || '').replace(/\/[^/]+\/?$/, '');
   }
 
   /** Append text character-by-character for a typing effect. Short chunks (≤3 chars) are appended instantly. */

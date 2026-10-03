@@ -25,9 +25,9 @@ public record ChannelResponse(
     boolean deleted,
     LocalDateTime createdAt,
     LocalDateTime updatedAt,
-    /** URL webhook unique à copier dans le Meta App Dashboard (null si non-Facebook). */
+    /** URL webhook unique à copier dans le Meta App Dashboard (null hors Meta). */
     String webhookUrl,
-    /** Token de vérification Meta unique à ce canal (null si non-Facebook). */
+    /** Token de vérification Meta unique à ce canal (null hors Meta). */
     String verifyToken
 ) {
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -39,11 +39,17 @@ public record ChannelResponse(
     public static ChannelResponse fromWithUrl(Channel c, String publicUrl) {
         String webhookUrl  = null;
         String verifyToken = null;
-        if (c.getType() == ChannelType.SOCIAL_MEDIA && c.getPlatformType() == PlatformType.FACEBOOK) {
-            if (publicUrl != null && c.getId() != null) {
-                webhookUrl = publicUrl + "/api/facebook/webhook/" + c.getId();
+        if (c.getType() == ChannelType.SOCIAL_MEDIA) {
+            // Facebook et Instagram sont deux objets Meta distincts, avec deux
+            // URLs de webhook distinctes : le payload de l'un (`object: "page"`)
+            // serait rejeté par le contrôleur de l'autre (`object: "instagram"`).
+            String webhookPath = webhookPathFor(c.getPlatformType());
+            if (webhookPath != null) {
+                if (publicUrl != null && c.getId() != null) {
+                    webhookUrl = publicUrl + webhookPath + c.getId();
+                }
+                verifyToken = extractVerifyToken(c.getConfig());
             }
-            verifyToken = extractVerifyToken(c.getConfig());
         }
         return new ChannelResponse(
             c.getId(),
@@ -64,6 +70,13 @@ public record ChannelResponse(
             webhookUrl,
             verifyToken
         );
+    }
+
+    /** Préfixe de l'URL webhook par canal, ou {@code null} pour une plateforme sans webhook. */
+    private static String webhookPathFor(PlatformType platformType) {
+        if (platformType == PlatformType.FACEBOOK)  return "/api/facebook/webhook/";
+        if (platformType == PlatformType.INSTAGRAM) return "/api/instagram/webhook/";
+        return null;
     }
 
     private static String extractVerifyToken(String config) {

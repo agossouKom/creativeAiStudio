@@ -44,6 +44,16 @@ class WebhookVerifierTest {
         ReflectionTestUtils.setField(verifier, "telegramWebhookSecret", telegramSecret);
     }
 
+    /**
+     * Variante « une seule application Meta » : Instagram n'a pas ses propres
+     * variables, il retombe sur celles de Facebook (cf. application.yml).
+     */
+    private void configureInstagramSharingFacebookSecrets() {
+        ReflectionTestUtils.setField(verifier, "instagramVerifyToken",
+            ReflectionTestUtils.getField(verifier, "facebookVerifyToken"));
+        ReflectionTestUtils.setField(verifier, "instagramAppSecret", "");
+    }
+
     /** Signature Meta : sha256=HMAC-SHA256(corps, secret), hex minuscule. */
     private static String metaSignature(String payload, String secret) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
@@ -191,16 +201,69 @@ class WebhookVerifierTest {
         assertEquals(WebhookVerifier.Verdict.NOT_CONFIGURED, verifier.getFacebookState());
         assertEquals(WebhookVerifier.Verdict.NOT_CONFIGURED, verifier.getWhatsappState());
         assertEquals(WebhookVerifier.Verdict.NOT_CONFIGURED, verifier.getTelegramState());
+        assertEquals(WebhookVerifier.Verdict.NOT_CONFIGURED, verifier.getInstagramState());
+    }
+
+    // ── Instagram ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Instagram sans secret propre → repli sur l'app-secret Facebook")
+    void instagramReprendLesSecretsFacebook() {
+        // Une seule application Meta sert aux deux objets. Si l'endpoint
+        // Instagram exigeait son propre secret sans repli, il répondrait 503 en
+        // production alors que tout est configuré côté Meta.
+        configure("tok", SECRET, "tok2", SECRET, "tg");
+        configureInstagramSharingFacebookSecrets();
+
+        verifier.reportStartup();
+
+        assertEquals(SECRET, verifier.getInstagramAppSecret());
+        assertEquals(WebhookVerifier.Verdict.OK, verifier.getInstagramState());
+        assertEquals(WebhookVerifier.Verdict.OK,
+            verifier.checkInstagramToken("tok"));
+    }
+
+    @Test
+    @DisplayName("Instagram : un secret dédié prend le pas sur celui de Facebook")
+    void instagramSecretDediePrioritaire() throws Exception {
+        String dedicated = "app-secret-instagram";
+        configure("tok", SECRET, "tok2", SECRET, "tg");
+        ReflectionTestUtils.setField(verifier, "instagramVerifyToken", "tok-ig");
+        ReflectionTestUtils.setField(verifier, "instagramAppSecret", dedicated);
+
+        assertEquals(dedicated, verifier.getInstagramAppSecret());
+        // Signature calculée avec le mauvais secret : c'est bien le dédié qui est utilisé.
+        assertEquals(WebhookVerifier.Verdict.BAD_SIGNATURE,
+            verifier.checkInstagramSignature(PAYLOAD, metaSignature(PAYLOAD, SECRET)));
+        assertEquals(WebhookVerifier.Verdict.OK,
+            verifier.checkInstagramSignature(PAYLOAD, metaSignature(PAYLOAD, dedicated)));
+    }
+
+    @Test
+    @DisplayName("Instagram : aucun secret Meta du tout → endpoint fermé (503)")
+    void instagramSansAucunSecretFerme() {
+        configure("", "", "", "", "");
+        configureInstagramSharingFacebookSecrets();
+
+        verifier.reportStartup();
+
+        assertEquals(WebhookVerifier.Verdict.NOT_CONFIGURED, verifier.getInstagramState());
+        assertEquals(WebhookVerifier.Verdict.NOT_CONFIGURED,
+            verifier.checkInstagramToken("n'importe quoi"));
+        assertEquals(WebhookVerifier.Verdict.NOT_CONFIGURED,
+            verifier.checkInstagramSignature(PAYLOAD, "sha256=deadbeef"));
     }
 
     @Test
     @DisplayName("rapport de démarrage : tout configuré → aucun état désactivé")
     void rapportDemarrageToutConfigure() {
         configure("tok", SECRET, "tok2", SECRET, "tg");
+        configureInstagramSharingFacebookSecrets();
 
         verifier.reportStartup();
 
         assertEquals(WebhookVerifier.Verdict.OK, verifier.getFacebookState());
+        assertEquals(WebhookVerifier.Verdict.OK, verifier.getInstagramState());
         assertEquals(WebhookVerifier.Verdict.OK, verifier.getWhatsappState());
         assertEquals(WebhookVerifier.Verdict.OK, verifier.getTelegramState());
     }

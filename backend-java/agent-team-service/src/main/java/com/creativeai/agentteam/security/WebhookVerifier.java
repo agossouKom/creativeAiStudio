@@ -58,11 +58,14 @@ public class WebhookVerifier {
 
     @Value("${facebook.verify-token:}")   private String facebookVerifyToken;
     @Value("${facebook.app-secret:}")     private String facebookAppSecret;
+    @Value("${instagram.verify-token:}")  private String instagramVerifyToken;
+    @Value("${instagram.app-secret:}")    private String instagramAppSecret;
     @Value("${whatsapp.verify-token:}")   private String whatsappVerifyToken;
     @Value("${whatsapp.app-secret:}")     private String whatsappAppSecret;
     @Value("${telegram.webhook-secret:}") private String telegramWebhookSecret;
 
     @Getter private Verdict facebookState;
+    @Getter private Verdict instagramState;
     @Getter private Verdict whatsappState;
     @Getter private Verdict telegramState;
 
@@ -70,17 +73,28 @@ public class WebhookVerifier {
     @PostConstruct
     public void reportStartup() {
         facebookState = describe(facebookVerifyToken, facebookAppSecret);
+        instagramState = describe(instagramVerifyToken, getInstagramAppSecret());
         whatsappState = describe(whatsappVerifyToken, whatsappAppSecret);
         telegramState = describe(telegramWebhookSecret);
 
         log.info("[WEBHOOK] Configuration au démarrage — "
                 + "facebook.verify-token={}, facebook.app-secret={}, "
+                + "instagram.verify-token={}, instagram.app-secret={}, "
                 + "whatsapp.verify-token={}, whatsapp.app-secret={}, telegram.webhook-secret={}",
             present(facebookVerifyToken), present(facebookAppSecret),
+            present(instagramVerifyToken), present(instagramAppSecret),
             present(whatsappVerifyToken), present(whatsappAppSecret), present(telegramWebhookSecret));
 
         warnIfDisabled("facebook", facebookState, "FACEBOOK_VERIFY_TOKEN", "FACEBOOK_APP_SECRET");
         warnIfDisabled("whatsapp", whatsappState, "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET");
+        if (instagramState == Verdict.NOT_CONFIGURED) {
+            // Le message cite les deux noms de variable parce que l'app-secret
+            // Instagram retombe sur celui de Facebook : l'opérateur doit savoir
+            // que poser seulement FACEBOOK_APP_SECRET ne suffit pas.
+            log.error("[WEBHOOK] ⚠️  instagram : configuration incomplète → /api/instagram/webhook "
+                + "REFUSERA toutes les requêtes (fail-closed, 503). Définir INSTAGRAM_VERIFY_TOKEN et "
+                + "INSTAGRAM_APP_SECRET (ou leurs équivalents FACEBOOK_VERIFY_TOKEN / FACEBOOK_APP_SECRET).");
+        }
         if (telegramState == Verdict.NOT_CONFIGURED) {
             log.error("[WEBHOOK] ⚠️  TELEGRAM : secret absent → /api/telegram/webhook REFUSERA "
                 + "toutes les requêtes (fail-closed). Définir TELEGRAM_WEBHOOK_SECRET pour l'activer.");
@@ -180,6 +194,34 @@ public class WebhookVerifier {
 
     public Verdict checkFacebookToken(String presented) {
         return checkToken(presented, facebookVerifyToken);
+    }
+
+    /**
+     * Signature du webhook Instagram.
+     *
+     * <p>Même secret que Facebook dans le cas nominal : les deux objets sont
+     * servis par UNE application Meta, et {@code X-Hub-Signature-256} est toujours
+     * signé avec l'app-secret, jamais avec un token de compte.
+     */
+    public Verdict checkInstagramSignature(String payload, String signature) {
+        return checkMetaSignature(payload, signature, getInstagramAppSecret());
+    }
+
+    public Verdict checkInstagramToken(String presented) {
+        return checkToken(presented, instagramVerifyToken);
+    }
+
+    /**
+     * App-secret Meta pour les endpoints Instagram.
+     *
+     * <p>Repli sur l'app-secret Facebook quand aucune app Meta dédiée à Instagram
+     * n'est configurée — le cas nominal, une seule application Meta sert aux deux
+     * objets. Le repli est appliqué ici et pas seulement dans le {@code yml} pour
+     * que {@link #checkInstagramSignature} et ce getter ne puissent pas diverger :
+     * deux réponses différentes à la même question de configuration.
+     */
+    public String getInstagramAppSecret() {
+        return isBlank(instagramAppSecret) ? facebookAppSecret : instagramAppSecret;
     }
 
     public Verdict checkWhatsAppToken(String presented) {

@@ -5,6 +5,7 @@ import com.creativeai.agentteam.repository.AgentRepository;
 import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
+import com.creativeai.agentteam.service.MetaWebhookSubscriptionService;
 import com.creativeai.agentteam.service.OAuthStateStore;
 import com.creativeai.agentteam.service.SocialPlatformConfigService;
 import com.creativeai.agentteam.service.UserSocialAccountService;
@@ -56,6 +57,7 @@ class OAuthSocialFacebookConfigIdTest {
     @Mock private AgentRepository agentRepo;
     @Mock private EncryptionService encryptionService;
     @Mock private SocialPlatformConfigService platformConfig;
+    @Mock private MetaWebhookSubscriptionService metaSubscriptions;
     @Mock private UserSocialAccountService userSocialAccounts;
 
     private OAuthSocialController controller;
@@ -64,7 +66,7 @@ class OAuthSocialFacebookConfigIdTest {
     void setUp() {
         controller = new OAuthSocialController(channelService, channelRepo, agentRepo,
             encryptionService, new OAuthStateStore(600, 1000), new ObjectMapper(),
-            platformConfig, userSocialAccounts);
+            platformConfig, userSocialAccounts, metaSubscriptions);
         ReflectionTestUtils.setField(controller, "frontendUrl", "https://app.test");
         lenient().when(platformConfig.resolve(anyString())).thenReturn(
             new SocialPlatformConfigService.Credentials("client-id", "client-secret", false));

@@ -150,6 +150,14 @@ facebook:
   poll-fixed-delay-ms: ${FACEBOOK_POLL_DELAY_MS:300000}
 
 instagram:
+  # Une seule application Meta sert aux deux objets (page Facebook ET compte
+  # Instagram professionnel) : il n'y a donc qu'un app-secret et qu'un
+  # verify_token. Les variables INSTAGRAM_* sont un repli explicite pour le jour
+  # où une seconde application Meta serait créée pour Instagram ; en leur
+  # absence on réutilise les secrets Facebook, qui est le cas nominal.
+  # Défauts toujours vides : un secret en dur serait un secret publié.
+  verify-token: ${INSTAGRAM_VERIFY_TOKEN:${FACEBOOK_VERIFY_TOKEN:}}
+  app-secret: ${INSTAGRAM_APP_SECRET:${FACEBOOK_APP_SECRET:}}
   polling-enabled: ${INSTAGRAM_POLLING_ENABLED:false}
   poll-fixed-delay-ms: ${INSTAGRAM_POLL_DELAY_MS:300000}
 

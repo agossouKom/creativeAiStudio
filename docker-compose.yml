@@ -663,6 +663,11 @@ services:
       # ouvrir la porte. Voir WebhookVerifier.
       # Telegram : n'accepte que [A-Za-z0-9_-]{1,256} chez setWebhook.
       FACEBOOK_VERIFY_TOKEN: ${FACEBOOK_VERIFY_TOKEN:-}
+      # Instagram est servi par la MÊME application Meta : ces variables ne sont
+      # définies que si l'administrateur crée une seconde app Meta pour Instagram.
+      # Absentes => repli sur FACEBOOK_VERIFY_TOKEN / FACEBOOK_APP_SECRET.
+      INSTAGRAM_VERIFY_TOKEN: ${INSTAGRAM_VERIFY_TOKEN:-}
+      INSTAGRAM_APP_SECRET: ${INSTAGRAM_APP_SECRET:-}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}

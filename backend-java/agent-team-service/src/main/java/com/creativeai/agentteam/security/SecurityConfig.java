@@ -46,7 +46,12 @@ public class SecurityConfig {
                     "/api/oauth/social/facebook/deauthorize",
                     // Webhooks entrants : authentifiés par leur propre jeton
                     // (verify_token Meta, secret Telegram/WhatsApp) dans le handler.
+                    // Instagram est un objet Meta distinct de la Page : son
+                    // payload a `object: "instagram"` et son propre contrôleur,
+                    // donc son chemin doit être ouvert explicitement — un
+                    // permitAll de préfixe sur `/api/facebook/**` ne le couvre pas.
                     "/api/facebook/webhook/**",
+                    "/api/instagram/webhook/**",
                     "/api/telegram/webhook/**",
                     "/api/whatsapp/webhook/**",
                     // Appels entre services (planificateur de publication).

@@ -9,6 +9,7 @@ import com.creativeai.agentteam.repository.AgentRepository;
 import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
+import com.creativeai.agentteam.service.MetaWebhookSubscriptionService;
 import com.creativeai.agentteam.service.OAuthStateStore;
 import com.creativeai.agentteam.service.SocialPlatformConfigService;
 import com.creativeai.agentteam.service.UserSocialAccountService;
@@ -64,6 +65,7 @@ class OAuthSocialPagesSelectionTest {
     @Mock private AgentRepository agentRepo;
     @Mock private EncryptionService encryptionService;
     @Mock private SocialPlatformConfigService platformConfig;
+    @Mock private MetaWebhookSubscriptionService metaSubscriptions;
     @Mock private UserSocialAccountService userSocialAccounts;
 
     private OAuthSocialController controller;
@@ -71,7 +73,8 @@ class OAuthSocialPagesSelectionTest {
     @BeforeEach
     void setUp() {
         controller = new OAuthSocialController(channelService, channelRepo, agentRepo,
-            encryptionService, new OAuthStateStore(600, 1000), new ObjectMapper(), platformConfig, userSocialAccounts);
+            encryptionService, new OAuthStateStore(600, 1000), new ObjectMapper(), platformConfig,
+            userSocialAccounts, metaSubscriptions);
         ReflectionTestUtils.setField(controller, "frontendUrl", "https://app.test");
         // Résolution de la config plateforme : sans stub, le mock renvoie null
         // et le contrôleur-plantait sur un NPE avant même d'atteindre sa logique.

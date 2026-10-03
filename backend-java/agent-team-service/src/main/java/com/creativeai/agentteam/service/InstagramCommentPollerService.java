@@ -31,7 +31,9 @@ import java.util.Map;
 @ConditionalOnProperty(name = "instagram.polling-enabled", havingValue = "true")
 public class InstagramCommentPollerService {
 
-    private static final String   SEEN_PREFIX       = "ig:seen:";
+    // Préfixe et TTL partagés avec le webhook Instagram : les deux chemins écrivent
+    // le même marqueur, donc un commentaire vu par l'un n'est pas rejoué par l'autre.
+    private static final String   SEEN_PREFIX       = WebhookEventDeduplicator.IG_SEEN_PREFIX;
     private static final Duration SEEN_TTL          = Duration.ofDays(7);
     private static final long     DEFAULT_INTERVAL  = 300_000L; // 5 min
     private static final int      MAX_MEDIA         = 10;

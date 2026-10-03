@@ -40,7 +40,7 @@ public class ChannelService {
     @Transactional
     public ChannelResponse createChannel(String userId, String agentId, ChannelRequest req) {
         Agent agent = resolveAgent(userId, agentId);
-        String config = injectFacebookVerifyToken(req.type(), req.platformType(), req.config());
+        String config = injectMetaVerifyToken(req.type(), req.platformType(), req.config());
         Channel channel = Channel.builder()
             .agent(agent)
             .type(req.type())
@@ -182,12 +182,18 @@ public class ChannelService {
     }
 
     /**
-     * Pour un canal SOCIAL_MEDIA / FACEBOOK, injecte un `verifyToken` unique dans le JSON de config
-     * si aucun n'est déjà présent. Ce token est propre à chaque canal : chaque utilisateur
-     * configure son propre Meta App Dashboard avec l'URL webhook et ce token.
+     * Pour un canal SOCIAL_MEDIA Meta (FACEBOOK ou INSTAGRAM), injecte un
+     * `verifyToken` unique dans le JSON de config si aucun n'est déjà présent.
+     *
+     * <p>Instagram est inclus parce que son webhook se configure exactement comme
+     * celui de Facebook : même tableau de bord Meta, même principe de jeton par
+     * canal. Sans ce token, {@code ChannelResponse.verifyToken} aurait valu
+     * {@code null} et le canal Instagram n'avait aucun moyen d'être vérifié par Meta.
      */
-    private String injectFacebookVerifyToken(ChannelType type, PlatformType platform, String config) {
-        if (type != ChannelType.SOCIAL_MEDIA || platform != PlatformType.FACEBOOK) return config;
+    private String injectMetaVerifyToken(ChannelType type, PlatformType platform, String config) {
+        if (type != ChannelType.SOCIAL_MEDIA) return config;
+        boolean metaPlatform = platform == PlatformType.FACEBOOK || platform == PlatformType.INSTAGRAM;
+        if (!metaPlatform) return config;
         try {
             ObjectNode node = config != null && !config.isBlank()
                 ? (ObjectNode) objectMapper.readTree(config)

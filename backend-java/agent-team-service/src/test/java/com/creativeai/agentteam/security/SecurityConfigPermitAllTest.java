@@ -2,6 +2,7 @@ package com.creativeai.agentteam.security;
 
 import com.creativeai.agentteam.controller.FacebookDeauthorizeController;
 import com.creativeai.agentteam.controller.FacebookWebhookController;
+import com.creativeai.agentteam.controller.InstagramWebhookController;
 import com.creativeai.agentteam.controller.MediaController;
 import com.creativeai.agentteam.controller.OAuthSocialController;
 import com.creativeai.agentteam.model.Agent;
@@ -10,11 +11,13 @@ import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.repository.UserSocialAccountRepository;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
+import com.creativeai.agentteam.service.MetaWebhookSubscriptionService;
 import com.creativeai.agentteam.service.MinioService;
 import com.creativeai.agentteam.service.OAuthStateStore;
 import com.creativeai.agentteam.service.SocialPlatformConfigService;
 import com.creativeai.agentteam.service.UserSocialAccountService;
 import com.creativeai.agentteam.service.TaskService;
+import com.creativeai.agentteam.service.WebhookEventDeduplicator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -46,7 +49,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * JWT cessait de s'appliquer.
  */
 @WebMvcTest(controllers = {MediaController.class, OAuthSocialController.class,
-    FacebookWebhookController.class, FacebookDeauthorizeController.class})
+    FacebookWebhookController.class, FacebookDeauthorizeController.class,
+    InstagramWebhookController.class})
 @Import({SecurityConfig.class, JwtAuthFilter.class, WebhookVerifier.class})
 class SecurityConfigPermitAllTest {
 
@@ -64,6 +68,8 @@ class SecurityConfigPermitAllTest {
     @MockBean private SocialPlatformConfigService platformConfig;
     @MockBean private UserSocialAccountService userSocialAccounts;
     @MockBean private UserSocialAccountRepository accountRepository;
+    @MockBean private MetaWebhookSubscriptionService metaSubscriptions;
+    @MockBean private WebhookEventDeduplicator webhookDedup;
 
     /**
      * L'app ne déclare aucun AuthenticationEntryPoint : une requête sans
@@ -181,6 +187,46 @@ class SecurityConfigPermitAllTest {
                 .param("hub.verify_token", "jeton-incorrect")
                 .param("hub.challenge", "42"))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void webhookInstagramRestePublicEtSeValideLuiMeme() throws Exception {
+        // Instagram est un objet Meta DIFFÉRENT de la Page : son chemin n'est
+        // couvert par aucun autre permitAll de préfixe. Si quelqu'un le retirait,
+        // Meta recevrait 403 sur ses notifications — sans qu'aucun test unitaire
+        // du contrôleur ne le remarque, puisqu'ils l'appellent en direct.
+        mockMvc.perform(get("/api/instagram/webhook")
+                .param("hub.mode", "subscribe")
+                .param("hub.verify_token", "jeton-incorrect")
+                .param("hub.challenge", "42"))
+            .andExpect(status().isServiceUnavailable());
+
+        ReflectionTestUtils.setField(webhookVerifier, "instagramVerifyToken", "jeton-attendu");
+        mockMvc.perform(get("/api/instagram/webhook")
+                .param("hub.mode", "subscribe")
+                .param("hub.verify_token", "jeton-incorrect")
+                .param("hub.challenge", "42"))
+            .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/instagram/webhook")
+                .param("hub.mode", "subscribe")
+                .param("hub.verify_token", "jeton-attendu")
+                .param("hub.challenge", "1158201444"))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void webhookInstagramParCanalRestePublic() throws Exception {
+        // Le 404 vient du contrôleur (canal absent), pas de la chaîne : un 403
+        // signifierait que le filtre JWT bloque un webhook qui ne peut pas en porter.
+        when(channelRepo.findByIdAndDeletedFalse("canal-inexistant"))
+            .thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(get("/api/instagram/webhook/canal-inexistant")
+                .param("hub.mode", "subscribe")
+                .param("hub.verify_token", "jeton")
+                .param("hub.challenge", "42"))
+            .andExpect(status().isNotFound());
     }
 
     @Test

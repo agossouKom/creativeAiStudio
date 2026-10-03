@@ -4,6 +4,7 @@ import com.creativeai.agentteam.repository.AgentRepository;
 import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.EncryptionService;
+import com.creativeai.agentteam.service.MetaWebhookSubscriptionService;
 import com.creativeai.agentteam.service.OAuthStateStore;
 import com.creativeai.agentteam.service.SocialPlatformConfigService;
 import com.creativeai.agentteam.service.UserSocialAccountService;
@@ -33,7 +34,8 @@ class OAuthSocialRedirectTest {
         controller = new OAuthSocialController(
             mock(ChannelService.class), mock(ChannelRepository.class), mock(AgentRepository.class),
             mock(EncryptionService.class), new OAuthStateStore(600, 1000), new ObjectMapper(),
-            mock(SocialPlatformConfigService.class), mock(UserSocialAccountService.class));
+            mock(SocialPlatformConfigService.class), mock(UserSocialAccountService.class),
+            mock(MetaWebhookSubscriptionService.class));
     }
 
     private String returnPathFor(String configured) {

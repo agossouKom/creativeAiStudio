@@ -4,6 +4,7 @@ import com.creativeai.agentteam.model.Channel;
 import com.creativeai.agentteam.repository.ChannelRepository;
 import com.creativeai.agentteam.security.WebhookVerifier;
 import com.creativeai.agentteam.service.TaskService;
+import com.creativeai.agentteam.service.WebhookEventDeduplicator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,14 +42,17 @@ class WebhookSecurityTest {
 
     @Mock private ChannelRepository channelRepo;
     @Mock private TaskService taskService;
+    @Mock private WebhookEventDeduplicator dedup;
 
     private FacebookWebhookController facebook;
+    private InstagramWebhookController instagram;
     private WhatsAppWebhookController whatsApp;
     private TelegramWebhookController telegram;
     private WebhookVerifier verifier;
 
     private static final String APP_SECRET = "app-secret-meta";
     private static final String PAYLOAD = "{\"object\":\"page\",\"entry\":[]}";
+    private static final String IG_PAYLOAD = "{\"object\":\"instagram\",\"entry\":[]}";
 
     @BeforeEach
     void setUp() {
@@ -56,6 +60,7 @@ class WebhookSecurityTest {
         ObjectMapper mapper = new ObjectMapper();
 
         facebook = new FacebookWebhookController(channelRepo, taskService, mapper, verifier);
+        instagram = new InstagramWebhookController(channelRepo, taskService, mapper, verifier, dedup);
         whatsApp = new WhatsAppWebhookController(taskService, mapper, verifier);
         telegram = new TelegramWebhookController(taskService, mapper, verifier);
     }
@@ -63,6 +68,8 @@ class WebhookSecurityTest {
     private void configureAll() {
         ReflectionTestUtils.setField(verifier, "facebookVerifyToken", "fb-verify-token");
         ReflectionTestUtils.setField(verifier, "facebookAppSecret", APP_SECRET);
+        ReflectionTestUtils.setField(verifier, "instagramVerifyToken", "ig-verify-token");
+        ReflectionTestUtils.setField(verifier, "instagramAppSecret", APP_SECRET);
         ReflectionTestUtils.setField(verifier, "whatsappVerifyToken", "wa-verify-token");
         ReflectionTestUtils.setField(verifier, "whatsappAppSecret", APP_SECRET);
         ReflectionTestUtils.setField(verifier, "telegramWebhookSecret", "tg-secret");
@@ -71,6 +78,7 @@ class WebhookSecurityTest {
     private void configureNothing() {
         configureAll();
         ReflectionTestUtils.setField(verifier, "facebookAppSecret", "");
+        ReflectionTestUtils.setField(verifier, "instagramAppSecret", "");
         ReflectionTestUtils.setField(verifier, "whatsappAppSecret", "");
         ReflectionTestUtils.setField(verifier, "telegramWebhookSecret", "");
     }
@@ -220,6 +228,101 @@ class WebhookSecurityTest {
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, r.getStatusCode());
     }
 
+    // ── Instagram ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Instagram POST sans app-secret configuré → 503, webhook fermé")
+    void instagramSansAppSecretFerme() {
+        configureNothing();
+
+        ResponseEntity<String> r = instagram.receive(null, IG_PAYLOAD);
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, r.getStatusCode());
+        verify(taskService, never()).createTask(anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Instagram POST sans signature → 403, aucune tâche créée")
+    void instagramSansSignatureRefuse() {
+        configureAll();
+
+        ResponseEntity<String> r = instagram.receive(null, IG_PAYLOAD);
+
+        assertEquals(HttpStatus.FORBIDDEN, r.getStatusCode());
+        verify(taskService, never()).createTask(anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Instagram POST avec signature forgée → 403")
+    void instagramSignatureForgeeRefusee() throws Exception {
+        configureAll();
+
+        ResponseEntity<String> r = instagram.receive(metaSignature(IG_PAYLOAD, "mauvais-secret"), IG_PAYLOAD);
+
+        assertEquals(HttpStatus.FORBIDDEN, r.getStatusCode());
+        verify(taskService, never()).createTask(anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Instagram POST avec signature valide → traité (200)")
+    void instagramSignatureValideAcceptee() throws Exception {
+        configureAll();
+
+        ResponseEntity<String> r = instagram.receive(metaSignature(IG_PAYLOAD, APP_SECRET), IG_PAYLOAD);
+
+        assertEquals(HttpStatus.OK, r.getStatusCode());
+    }
+
+    @Test
+    @DisplayName("Instagram GET avec le bon verify_token → 200 + challenge")
+    void instagramHandshakeValide() {
+        configureAll();
+
+        ResponseEntity<String> r = instagram.verify("subscribe", "ig-verify-token", "1158201444");
+
+        assertEquals(HttpStatus.OK, r.getStatusCode());
+        assertEquals("1158201444", r.getBody());
+    }
+
+    @Test
+    @DisplayName("Instagram GET avec le verify_token Facebook → 403")
+    void instagramHandshakeRejetteLeJetonFacebook() {
+        // Le jeton global est propre à l'endpoint : accepter celui de Facebook
+        // permettrait de valider un abonnement Instagram avec un secret d'un autre
+        // endpoint. La comparaison reste en temps constant dans WebhookVerifier.
+        configureAll();
+
+        ResponseEntity<String> r = instagram.verify("subscribe", "fb-verify-token", "42");
+
+        assertEquals(HttpStatus.FORBIDDEN, r.getStatusCode());
+    }
+
+    @Test
+    @DisplayName("Instagram GET sans verify_token configuré → 503")
+    void instagramHandshakeSansToken() {
+        configureAll();
+        ReflectionTestUtils.setField(verifier, "instagramVerifyToken", "");
+
+        ResponseEntity<String> r = instagram.verify("subscribe", "n'importe-quoi", "42");
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, r.getStatusCode());
+    }
+
+    @Test
+    @DisplayName("Instagram GET /{channelId} sans appSecret global configuré → 503")
+    void instagramParCanalSansAppSecretGlobalFerme() {
+        configureAll();
+        ReflectionTestUtils.setField(verifier, "instagramAppSecret", "");
+        ReflectionTestUtils.setField(verifier, "facebookAppSecret", "");
+        when(channelRepo.findByIdAndDeletedFalse("canal-1"))
+            .thenReturn(Optional.of(channel()));
+
+        ResponseEntity<String> r = instagram.receivePerChannel("canal-1", "sha256=deadbeef", IG_PAYLOAD);
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, r.getStatusCode());
+        verify(taskService, never()).createTask(anyString(), any(), any());
+    }
+
     // ── WhatsApp ─────────────────────────────────────────────────────────────
 
     @Test
@@ -312,12 +415,14 @@ class WebhookSecurityTest {
     // ── Garde-fou commun ─────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("aucun secret configuré : les trois webhooks renvoient 503, pas 200")
+    @DisplayName("aucun secret configuré : les webhooks renvoient 503, pas 200")
     void aucunSecretTousFermes() {
         configureNothing();
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE,
             facebook.receive(null, PAYLOAD).getStatusCode());
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE,
+            instagram.receive(null, IG_PAYLOAD).getStatusCode());
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE,
             whatsApp.receive("u", "sha256=x", PAYLOAD).getStatusCode());
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE,
