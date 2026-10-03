@@ -9,14 +9,23 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.codec.FormHttpMessageWriter;
+import org.springframework.http.codec.HttpMessageWriter;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.mock.http.client.reactive.MockClientHttpRequest;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserter;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -42,11 +51,14 @@ class MetaWebhookSubscriptionServiceTest {
 
     /** URLs réellement demandées à Meta, dans l'ordre. */
     private List<URI> calls;
+    /** Corps des appels, pour vérifier ce que Meta reçoit réellement. */
+    private List<MultiValueMap<String, String>> forms;
     private MetaWebhookSubscriptionService service;
 
     @BeforeEach
     void setUp() {
         calls = new ArrayList<>();
+        forms = new ArrayList<>();
         when(platformConfig.graphBaseUrl("FACEBOOK")).thenReturn("https://graph.facebook.com/v24.0");
         service = new MetaWebhookSubscriptionService(graphAlwaysReturning(), platformConfig);
     }
@@ -59,11 +71,37 @@ class MetaWebhookSubscriptionServiceTest {
     private WebClient.Builder graphReturning(HttpStatus status, String body) {
         return WebClient.builder().exchangeFunction(request -> {
             calls.add(request.url());
+            forms.add(captureForm(request));
             return Mono.just(ClientResponse.create(status)
                 .header("Content-Type", "application/json")
                 .body(body)
                 .build());
         });
+    }
+
+    /** Relit le formulaire envoyé dans le corps de la requête. */
+    private MultiValueMap<String, String> captureForm(
+            org.springframework.web.reactive.function.client.ClientRequest request) {
+        MockClientHttpRequest captured =
+            new MockClientHttpRequest(org.springframework.http.HttpMethod.POST, URI.create("/"));
+        captured.getHeaders().addAll(request.headers());
+        request.body().insert(captured, new BodyInserter.Context() {
+            @Override public List<HttpMessageWriter<?>> messageWriters() {
+                return List.of(new FormHttpMessageWriter());
+            }
+            @Override public Optional<ServerHttpRequest> serverRequest() { return Optional.empty(); }
+            @Override public Map<String, Object> hints() { return Collections.emptyMap(); }
+        }).block();
+        String raw = captured.getBodyAsString().block();
+        MultiValueMap<String, String> form = new org.springframework.util.LinkedMultiValueMap<>();
+        for (String pair : raw.split("&")) {
+            int eq = pair.indexOf('=');
+            String key = eq < 0 ? pair : pair.substring(0, eq);
+            String val = eq < 0 ? "" : pair.substring(eq + 1);
+            form.add(java.net.URLDecoder.decode(key, StandardCharsets.UTF_8),
+                java.net.URLDecoder.decode(val, StandardCharsets.UTF_8));
+        }
+        return form;
     }
 
     private void assertSubscribed(String objectId) {
@@ -79,6 +117,21 @@ class MetaWebhookSubscriptionServiceTest {
     }
 
     // ── Ce qui doit être appelé ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("les champs demandés sont acceptés par Meta, et comments n'en fait pas partie")
+    void champsDemandesValides() {
+        service.subscribe(PAGE_ID, PAGE_TOK, IG_ID);
+
+        // Meta rejette TOUT l'appel si un seul champ est inconnu (#100), et pour
+        // une Page « comments » n'existe pas : les commentaires sur les posts
+        // arrivent par « feed ». Vu en prod le 2026-10-03, l'abonnement était
+        // refusé en silence et aucun événement n'arrivait.
+        assertEquals("feed,mention", forms.get(0).getFirst("subscribed_fields"));
+        assertEquals("comments,live_comments,mentions", forms.get(1).getFirst("subscribed_fields"));
+        assertFalse(String.valueOf(forms.get(0).getFirst("subscribed_fields")).contains("comments"),
+            "« comments » n'est pas un subscribed_field valide pour une Page");
+    }
 
     @Test
     @DisplayName("la Page ET le compte Instagram sont abonnés")

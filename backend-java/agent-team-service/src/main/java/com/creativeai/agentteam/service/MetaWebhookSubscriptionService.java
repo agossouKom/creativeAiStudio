@@ -2,7 +2,11 @@ package com.creativeai.agentteam.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
@@ -56,7 +60,7 @@ public class MetaWebhookSubscriptionService {
 
         // La Page d'abord : cet appel abonne aussi l'objet Instagram rattaché.
         // L'ignorer laisserait la moitié des notifications dans le vide.
-        boolean pageOk = callSubscribedApps(pageId, pageAccessToken);
+        boolean pageOk = callSubscribedApps(pageId, pageAccessToken, PAGE_FIELDS);
         if (!pageOk) {
             log.warn("[META_WEBHOOK] Abonnement refusé par Meta pour la page {} — les commentaires ne "
                 + "seront PAS reçus par webhook. Reconnecter le compte depuis Workspace, ou s'abonner à la "
@@ -70,31 +74,66 @@ public class MetaWebhookSubscriptionService {
             return true;
         }
 
-        boolean igOk = callSubscribedApps(igUserId, pageAccessToken);
+        boolean igOk = callSubscribedApps(igUserId, pageAccessToken, INSTAGRAM_FIELDS);
         if (igOk) {
             log.info("[META_WEBHOOK] Abonné aux événements — page={} instagram={}", pageId, igUserId);
         } else {
-            log.warn("[META_WEBHOOK] Page {} abonnée, mais Meta a refusé l'abonnement du compte Instagram "
-                + "{} — les commentaires Instagram ne seront pas reçus par webhook.", pageId, igUserId);
+            log.warn("[META_WEBHOOK] Page {} abonnée, mais pas d'abonnement direct du compte Instagram "
+                + "{} — les événements IG continueront d'arriver tant que l'abonnement à la Page est "
+                + "valide ; un abonnement direct exige les capacités Instagram de l'application.",
+                pageId, igUserId);
         }
         return igOk;
     }
 
+    /**
+     * Champs pour lesquels on demande la livraison, alignés sur ce que les
+     * contrôleurs de webhook savent réellement traiter.
+     *
+     * <p>Attention : la liste n'est pas celle des cases à cocher du tableau de
+     * bord. Meta ne l'accepte que si <b>tous</b> les champs sont valides, et un
+     * seul champ inconnu fait échouer tout l'appel en 400
+     * ({@code (#100) Param subscribed_fields[n] must be one of {...}}) — donc
+     * l'abonnement part à la poubelle et plus aucun événement n'arrive. Pour une
+     * Page, {@code comments} n'existe pas : les commentaires sur les publications
+     * arrivent par {@code feed} (événement {@code comment}). {@code mention}
+     * couvre les tags de la Page.
+     */
+    private static final String PAGE_FIELDS      = "feed,mention";
+    private static final String INSTAGRAM_FIELDS = "comments,live_comments,mentions";
+
     /** Un HTTP 2xx vaut succès : c'est le seul signal fiable de cet endpoint. */
-    private boolean callSubscribedApps(String objectId, String accessToken) {
+    private boolean callSubscribedApps(String objectId, String accessToken, String subscribedFields) {
         String url = platformConfig.graphBaseUrl("FACEBOOK") + "/" + objectId + "/subscribed_apps"
             + "?access_token=" + accessToken;
+        // Meta refuse l'appel sans `subscribed_fields` ("(#100) The parameter
+        // subscribed_fields is required") : il doit être envoyé en form, pas en
+        // query — sinon l'abonnement échoue et aucun événement n'arrive jamais.
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("subscribed_fields", subscribedFields);
         try {
             String body = webClientBuilder.build().post().uri(url)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(BodyInserters.fromFormData(form))
                 .retrieve()
                 .bodyToMono(String.class)
                 .defaultIfEmpty("")
                 .block();
-            log.debug("[META_WEBHOOK] subscribed_apps objectId={} → {}", objectId, body);
+            log.debug("[META_WEBHOOK] subscribed_apps objectId={} fields={} → {}", objectId, subscribedFields, body);
             return true;
         } catch (WebClientResponseException e) {
+            String body = e.getResponseBodyAsString();
+            // (#3) "Application does not have the capability to make this API call" :
+            // ce n'est pas une panne de notre côté, c'est l'app qui n'a pas la
+            // capacité Instagram demandée. Un ERROR ici ferait croire à une
+            // subscription perdue alors que la Page, elle, est bien abonnée.
+            if (body.contains("(#3)") || body.contains("\"code\":3")) {
+                log.info("[META_WEBHOOK] Pas d'abonnement direct de l'objet {} : l'application Meta n'a pas "
+                    + "la capacité correspondante ({})", objectId, body);
+                return false;
+            }
             log.warn("[META_WEBHOOK] subscribed_apps HTTP {} pour objectId={} : {}",
-                e.getStatusCode(), objectId, e.getResponseBodyAsString());
+                e.getStatusCode(), objectId, body);
             return false;
         } catch (Exception e) {
             log.warn("[META_WEBHOOK] subscribed_apps impossible pour objectId={} : {}", objectId, e.getMessage());
