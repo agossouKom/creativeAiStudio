@@ -150,8 +150,14 @@ public class InstagramService {
                 containerParams.put("image_url", imageUrl);
             }
         } else {
-            // Post texte uniquement (carousel ou image requise sur IG — on tente quand même)
-            containerParams.put("media_type", "IMAGE");
+            // L'API Instagram n'a pas de publication texte seule : /media exige
+            // image_url, video_url (REELS) ou children (CAROUSEL). Envoyer
+            // media_type=IMAGE sans image_url ne fait que repousser l'erreur de
+            // Meta en (#100) illisible pour l'utilisateur — mieux vaut un refus
+            // explicite ici, avant de créer quoi que ce soit.
+            throw new IllegalStateException(
+                "Instagram n'accepte pas une publication texte seule : ajoutez au moins une image "
+                    + "(mediaUrls) ou une vidéo Reel. Facebook, lui, publie du texte sans média.");
         }
 
         String containerResp;
