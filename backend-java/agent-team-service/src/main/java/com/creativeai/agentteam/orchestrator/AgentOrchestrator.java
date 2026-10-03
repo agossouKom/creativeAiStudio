@@ -37,6 +37,8 @@ import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -110,6 +112,33 @@ public class AgentOrchestrator {
     public Flux<String> chat(String agentId, String userId, String userMessage,
                              String sessionId, String context) {
         return chatInternal(agentId, userId, userMessage, sessionId, context, List.of(), false);
+    }
+
+    /**
+     * Exécute une tâche en <b>ajoutant</b> des outils à ceux de l'agent, sans les
+     * remplacer.
+     *
+     * <p>Une tâche sociale est construite pour exiger un outil précis — le
+     * description dit literalmente « utilise l'outil reply_facebook_comment ».
+     * Si la whitelist de l'agent ne contient pas cet outil, la tâche devient
+     * impossible : l'agent lisait le commentaire, n'avait rien à appeler, et la
+     * tâche se terminait « avec succès » sans rien publier. C'est exactement ce
+     * qui s'est produit en prod le 2026-10-03 sur l'agent « Studio », dont la
+     * whitelist ne listait que post_social, list_media et get_current_date.
+     *
+     * <p>La whitelist sert à encadrer les actions spontanées de l'agent ; elle ne
+     * doit pas pouvoir supprimer un outil qu'une tâche lui a explicitement
+     * demandé d'utiliser. D'où l'union, et non le remplacement.
+     */
+    public Flux<String> chatWithTools(String agentId, String userId, String userMessage,
+                                      String sessionId, String taskId,
+                                      Collection<String> requiredTools) {
+        if (requiredTools == null || requiredTools.isEmpty()) {
+            return chat(agentId, userId, userMessage, sessionId, taskId);
+        }
+        Set<String> merged = new LinkedHashSet<>(getEnabledTools(agentId));
+        merged.addAll(requiredTools);
+        return chatInternal(agentId, userId, userMessage, sessionId, taskId, List.copyOf(merged), false);
     }
 
     public Flux<String> chatAsSubAgent(String agentId, String userId,

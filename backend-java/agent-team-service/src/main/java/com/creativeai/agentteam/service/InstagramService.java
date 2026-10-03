@@ -171,7 +171,7 @@ public class InstagramService {
                 .block();
         } catch (WebClientResponseException e) {
             log.error("[INSTAGRAM] Erreur création container HTTP {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("Instagram API " + e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            throw new IllegalStateException(describeApiError(e));
         }
 
         String creationId = extractId(containerResp);
@@ -246,10 +246,28 @@ public class InstagramService {
             return result;
         } catch (WebClientResponseException e) {
             log.error("[INSTAGRAM] fetchRecentMedia HTTP {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("Instagram API " + e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            throw new IllegalStateException(describeApiError(e));
         } catch (Exception e) {
             throw new IllegalStateException("Erreur parsing médias Instagram: " + e.getMessage());
         }
+    }
+
+
+    /**
+     * Rend l'erreur d'un appel Graph lisible.
+     *
+     * <p>Un corps vide sur un HTTP 200 n'est pas une erreur de l'API : c'est un
+     * flux coupé en cours de route (le réseau a rendu la main après le statut).
+     * Sans ce cas, le remonté indiquait « Instagram API 200 OK: » — un succès
+     * présenté comme une panne, sans rien dire de la cause. Vu en prod le
+     * 2026-10-03 sur l'agent « Studio ».
+     */
+    private static String describeApiError(WebClientResponseException e) {
+        String body = e.getResponseBodyAsString();
+        if (e.getStatusCode().is2xxSuccessful() && (body == null || body.isBlank())) {
+            return "Réponse vide de l'API Instagram (connexion interrompue ?) — nouvel essai au prochain polling";
+        }
+        return "Instagram API " + e.getStatusCode() + ": " + body;
     }
 
     // ── Commentaires ────────────────────────────────────────────────────────────
@@ -288,7 +306,7 @@ public class InstagramService {
             return result;
         } catch (WebClientResponseException e) {
             log.error("[INSTAGRAM] fetchComments HTTP {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("Instagram API " + e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            throw new IllegalStateException(describeApiError(e));
         } catch (Exception e) {
             throw new IllegalStateException("Erreur parsing commentaires Instagram: " + e.getMessage());
         }
@@ -321,7 +339,7 @@ public class InstagramService {
             return extractId(resp);
         } catch (WebClientResponseException e) {
             log.error("[INSTAGRAM] replyToComment HTTP {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("Instagram API " + e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            throw new IllegalStateException(describeApiError(e));
         }
     }
 
@@ -352,7 +370,7 @@ public class InstagramService {
             return extractId(resp);
         } catch (WebClientResponseException e) {
             log.error("[INSTAGRAM] commentOnMedia HTTP {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("Instagram API " + e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            throw new IllegalStateException(describeApiError(e));
         }
     }
 

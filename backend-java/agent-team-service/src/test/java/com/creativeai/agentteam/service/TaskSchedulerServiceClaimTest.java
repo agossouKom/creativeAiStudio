@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.verification.VerificationMode;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -21,6 +22,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -59,6 +61,12 @@ class TaskSchedulerServiceClaimTest {
         // n'est JAMAIS appelé, et un stub strict y serait signalé inutile.
         lenient().when(orchestrator.chat(anyString(), anyString(), anyString(), anyString(), any()))
             .thenReturn(Flux.empty());
+        // Une tâche sociale passe par chatWithTools, qui ajoute les outils de
+        // réponse aux commentaires à ceux de l'agent (sinon une whitelist
+        // étroite rend la tâche inexécutable).
+        lenient().when(orchestrator.chatWithTools(anyString(), anyString(), anyString(), anyString(),
+                any(), anyCollection()))
+            .thenReturn(Flux.empty());
     }
 
     private AgentTask task(String id, TaskSource source) {
@@ -79,6 +87,17 @@ class TaskSchedulerServiceClaimTest {
      * obtient le claim. Le second ne doit surtout pas lancer l'agent — c'est
      * exactement la publication en double.
      */
+
+    /**
+     * Vérifie l'appel à l'orchestrateur quelle que soit l'entrée utilisée :
+     * {@code chat} pour une tâche sans outil supplémentaire, {@code chatWithTools}
+     * pour une tâche sociale.
+     */
+    private void verifyOrchestratorCalled(String sessionId, VerificationMode mode) {
+        verify(orchestrator, mode).chatWithTools(anyString(), anyString(), anyString(),
+            eq(sessionId), any(), anyCollection());
+    }
+
     @Test
     void uneTacheDejaReclameeNestPasExecuteeUneSecondeFois() {
         AgentTask shared = task("task-1", TaskSource.SOCIAL_MEDIA);
@@ -88,14 +107,14 @@ class TaskSchedulerServiceClaimTest {
         // Premier poller : il gagne le claim.
         when(taskRepo.claimTask(eq("task-1"), any(LocalDateTime.class))).thenReturn(1);
         scheduler.processSocialMediaTasks();
-        verify(orchestrator, times(1)).chat(anyString(), anyString(), anyString(), eq("scheduled-task-1"), any());
+        verifyOrchestratorCalled("scheduled-task-1", times(1));
 
         // Second poller, même tick : le claim conditionnel ne modifie plus rien.
         when(taskRepo.claimTask(eq("task-1"), any(LocalDateTime.class))).thenReturn(0);
         scheduler.processScheduledTasks();
 
         // Toujours une seule exécution.
-        verify(orchestrator, times(1)).chat(anyString(), anyString(), anyString(), eq("scheduled-task-1"), any());
+        verifyOrchestratorCalled("scheduled-task-1", times(1));
     }
 
     @Test
@@ -123,8 +142,8 @@ class TaskSchedulerServiceClaimTest {
 
         scheduler.processSocialMediaTasks();
 
-        verify(orchestrator).chat(eq("agent-1"), eq("user-1"), anyString(),
-            eq("scheduled-task-42"), eq("task-42"));
+        verify(orchestrator).chatWithTools(eq("agent-1"), eq("user-1"), anyString(),
+            eq("scheduled-task-42"), eq("task-42"), anyCollection());
     }
 
     @Test
@@ -183,8 +202,8 @@ class TaskSchedulerServiceClaimTest {
         scheduler.processSocialMediaTasks();
 
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
-        verify(orchestrator).chat(eq("agent-1"), eq("user-1"), prompt.capture(),
-            anyString(), eq("task-1"));
+        verify(orchestrator).chatWithTools(eq("agent-1"), eq("user-1"), prompt.capture(),
+            anyString(), eq("task-1"), anyCollection());
         assertTrue(prompt.getValue().contains("Publier la promotion du trimestre"));
         assertTrue(prompt.getValue().contains("FACEBOOK, INSTAGRAM"));
         assertTrue(prompt.getValue().contains("[RÉPONSE AUTOMATIQUE"));

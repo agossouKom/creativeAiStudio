@@ -1,6 +1,9 @@
 package com.creativeai.agentteam.service;
 
 import com.creativeai.agentteam.model.AgentTask;
+import reactor.core.publisher.Flux;
+
+import com.creativeai.agentteam.model.enums.TaskSource;
 import com.creativeai.agentteam.model.enums.TaskStatus;
 import com.creativeai.agentteam.orchestrator.AgentOrchestrator;
 import com.creativeai.agentteam.repository.AgentTaskRepository;
@@ -135,15 +138,69 @@ public class TaskSchedulerService {
         log.info("[TASK-SCHEDULER] Démarrage tâche id={} title='{}' agent={}",
                  task.getId(), task.getTitle(), agentId);
 
-        orchestrator.chat(agentId, task.getUserId(), prompt, sessionId, task.getId())
-            .subscribe(
+        List<String> requiredTools = requiredToolsFor(task);
+        // Chemin nominal inchangé quand rien n'est exigé en plus : seule une tâche
+        // sociale passe par chatWithTools, qui ajoute les outils au lieu de
+        // remplacer ceux de l'agent.
+        Flux<String> run = requiredTools.isEmpty()
+                ? orchestrator.chat(agentId, task.getUserId(), prompt, sessionId, task.getId())
+                : orchestrator.chatWithTools(agentId, task.getUserId(), prompt, sessionId,
+                        task.getId(), requiredTools);
+
+        run.subscribe(
                 token -> {},
                 err -> {
                     log.error("[TASK-SCHEDULER] Erreur exécution tâche {}: {}", task.getId(), err.getMessage());
                     updateStatus(task.getId(), TaskStatus.FAILED);
                 },
-                () -> log.info("[TASK-SCHEDULER] Tâche {} exécutée avec succès", task.getId())
+                () -> {
+                    log.info("[TASK-SCHEDULER] Tâche {} exécutée avec succès", task.getId());
+                    // Une tâche sociale n'a pas de rapport à livrer : rien ne
+                    // demande à l'agent de la clore, et le « succès » ci-dessus
+                    // ne touche pas au statut. Résultat, la tâche restait
+                    // IN_PROGRESS pour toujours — vérifié en prod le 2026-10-03
+                    // sur la tâche ed3e3ec9, restée IN_PROGRESS après un run
+                    // terminé sans rien publier.
+                    if (isSocialTask(task)) {
+                        updateStatus(task.getId(), TaskStatus.DONE);
+                    }
+                }
             );
+    }
+
+    private boolean isSocialTask(AgentTask task) {
+        return task.getSource() != null && TaskSource.SOCIAL_MEDIA.name().equals(task.getSource().name());
+    }
+
+    /**
+     * Outils qu'une tâche sociale doit avoir sous la main, déduits de la
+     * plateforme visée et du type de la tâche.
+     *
+     * <p>Sans cela, une whitelist d'agent étroite suffit à rendre la tâche
+     * inexécutable : l'agent reçoit « utilise reply_facebook_comment », n'a pas
+     * l'outil, conclut « je n'ai rien à faire » et la tâche passe en succès sans
+     * avoir rien publié. Constaté en prod le 2026-10-03 sur l'agent « Studio ».
+     */
+    private List<String> requiredToolsFor(AgentTask task) {
+        if (!isSocialTask(task)) {
+            return List.of();
+        }
+        // La plateforme est dans `platforms` pour une tâche programmée, mais les
+        // pollers la déposent dans `payload` en créant la tâche : il faut lire les
+        // deux, sinon on retombe sur le cas « plateforme inconnue » alors qu'on la
+        // connaît parfaitement.
+        String haystack = (task.getPlatforms() == null ? "" : task.getPlatforms())
+                + " " + (task.getPayload() == null ? "" : task.getPayload());
+        boolean instagram = haystack.contains("INSTAGRAM");
+        boolean facebook  = haystack.contains("FACEBOOK");
+        if (!instagram && !facebook) {
+            // Plateforme non renseignée : on couvre les deux, ce qui reste
+            // inoffensif puisque ces outils refusent ce qu'ils ne gèrent pas.
+            return List.of("reply_facebook_comment", "reply_instagram_comment", "get_facebook_comments");
+        }
+        return instagram
+            ? List.of("reply_instagram_comment")
+            : List.of("reply_facebook_comment", "get_facebook_comments");
     }
 
     private String buildPrompt(AgentTask task) {
