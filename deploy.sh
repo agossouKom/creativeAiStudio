@@ -8,6 +8,15 @@ set -euo pipefail
 SERVICE=${1:-agent-team}
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+# Prod (serveur) : .env + docker-compose.prod.yml présents → utiliser l'overlay
+# + les secrets. Sans ça, un `up -d` recrée le conteneur en config dev
+# (mauvais mots de passe DB → crash loop). Même garde que start.sh/healthcheck.sh.
+COMPOSE="docker compose -f $ROOT/docker-compose.yml"
+if [[ -f "$ROOT/.env" && -f "$ROOT/docker-compose.prod.yml" ]] \
+  && grep -q '^POSTGRES_PASSWORD=' "$ROOT/.env"; then
+  COMPOSE="docker compose --env-file $ROOT/.env -f $ROOT/docker-compose.yml -f $ROOT/docker-compose.prod.yml"
+fi
+
 case "$SERVICE" in
   agent-team)
     MODULE="backend-java/agent-team-service"
@@ -37,7 +46,7 @@ case "$SERVICE" in
   file-security)
     echo "==> Building file-security-service image..."
     cd "$ROOT"
-    docker compose up -d --build --force-recreate --no-deps file-security-service
+    $COMPOSE up -d --build --force-recreate --no-deps file-security-service
     echo "✅ file-security-service deployed"
     exit 0
     ;;
@@ -47,7 +56,7 @@ case "$SERVICE" in
     npm run build -- --configuration=production
     echo "==> Redeploying frontend container..."
     cd "$ROOT"
-    docker compose up -d --build --force-recreate --no-deps frontend
+    $COMPOSE up -d --build --force-recreate --no-deps frontend
     echo "✅ frontend deployed"
     exit 0
     ;;
@@ -65,5 +74,5 @@ echo "==> JAR built: $(ls target/*.jar | grep -v original | head -1)"
 
 echo "==> Rebuilding & redeploying Docker container: $CONTAINER..."
 cd "$ROOT"
-docker compose up -d --build --no-deps "$CONTAINER"
+$COMPOSE up -d --build --no-deps "$CONTAINER"
 echo "✅ $SERVICE deployed"
