@@ -298,14 +298,31 @@ class WebhookSecurityTest {
     }
 
     @Test
-    @DisplayName("Instagram GET sans verify_token configuré → 503")
+    @DisplayName("Instagram GET sans aucun verify_token configuré → 503")
     void instagramHandshakeSansToken() {
         configureAll();
+        // Les deux doivent être vides : un token Instagram vide retombe sur celui
+        // de Facebook, c'est le cas nominal d'une seule application Meta.
         ReflectionTestUtils.setField(verifier, "instagramVerifyToken", "");
+        ReflectionTestUtils.setField(verifier, "facebookVerifyToken", "");
 
         ResponseEntity<String> r = instagram.verify("subscribe", "n'importe-quoi", "42");
 
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, r.getStatusCode());
+    }
+
+    @Test
+    @DisplayName("Instagram GET : token Instagram vide → le token Facebook est accepté")
+    void instagramReprendLeVerifyTokenFacebook() {
+        // docker-compose injecte INSTAGRAM_VERIFY_TOKEN vide : sans repli, le
+        // handshake Instagram échouerait en 503 alors que Meta est configuré.
+        configureAll();
+        ReflectionTestUtils.setField(verifier, "instagramVerifyToken", "");
+
+        assertEquals(HttpStatus.OK,
+            instagram.verify("subscribe", "fb-verify-token", "42").getStatusCode());
+        assertEquals(HttpStatus.FORBIDDEN,
+            instagram.verify("subscribe", "ig-verify-token", "42").getStatusCode());
     }
 
     @Test

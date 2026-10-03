@@ -73,7 +73,7 @@ public class WebhookVerifier {
     @PostConstruct
     public void reportStartup() {
         facebookState = describe(facebookVerifyToken, facebookAppSecret);
-        instagramState = describe(instagramVerifyToken, getInstagramAppSecret());
+        instagramState = describe(getInstagramVerifyToken(), getInstagramAppSecret());
         whatsappState = describe(whatsappVerifyToken, whatsappAppSecret);
         telegramState = describe(telegramWebhookSecret);
 
@@ -82,7 +82,7 @@ public class WebhookVerifier {
                 + "instagram.verify-token={}, instagram.app-secret={}, "
                 + "whatsapp.verify-token={}, whatsapp.app-secret={}, telegram.webhook-secret={}",
             present(facebookVerifyToken), present(facebookAppSecret),
-            present(instagramVerifyToken), present(instagramAppSecret),
+            present(getInstagramVerifyToken()), present(getInstagramAppSecret()),
             present(whatsappVerifyToken), present(whatsappAppSecret), present(telegramWebhookSecret));
 
         warnIfDisabled("facebook", facebookState, "FACEBOOK_VERIFY_TOKEN", "FACEBOOK_APP_SECRET");
@@ -208,7 +208,23 @@ public class WebhookVerifier {
     }
 
     public Verdict checkInstagramToken(String presented) {
-        return checkToken(presented, instagramVerifyToken);
+        return checkToken(presented, getInstagramVerifyToken());
+    }
+
+    /**
+     * Verify token des endpoints Instagram.
+     *
+     * <p>Repli sur celui de Facebook quand la variable {@code INSTAGRAM_VERIFY_TOKEN}
+     * est absente <b>ou vide</b>. Le repli est indispensable en Java et pas
+     * seulement dans le {@code yml} : docker-compose déclare
+     * {@code INSTAGRAM_VERIFY_TOKEN:-}, donc la variable existe toujours dans le
+     * conteneur, avec une chaîne vide. Un {@code ${INSTAGRAM_VERIFY_TOKEN:${FACEBOOK_...}}}
+     * ne se déclenche que sur une variable <i>absente</i> — il ne se serait jamais
+     * activé, et l'endpoint Instagram aurait refusé tout, y compris après avoir
+     * configuré les secrets Meta.
+     */
+    public String getInstagramVerifyToken() {
+        return isBlank(instagramVerifyToken) ? facebookVerifyToken : instagramVerifyToken;
     }
 
     /**

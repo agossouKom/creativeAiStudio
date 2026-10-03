@@ -45,12 +45,14 @@ class WebhookVerifierTest {
     }
 
     /**
-     * Variante « une seule application Meta » : Instagram n'a pas ses propres
-     * variables, il retombe sur celles de Facebook (cf. application.yml).
+     * Variante « une seule application Meta » : les variables INSTAGRAM_* sont
+     * présentes mais VIDES — c'est ce que fait docker-compose
+     * ({@code INSTAGRAM_VERIFY_TOKEN:-}), et non une variable absente. Un repli
+     * qui ne marche que sur une variable absente ne se déclencherait jamais en
+     * production : le test reproduit donc le vide, pas l'absence.
      */
     private void configureInstagramSharingFacebookSecrets() {
-        ReflectionTestUtils.setField(verifier, "instagramVerifyToken",
-            ReflectionTestUtils.getField(verifier, "facebookVerifyToken"));
+        ReflectionTestUtils.setField(verifier, "instagramVerifyToken", "");
         ReflectionTestUtils.setField(verifier, "instagramAppSecret", "");
     }
 
