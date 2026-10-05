@@ -150,6 +150,15 @@ services:
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.com}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
+      # L'historique Flyway de la prod a divergé de celui du dépôt : V30 y est
+      # appliquée alors que V27 et V29 ne le sont pas. À la validation, Flyway
+      # les voit comme « en attente mais d'un rang inférieur au maximum appliqué »
+      # et refuse de démarrer le service. Les trois migrations concernées sont
+      # idempotentes (ajout de colonnes IF NOT EXISTS, réécriture de lignes
+      # ciblées) et V29 corrige au passage une version d'API Meta expirée
+      # (v19.0) restée en place. L'appliquer hors ordre converge l'historique
+      # au lieu de le laisser divergent.
+      SPRING_FLYWAY_OUT_OF_ORDER: "true"
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:?SPRING_MAIL_PASSWORD requis dans .env}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
