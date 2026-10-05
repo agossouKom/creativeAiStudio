@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -20,6 +21,18 @@ public class ChatController {
 
     private final ChatService chatService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
+
+    /**
+     * GET /rag/chat/config — modèle de chat effectivement utilisé.
+     *
+     * <p>Aucune clé n'est exposée : seul l'identifiant du modèle. Le frontend
+     * s'en sert pour afficher le bon modèle dans son badge plutôt qu'un nom
+     * figé qui diverge de la configuration dès que RAG_CHAT_MODEL change.
+     */
+    @GetMapping("/config")
+    public Map<String, String> config() {
+        return Map.of("model", chatService.getModelId());
+    }
 
     /**
      * POST /rag/chat/stream — Server-Sent Events streaming endpoint.

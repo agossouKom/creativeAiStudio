@@ -19,7 +19,7 @@ public class ListMediaTool implements AgentTool {
     private final MinioService  minioService;
     private final ObjectMapper  om;
 
-    @Value("${minio.public-url:https://minio.labibpro.store}")
+    @Value("${minio.public-url:https://minio.labibpro.com}")
     private String publicUrl;
 
     @Value("${minio.bucket:pub-images}")

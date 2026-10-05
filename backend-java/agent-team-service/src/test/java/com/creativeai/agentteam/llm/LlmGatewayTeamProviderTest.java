@@ -16,7 +16,9 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -38,9 +40,9 @@ class LlmGatewayTeamProviderTest {
 
     @BeforeEach
     void setUp() {
-        when(llmRepository.findByAgentIdAndDeletedFalseOrderByPrimaryDesc("agent-1"))
+        when(llmRepository.findByAgentIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("agent-1"))
             .thenReturn(List.of());
-        when(llmRepository.findByUserIdAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
+        when(llmRepository.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
             .thenReturn(List.of());
     }
 
@@ -53,9 +55,9 @@ class LlmGatewayTeamProviderTest {
             .thenReturn(Optional.of(agent));
         when(teamRepository.findByIdAndOwnerIdAndDeletedFalse("team-1", "owner@example.com"))
             .thenReturn(Optional.of(AgentTeam.builder().build()));
-        when(llmRepository.findByTeamIdAndDeletedFalseOrderByPrimaryDesc("team-1"))
+        when(llmRepository.findByTeamIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("team-1"))
             .thenReturn(List.of(teamProvider));
-        when(llmRepository.findByUserIdAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
+        when(llmRepository.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
             .thenReturn(List.of(accountProvider));
 
         List<LlmProvider> candidates =
@@ -64,12 +66,12 @@ class LlmGatewayTeamProviderTest {
         assertEquals(2, candidates.size());
         assertSame(teamProvider, candidates.get(0));
         assertSame(accountProvider, candidates.get(1));
-        verify(llmRepository).findByTeamIdAndDeletedFalseOrderByPrimaryDesc("team-1");
+        verify(llmRepository).findByTeamIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("team-1");
     }
 
     @Test
     void doesNotResolveAnotherOwnersTeamProvider() {
-        when(llmRepository.findByUserIdAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
+        when(llmRepository.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
             .thenReturn(List.of(LlmProvider.builder().userId("owner@example.com").build()));
         when(agentRepository.findByIdAndOwnerIdAndDeletedFalse("agent-1", "owner@example.com"))
             .thenReturn(Optional.empty());
@@ -77,6 +79,24 @@ class LlmGatewayTeamProviderTest {
         gateway.resolveProviderCandidates("agent-1", "owner@example.com");
 
         verifyNoInteractions(teamRepository);
-        verify(llmRepository).findByUserIdAndDeletedFalseOrderByPrimaryDesc("owner@example.com");
+        verify(llmRepository).findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com");
+    }
+
+    /**
+     * Un provider désactivé (active=false) ne doit plus être proposé au
+     * runtime : le filtre est porté par les méthodes ActiveTrue du repository.
+     */
+    @Test
+    void skipsInactiveAccountProviders() {
+        LlmProvider inactive = LlmProvider.builder().userId("owner@example.com").active(false).build();
+        // Le repository ne renvoie que les lignes active=true : une ligne
+        // désactivée est absente du résultat.
+        when(llmRepository.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
+            .thenReturn(List.of());
+
+        assertThrows(IllegalStateException.class, () -> gateway.resolveProviderCandidates(null, "owner@example.com"));
+
+        verify(llmRepository).findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com");
+        assertFalse(inactive.isActive());
     }
 }

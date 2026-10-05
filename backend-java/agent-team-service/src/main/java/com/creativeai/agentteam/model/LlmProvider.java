@@ -78,6 +78,19 @@ public class LlmProvider extends BaseEntity {
     @Column(nullable = false)
     private boolean active = true;
 
+    /**
+     * Modèle par défaut de la plateforme, défini par un administrateur.
+     *
+     * <p>Un seul provider actif peut porter ce drapeau (index unique partiel en
+     * base). Il sert de repli pour tout compte qui n'a configuré ni provider
+     * d'agent, ni d'équipe, ni de compte, et il est automatiquement recopié
+     * dans le compte lorsqu'un utilisateur s'inscrit, afin qu'il puisse
+     * démarrer immédiatement.
+     */
+    @Builder.Default
+    @Column(name = "is_platform_default", nullable = false)
+    private boolean platformDefault = false;
+
     /** Paramètres additionnels JSON (ex: system_fingerprint, seed) */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "extra_params", columnDefinition = "jsonb")

@@ -8,18 +8,22 @@ import com.creativeai.agentteam.model.enums.AgentType;
 import com.creativeai.agentteam.model.enums.LlmType;
 import com.creativeai.agentteam.model.enums.PromptType;
 import com.creativeai.agentteam.repository.*;
+import com.creativeai.agentteam.llm.LlmGateway;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -38,6 +42,9 @@ public class AgentService {
     private final AuditService            auditService;
     private final EncryptionService       encryptionService;
     private final AgentTemplateService    templateService;
+    private final LlmGateway              llmGateway;
+    private final LlmProviderProvisioningService provisioningService;
+    private final LlmUrlPolicy            urlPolicy;
     private final ObjectMapper            objectMapper;
 
     @Value("${GROQ_API_KEY:}")         private String groqApiKey;
@@ -349,6 +356,52 @@ public class AgentService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Provider que le backend utiliserait réellement pour cet agent.
+     *
+     * <p>Si {@code agentId} est fourni, on vérifie d'abord que l'agent
+     * appartient bien à l'appelant : sinon 403. Sans agent, on renvoie le
+     * provider principal du compte, ce qui correspond au modèle utilisé par
+     * défaut pour les agents de cet utilisateur.
+     *
+     * @throws ResponseStatusException 403 si l'agent n'appartient pas à l'appelant,
+     *                                   404 si aucun provider n'est configuré
+     */
+    public LlmProvider resolveLlmProviderFor(String callerId, String agentId) {
+        String ownerId = callerId;
+        if (agentId != null && !agentId.isBlank()) {
+            Agent agent = agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, callerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Agent introuvable ou non autorisé"));
+            ownerId = agent.getOwnerId();
+            return llmGateway.resolveProvider(agentId, ownerId);
+        }
+        List<LlmProvider> own = llmRepo
+            .findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(ownerId);
+        if (!own.isEmpty()) {
+            return own.get(0);
+        }
+
+        // Compte sans provider : on tente de lui attribuer le modèle par défaut
+        // de la plateforme, pour qu'un utilisateur inscrit puisse immédiatement
+        // chatter sans configurer quoi que ce soit. Sans provider par défaut, la
+        // résolution se replie sur la hiérarchie complète (agent > équipe >
+        // compte > admin > clé d'environnement).
+        Optional<LlmProvider> provisioned = provisioningService.ensureDefaultProviderFor(ownerId);
+        if (provisioned.isPresent()) {
+            return provisioned.get();
+        }
+
+        // Aucun provider par défaut de plateforme à recopier : on retourne le
+        // provider hérité (marqué par défaut, sinon celui du compte admin).
+        // On n'appelle pas LlmGateway ici : avec un agentId null, sa résolution
+        // irait interroger l'agent et l'équipe, ce qui n'a pas de sens pour une
+        // simple lecture du compte.
+        return provisioningService.resolveInheritedDefault(ownerId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Aucun modèle LLM configuré pour ce compte"));
+    }
+
     public List<LlmProviderResponse> getLlmProviders(String ownerId, String agentId, boolean includeDeleted) {
         agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, ownerId)
             .orElseThrow(() -> new ResourceNotFoundException("Agent non trouvé: " + agentId));
@@ -453,7 +506,7 @@ public class AgentService {
         LlmProvider llm = findByUserActive(userId, llmId);
         if (req.type() != null)  llm.setType(req.type());
         if (req.modelId() != null) llm.setModelId(req.modelId());
-        if (req.baseUrl() != null) llm.setBaseUrl(req.baseUrl());
+        if (req.baseUrl() != null) llm.setBaseUrl(urlPolicy.validate(llm.getType(), req.baseUrl()));
         if (req.displayName() != null) llm.setDisplayName(req.displayName());
         if (req.apiKey() != null && !req.apiKey().isBlank()) {
             llm.setEncryptedApiKey(encryptionService.encrypt(req.apiKey()));
@@ -653,10 +706,19 @@ public class AgentService {
             .orElseThrow(() -> new ResourceNotFoundException("LLM provider non trouvé: " + llmId));
     }
 
+    /**
+     * Provider de l'appelant, vérifié comme tous les autres accès : un llmId
+     * appartenant à un autre compte est traité comme inexistant.
+     */
+    public LlmProvider requireOwnedUserLlmProvider(String userId, String llmId) {
+        return findByUserActive(userId, llmId);
+    }
+
     private LlmProvider buildUserLlmProvider(String userId, LlmProviderRequest req, boolean primary) {
         String encryptedKey = req.apiKey() != null ? encryptionService.encrypt(req.apiKey()) : null;
         return LlmProvider.builder()
-            .userId(userId).type(req.type()).modelId(req.modelId()).baseUrl(req.baseUrl())
+            .userId(userId).type(req.type()).modelId(req.modelId())
+            .baseUrl(urlPolicy.validate(req.type(), req.baseUrl()))
             .encryptedApiKey(encryptedKey).displayName(req.displayName())
             .temperature(req.temperature()           != null ? req.temperature()           : 0.7)
             .maxTokens(req.maxTokens()               != null ? req.maxTokens()             : 2048)

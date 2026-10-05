@@ -152,16 +152,21 @@ class Settings:
                 raise ValueError("VIDEO_GENERATION_OLLAMA_URL is required")
         else:
             ollama_url = _text("VIDEO_GENERATION_OLLAMA_URL", "http://ollama:11434").rstrip("/")
+        # Base URL et clé par défaut du fournisseur ; le MODÈLE, lui, n'est
+        # jamais codé en dur. Groq a retiré llama-3.1-8b-instant (404
+        # model_not_found) et ce défaut échouait en STORYBOARD_PROVIDER_UNAVAILABLE.
+        # Il doit être fourni par VIDEO_GENERATION_LLM_MODEL, sinon on échoue
+        # ici avec un message explicite plutôt qu'un 404 opaque plus loin.
         default_llm_settings = {
             "groq": (
-                "https://api.groq.com/openai/v1",
+                _optional_text("GROQ_BASE_URL") or "https://api.groq.com/openai/v1",
                 _optional_text("GROQ_API_KEY"),
-                "llama-3.1-8b-instant",
+                _optional_text("VIDEO_GENERATION_LLM_MODEL"),
             ),
             "deepseek": (
-                "https://api.deepseek.com/v1",
+                _optional_text("DEEPSEEK_BASE_URL") or "https://api.deepseek.com/v1",
                 _optional_text("DEEPSEEK_API_KEY"),
-                "deepseek-chat",
+                _optional_text("VIDEO_GENERATION_LLM_MODEL"),
             ),
         }
         default_base_url, default_api_key, default_model = default_llm_settings.get(

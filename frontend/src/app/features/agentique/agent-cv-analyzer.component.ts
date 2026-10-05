@@ -53,7 +53,7 @@ interface CvAnalysis {
         </button>
         <div class="live-badge">
           <span class="live-dot"></span>
-          Groq · llama-3.3-70b · LIVE
+          {{ liveLabel }}
         </div>
       </div>
     </div>
@@ -602,7 +602,18 @@ export class AgentCvAnalyzerComponent implements OnInit {
     return Math.round(this.batchDone.size / this.uploadedFiles.length * 100);
   }
 
-  ngOnInit() { this.wsSvc.loadFromApi(); }
+  ngOnInit() {
+    this.wsSvc.loadFromApi();
+    // Affiche le modèle que le backend résout réellement (agent > équipe >
+    // compte > admin) au lieu d'un libellé figé.
+    this.agentSvc.refreshLlmProvider().catch(() => {});
+  }
+
+  get liveLabel(): string {
+    const p = this.agentSvc.getUserContext().llmProvider;
+    if (!p || (!p.type && !p.modelId)) return 'LLM non configuré';
+    return `${[p.type, p.modelId].filter(Boolean).join(' · ')} · LIVE`;
+  }
 
   goWorkspace() { this.router.navigate(['/agentique/cv-workspace']); }
 

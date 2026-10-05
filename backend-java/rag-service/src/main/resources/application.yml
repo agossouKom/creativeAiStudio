@@ -17,7 +17,10 @@ spring:
       api-key: ${GROQ_API_KEY:no-key}
       chat:
         options:
-          model: ${RAG_CHAT_MODEL:llama-3.3-70b-versatile}
+          # Aucun modèle figé ici : llama-3.3-70b-versatile a été déprécié par
+          # Groq (404 model_not_found). RAG_CHAT_MODEL doit être fourni par
+          # docker-compose / .env. ${DEFAULT_MODEL} sert de repli de plateforme.
+          model: ${RAG_CHAT_MODEL:${DEFAULT_MODEL:openai/gpt-oss-20b}}
           temperature: 0.7
       embedding:
         enabled: false  # Embeddings via ONNX local (transformers)

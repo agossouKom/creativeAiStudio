@@ -1,7 +1,9 @@
-import { Component, ChangeDetectorRef, ElementRef, ViewChild, OnInit } from '@angular/core';
+import { Component, ChangeDetectorRef, ElementRef, ViewChild, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 import { DialogService } from '../../shared/ui/dialog.service';
 
 interface Message {
@@ -174,9 +176,9 @@ interface IndexedDoc {
             <span class="chat-subtitle">Interrogez votre base de connaissances</span>
           </div>
         </div>
-        <div class="model-badge">
+        <div class="model-badge" *ngIf="modelLabel" [title]="modelLabel">
           <span class="model-dot"></span>
-          llama-3.3-70b
+          {{ modelLabel }}
         </div>
         <button *ngIf="messages.length > 0" class="rag-clear-btn" (click)="clearHistory()" title="Effacer l'historique">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -841,6 +843,11 @@ export class RagChatComponent implements OnInit {
   showClearConfirm = false;
   clearing = false;
 
+  private http = inject(HttpClient);
+
+  /** Modèle réellement configuré côté backend (chargé à l'init). */
+  modelLabel = '';
+
   private static readonly IMAGE_EXTS   = ['jpg','jpeg','png','gif','bmp','webp','tiff','heic','avif'];
   private static readonly VIDEO_EXTS   = ['mp4','mov','avi','mkv','webm','m4v','flv','wmv','3gp','ts'];
   private static readonly BLOCKED_EXTS = ['exe','dll','bat','cmd','sh','ps1','vbs','msi','reg','scr','com','pif','lnk','inf','js','ts','php','asp','jsp','py','rb'];
@@ -864,6 +871,25 @@ export class RagChatComponent implements OnInit {
     this.refreshCount();
     this.loadIndexedDocs();
     this.loadHistory();
+    this.loadModelLabel();
+  }
+
+  /**
+   * Libellé du modèle affiché dans l'en-tête. Le RAG utilise son propre
+   * ChatClient (RAG_CHAT_MODEL côté backend) : on affiche ce qui est réellement
+   * configuré plutôt qu'un nom de modèle figé dans le template.
+   */
+  private async loadModelLabel() {
+    try {
+      const cfg = await firstValueFrom(this.http.get<{ model?: string }>('/api/rag/chat/config'));
+      const model = cfg?.model;
+      if (typeof model === 'string' && model.trim()) {
+        this.modelLabel = model.trim();
+        this.cdr.markForCheck();
+      }
+    } catch {
+      // endpoint absent ou inaccessible : le badge reste masqué
+    }
   }
 
   // ── Copier ───────────────────────────────────────────────────────────────

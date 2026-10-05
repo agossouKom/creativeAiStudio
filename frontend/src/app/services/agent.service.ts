@@ -1,4 +1,6 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
 
 export interface AgentStreamOptions {
@@ -7,12 +9,19 @@ export interface AgentStreamOptions {
   onError?: (err: string) => void;
 }
 
+/** Provider LLM résolu côté backend (agent > équipe > compte > admin). */
+export interface ResolvedLlmProvider {
+  type?: string;
+  modelId?: string;
+}
+
 export interface UserContext {
   name: string;
   email: string;
   role: string;
   credits: number;
   isLoggedIn: boolean;
+  llmProvider?: ResolvedLlmProvider;
 }
 
 /**
@@ -31,7 +40,11 @@ export class AgentService {
   private readonly AGENT_BASE = '/api/agent';
   private readonly RAG_STREAM = '/api/rag/chat/stream';
 
-  private auth = inject(AuthService);
+  private auth   = inject(AuthService);
+  private http   = inject(HttpClient);
+
+  /** Provider LLM réellement résolu par le backend, mis en cache. */
+  private readonly llmProvider = signal<ResolvedLlmProvider | undefined>(undefined);
 
   // ── Contexte session courante ────────────────────────────────────────────
 
@@ -46,7 +59,30 @@ export class AgentService {
       role: user.role,
       credits: user.credits,
       isLoggedIn: true,
+      llmProvider: this.llmProvider(),
     };
+  }
+
+  /**
+   * Demande au backend quel provider il utilise réellement pour cet agent
+   * (agent > équipe > compte > admin) et le met en cache pour l'affichage.
+   *
+   * <p>Un 404 signifie qu'aucun modèle n'est configuré pour le compte : le
+   * bandeau reste masqué plutôt que d'afficher un modèle fictif.
+   */
+  async refreshLlmProvider(agentId?: string): Promise<ResolvedLlmProvider | undefined> {
+    if (!this.auth.isLoggedIn()) return undefined;
+    const params: Record<string, string> = agentId ? { agentId } : {};
+    try {
+      const p = await firstValueFrom(
+        this.http.get<ResolvedLlmProvider>('/api/users/me/llm-providers/resolved', { params })
+      );
+      this.llmProvider.set(p);
+      return p;
+    } catch {
+      this.llmProvider.set(undefined);
+      return undefined;
+    }
   }
 
   /** Bloc de contexte utilisateur injecté en tête de chaque prompt système */

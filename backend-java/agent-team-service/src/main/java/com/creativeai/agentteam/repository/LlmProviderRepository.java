@@ -23,4 +23,20 @@ public interface LlmProviderRepository extends JpaRepository<LlmProvider, String
     List<LlmProvider>     findByTeamIdOrderByPrimaryDescCreatedAtDesc(String teamId);
     List<LlmProvider>     findByTeamIdAndIdAndDeletedFalse(String teamId, String id);
     List<LlmProvider>     findByTeamIdAndIdAndDeletedTrue(String teamId, String id);
+
+    // ── Résolution effective (LlmGateway) ──────────────────────────────────────
+    // Variantes « ActiveTrue » : un provider désactivé (active=false) reste
+    // visible et réactivable via le CRUD, mais ne doit plus être proposé au
+    // runtime. Les méthodes ci-dessus sont volontairement conservées telles
+    // quelles pour le listing.
+    List<LlmProvider> findByAgentIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(String agentId);
+    List<LlmProvider> findByTeamIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(String teamId);
+    List<LlmProvider> findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(String userId);
+
+    /**
+     * Provider par défaut de la plateforme, défini par un administrateur.
+     * Un seul peut être actif à la fois (index unique partiel). Utilisé comme
+     * source de recopie lors de l'inscription d'un utilisateur.
+     */
+    Optional<LlmProvider> findByPlatformDefaultTrueAndActiveTrueAndDeletedFalse();
 }

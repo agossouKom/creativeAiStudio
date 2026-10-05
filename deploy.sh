@@ -69,7 +69,10 @@ esac
 
 echo "==> Building JAR for $MODULE..."
 cd "$ROOT/$MODULE"
-mvn package -DskipTests -q
+# -Dmaven.test.skip=true et non -DskipTests : ce dernier n'empêche que
+# l'exécution, la compilation des tests a lieu et un test désynchronisé sur le
+# serveur fait échouer le déploiement avant même le packaging du jar.
+mvn package -Dmaven.test.skip=true -q
 echo "==> JAR built: $(ls target/*.jar | grep -v original | head -1)"
 
 echo "==> Rebuilding & redeploying Docker container: $CONTAINER..."

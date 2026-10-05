@@ -1,4 +1,4 @@
-import { Component, Input, inject } from '@angular/core';
+import { Component, Input, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { AgentService } from '../../../services/agent.service';
@@ -37,9 +37,9 @@ import { CvWorkspaceService } from '../../../features/agentique/cv-workspace.ser
       <span class="sb-credits-n">{{ ctx.credits }}</span>
       <span class="sb-credits-l">crédits</span>
     </div>
-    <div class="sb-model">
+    <div class="sb-model" *ngIf="providerLabel" [title]="providerLabel">
       <span class="sb-model-dot"></span>
-      Groq · llama-3.3-70b
+      {{ providerLabel }}
     </div>
   </div>
 
@@ -226,7 +226,7 @@ import { CvWorkspaceService } from '../../../features/agentique/cv-workspace.ser
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
   `]
 })
-export class AgentSessionBarComponent {
+export class AgentSessionBarComponent implements OnInit {
   @Input() agentName = '';
   @Input() showWorkspace = false;
 
@@ -237,7 +237,22 @@ export class AgentSessionBarComponent {
   get ctx()     { return this.agentSvc.getUserContext(); }
   get wsCount() { return this.wsSvc.count; }
 
+  /**
+   * Modèle réellement résolu par le backend pour cet agent. Le LlmGateway
+   * choisit le provider le plus spécifique (agent > équipe > compte > admin) :
+   * l'afficher ici évite d'annoncer un modèle qui n'est pas utilisé.
+   */
+  get providerLabel(): string {
+    const p = this.ctx?.llmProvider;
+    if (!p || (!p.type && !p.modelId)) return '';
+    return [p.type, p.modelId].filter(Boolean).join(' · ');
+  }
+
   goWorkspace() { this.router.navigate(['/agentique/cv-workspace']); }
+
+  ngOnInit() {
+    this.agentSvc.refreshLlmProvider().catch(() => {});
+  }
 
   get initial(): string {
     return this.ctx.name?.[0]?.toUpperCase() ?? '?';

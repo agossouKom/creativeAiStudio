@@ -1,6 +1,7 @@
 package com.creativeai.agentteam.controller;
 
 import com.creativeai.agentteam.llm.LlmGateway;
+import com.creativeai.agentteam.service.AgentService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -35,7 +36,8 @@ public class SocialCaptionController {
     private static final int MAX_LENGTH = 2200;
     private static final int TARGET_LENGTH = 400;
 
-    private final LlmGateway llmGateway;
+    private final LlmGateway     llmGateway;
+    private final AgentService   agentService;
 
     public record CaptionRequest(
         @NotBlank(message = "La description de l'événement est obligatoire")
@@ -58,6 +60,16 @@ public class SocialCaptionController {
     public ResponseEntity<Map<String, Object>> generateCaption(
         @AuthenticationPrincipal String userId,
         @Valid @RequestBody CaptionRequest request) {
+
+        // Le provider LLM est déduit de l'agent. Sans ce contrôle, n'importe quel
+        // utilisateur authentifié pouvait passer l'agentId d'autrui et déclencher
+        // un appel payé avec la clé du propriétaire (tier 3 de la résolution).
+        // 404 et non 403 : un agent possédé par autrui ne doit pas être
+        // distinguable d'un agent absent.
+        if (request.agentId() == null || request.agentId().isBlank()) {
+            throw new IllegalArgumentException("agentId est obligatoire pour générer une légende");
+        }
+        agentService.requireOwnedAgent(userId, request.agentId());
 
         String platform = (request.platform() == null || request.platform().isBlank())
             ? "réseaux sociaux" : request.platform();

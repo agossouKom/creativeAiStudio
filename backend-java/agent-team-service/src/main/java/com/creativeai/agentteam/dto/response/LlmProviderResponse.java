@@ -9,6 +9,7 @@ public record LlmProviderResponse(
     String displayName, double temperature, int maxTokens,
     boolean streamingEnabled, int rateLimitRpm,
     boolean primary, boolean active, boolean deleted,
+    boolean platformDefault,
     LocalDateTime createdAt,
     boolean hasApiKey
 ) {
@@ -17,7 +18,8 @@ public record LlmProviderResponse(
         return new LlmProviderResponse(p.getId(), agentId, p.getUserId(), p.getTeamId(),
             p.getType(), p.getModelId(), p.getBaseUrl(), p.getDisplayName(),
             p.getTemperature(), p.getMaxTokens(), p.isStreamingEnabled(),
-            p.getRateLimitRpm(), p.isPrimary(), p.isActive(), p.isDeleted(), p.getCreatedAt(),
+            p.getRateLimitRpm(), p.isPrimary(), p.isActive(), p.isDeleted(),
+            p.isPlatformDefault(), p.getCreatedAt(),
             p.getEncryptedApiKey() != null && !p.getEncryptedApiKey().isBlank());
     }
 }

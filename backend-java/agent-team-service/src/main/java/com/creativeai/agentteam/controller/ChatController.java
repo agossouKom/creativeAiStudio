@@ -67,6 +67,7 @@ public class ChatController {
     private final AgentOrchestrator orchestrator;
     private final MemoryService     memoryService;
     private final com.creativeai.agentteam.llm.LlmGateway llmGateway;
+    private final com.creativeai.agentteam.service.AgentService agentService;
 
     @Operation(
         summary = "Envoyer un message à l'agent (streaming SSE)",
@@ -158,6 +159,7 @@ public class ChatController {
             @PathVariable String agentId,
             @Valid @RequestBody ChatRequest req) {
         log.info("[CHAT] /stream hit agentId={} userId={} sid={}", agentId, userId, req.sessionId());
+        agentService.requireOwnedAgent(userId, agentId);
         return orchestrator.chat(agentId, userId, req.message(), req.sessionId(), req.context());
     }
 
@@ -167,6 +169,9 @@ public class ChatController {
             @PathVariable String agentId,
             @RequestBody java.util.Map<String, String> req) {
         log.info("[CHAT] /generate-description hit agentId={} userId={}", agentId, userId);
+        // Même raison que /social/caption : le provider est déduit de l'agent, donc
+        // sans ce contrôle la requête pouvait consommer la clé du propriétaire.
+        agentService.requireOwnedAgent(userId, agentId);
         String prompt = req.getOrDefault("prompt", "");
         String result = llmGateway.chat(agentId, List.of(
             new com.creativeai.agentteam.llm.ChatMessage("user", prompt)

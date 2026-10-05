@@ -207,7 +207,16 @@ public class AgentOrchestrator {
                     // Candidates ordonnés pour le failover : primary puis backups
                     // (ex : DeepSeek primary → Groq backup). Si le provider appelé échoue
                     // (clé invalide, quota, réseau…), on rejoue le loop avec le suivant.
-                    List<LlmProvider> providers = llmGateway.resolveProviderCandidates(agentId, userId);
+                    //
+                    // Résolution sur le PROPRIÉTAIRE de l'agent, pas sur l'appelant : les
+                    // providers appartiennent au propriétaire (agent → équipe → compte), donc
+                    // les passer par userId faisait sauter les tiers 1 et 2 dès que l'appelant
+                    // n'était pas le propriétaire, et l'agent n'utilisait plus les providers
+                    // qui lui sont assignés. L'identité de l'appelant reste dans AgentContext.
+                    String agentOwnerId = agentRepo.findByIdAndDeletedFalse(agentId)
+                        .map(com.creativeai.agentteam.model.Agent::getOwnerId)
+                        .orElse(null);
+                    List<LlmProvider> providers = llmGateway.resolveProviderCandidates(agentId, agentOwnerId);
 
                     // Spring AI ChatClient avec function calling natif
                     // Le LLM appelle les @Tool via JSON structuré — plus de parsing regex

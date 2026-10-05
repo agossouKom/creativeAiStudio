@@ -4,6 +4,7 @@ import com.creativeai.rag.model.ChatMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -21,6 +22,18 @@ public class ChatService {
 
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
+
+    /** spring.ai.openai.chat.options.model — jamais figé dans le code. */
+    @Value("${spring.ai.openai.chat.options.model:}")
+    private String modelId;
+
+    /**
+     * Identifiant du modèle de chat utilisé ({@code spring.ai.openai.chat.options.model}).
+     * Lu depuis la configuration effective pour que l'UI affiche la bonne valeur.
+     */
+    public String getModelId() {
+        return modelId;
+    }
 
     private static final String RAG_TEMPLATE = """
             Contexte documentaire :

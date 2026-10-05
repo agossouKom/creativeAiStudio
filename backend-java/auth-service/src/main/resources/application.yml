@@ -68,6 +68,10 @@ minio:
 agent:
   encryption-key: ${ENCRYPTION_KEY:Q3JlYXRpdmVBSVN0dWRpb0tleUNoYW5nZU1lSW5Qcm9k}
   rag-service-url: ${RAG_SERVICE_URL:http://creativeai-rag:8084}
-  groq-base-url: https://api.groq.com/openai/v1
-  default-model: llama-3.3-70b-versatile
+  groq-base-url: ${GROQ_BASE_URL:https://api.groq.com/openai/v1}
+  # Clé par utilisateur dans user_api_credentials (table), jamais ici.
+  # Le modèle vient de l'environnement, comme pour agent-team et rag-service :
+  # llama-3.3-70b-versatile était figé dans ce fichier et n'existe plus sur
+  # l'API Groq, ce qui faisait échouer l'agent Email en 404 model_not_found.
+  default-model: ${AGENT_DEFAULT_MODEL:${DEFAULT_MODEL:openai/gpt-oss-20b}}
   max-memory-messages: 20

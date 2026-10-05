@@ -222,9 +222,21 @@ class LocalVideoPipelineProvider:
             or not model
             or (not api_key and not self.settings.storyboard_llm_allow_unauthenticated)
         ):
+            # Le modèle n'a plus de défaut codé en dur : on nomme la variable
+            # manquante pour que le config soit actionnable depuis le job.
+            missing = []
+            if not base_url:
+                missing.append("VIDEO_GENERATION_LLM_BASE_URL")
+            if not model:
+                missing.append("VIDEO_GENERATION_LLM_MODEL")
+            if not api_key and not self.settings.storyboard_llm_allow_unauthenticated:
+                missing.append("VIDEO_GENERATION_LLM_API_KEY")
             raise PipelineError(
                 "STORYBOARD_PROVIDER_NOT_CONFIGURED",
-                "Storyboard LLM provider is not configured",
+                "Storyboard LLM provider is not configured: "
+                + ", ".join(missing)
+                + " are missing for provider "
+                + self.settings.storyboard_llm_provider,
             )
         endpoint = (
             f"{base_url}/chat/completions"

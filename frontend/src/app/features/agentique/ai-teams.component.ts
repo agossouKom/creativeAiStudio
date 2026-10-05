@@ -495,16 +495,13 @@ function makeCompetencies(type: string, desc: string): string[] {
           <label class="at-lbl">Description</label>
           <textarea class="at-input at-textarea" [(ngModel)]="editForm.description" rows="2"></textarea>
         </div>
-        <div class="at-field">
+        <div class="at-field at-field--full">
           <label class="at-lbl">Modèle LLM</label>
-          <select class="at-input" [(ngModel)]="editForm.model">
-            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Groq)</option>
-            <option value="gpt-4o">GPT-4o</option>
-            <option value="gpt-4o-mini">GPT-4o Mini</option>
-            <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-            <option value="claude-opus-4-8">Claude Opus 4</option>
-            <option value="mistral-large-latest">Mistral Large</option>
-          </select>
+          <p class="at-ai-hint">
+            Le modèle et la clé API se gèrent dans l'espace de travail
+            (section « Modèles LLM »), par agent ou pour toute une équipe.
+            Les choix enregistrés ici n'étaient pas persistés.
+          </p>
         </div>
         <div class="at-field">
           <label class="at-lbl">Température ({{ editForm.temperature }})</label>
@@ -1963,7 +1960,7 @@ export class AiTeamsComponent implements OnInit {
     this.editForm  = {
       id: agent.id, name: agent.name, description: agent.description,
       status: agent.status, agentType: agent.agentType,
-      model: agent.model || 'llama-3.3-70b-versatile',
+      model: agent.model || '',
       temperature: agent.temperature ?? 0.7, maxTokens: agent.maxTokens ?? 2048,
       systemPrompt: agent.systemPrompt || '', photoUrl: agent.photoUrl || '',
     };
@@ -1973,10 +1970,16 @@ export class AiTeamsComponent implements OnInit {
   saveAgent(): void {
     if (this.saving) return;
     this.saving = true;
+    // UpdateAgentRequest n'accepte que name, description, status, teamId et
+    // extraConfig. Le champ `model` était envoyé puis ignoré silencieusement
+    // (FAIL_ON_UNKNOWN_PROPERTIES désactivé) : le modèle et la clé API se
+    // gèrent via les llm-providers (agent / équipe / compte), pas par cette
+    // route. Les sliders température et maxTokens restent affichés mais ne sont
+    // eux aussi pas persistés par cet endpoint : ils appartiennent à
+    // PUT /api/agents/{id}/config.
     this.http.put<any>(`${API}/api/agents/${this.editForm.id}`, {
       name: this.editForm.name, description: this.editForm.description,
-      status: this.editForm.status, model: this.editForm.model,
-      temperature: this.editForm.temperature, maxTokens: this.editForm.maxTokens,
+      status: this.editForm.status,
       systemPrompt: this.editForm.systemPrompt, photoUrl: this.editForm.photoUrl || null,
     }).subscribe({
       next: (u) => { this.applyUpdate(u); this.saving = false; this.closeEditModal(); this.cd.markForCheck(); },
@@ -3021,6 +3024,6 @@ ${modeInstruction}3. Utilise delegate_to_agent en transmettant dans le champ "me
   formatDate(d: string): string { try { return new Date(d).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }); } catch { return d; } }
 
   private emptyForm(): EditForm {
-    return { id: '', name: '', description: '', status: 'ACTIVE', agentType: '', model: 'llama-3.3-70b-versatile', temperature: 0.7, maxTokens: 2048, systemPrompt: '', photoUrl: '' };
+    return { id: '', name: '', description: '', status: 'ACTIVE', agentType: '', model: '', temperature: 0.7, maxTokens: 2048, systemPrompt: '', photoUrl: '' };
   }
 }

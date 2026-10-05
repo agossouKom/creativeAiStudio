@@ -15,7 +15,8 @@ import java.util.stream.Collectors;
 
 /**
  * Service central pour tous les agents IA du module Agentique.
- * Utilise le même ChatClient (Groq llama-3.3-70b) que le service RAG.
+ * Utilise le même ChatClient que le service RAG (modèle configuré par
+ * RAG_CHAT_MODEL / DEFAULT_MODEL, aucun modèle figé dans le code).
  *
  * Le champ `context` de AgentRequest contient le bloc [CONTEXTE UTILISATEUR]
  * construit côté Angular — il inclut nom, email, rôle, crédits de l'utilisateur

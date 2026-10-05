@@ -28,7 +28,7 @@ import { AgentEmailService, CredentialResponse } from '../../services/agent-emai
         <div class="cred-provider-badge cred-provider-badge--groq">
           <span>⚡</span> Groq
         </div>
-        <span class="cred-provider-desc">Modèle LLM ultra-rapide pour l'Agent Email (llama-3.3-70b)</span>
+        <span class="cred-provider-desc">Clé de recherche (recherche d'emails)</span>
       </div>
 
       <div *ngIf="groqCred" class="cred-existing">

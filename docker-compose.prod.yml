@@ -30,7 +30,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
-      MINIO_SERVER_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
+      MINIO_SERVER_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.com}
 
   video-generation-worker:
     environment:
@@ -86,7 +86,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD requis dans .env}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.com}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
       SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:?SPRING_MAIL_PASSWORD requis dans .env}
       GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
@@ -110,7 +110,7 @@ services:
     environment:
       DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requis dans .env}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.com}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
 
@@ -147,7 +147,7 @@ services:
       # navigateur au retour du callback OAuth. Fail-fast : une valeur absente
       # renverrait l'utilisateur vers localhost:4400, hors de l'application.
       APP_FRONTEND_URL: ${APP_FRONTEND_URL:?APP_FRONTEND_URL requis dans .env}
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.com}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-contact@labibpro.com}
@@ -189,7 +189,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requis dans .env}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requis dans .env}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requis dans .env}
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.store}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://minio.labibpro.com}
       AGENT_TEAM_BASE_URL: ${AGENT_TEAM_BASE_URL:-http://agent-team-service:8087}
       SOCIAL_PUBLISH_ENABLED: ${SOCIAL_PUBLISH_ENABLED:-false}
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}

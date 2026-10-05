@@ -70,12 +70,32 @@ class SettingsTest(unittest.TestCase):
         for provider, key_name in (("groq", "GROQ_API_KEY"), ("deepseek", "DEEPSEEK_API_KEY")):
             with self.subTest(provider=provider), patch.dict(
                 "os.environ",
-                {"VIDEO_GENERATION_LLM_PROVIDER": provider, key_name: "test-key"},
+                {
+                    "VIDEO_GENERATION_LLM_PROVIDER": provider,
+                    key_name: "test-key",
+                    "VIDEO_GENERATION_LLM_MODEL": "test-model",
+                },
                 clear=True,
             ):
                 settings = Settings.from_env()
             self.assertTrue(settings.provider_configured)
             self.assertEqual(settings.storyboard_llm_api_key, "test-key")
+            self.assertEqual(settings.storyboard_llm_model, "test-model")
+
+    def test_groq_has_no_hardcoded_model_default(self):
+        # Le modèle par défaut de Groq (llama-3.1-8b-instant) a été retiré de
+        # l'API : le laisser en dur faisait échouer le job en 404
+        # model_not_found, remonté en STORYBOARD_PROVIDER_UNAVAILABLE.
+        # Sans VIDEO_GENERATION_LLM_MODEL, le provider est donc incomplet.
+        for provider, key_name in (("groq", "GROQ_API_KEY"), ("deepseek", "DEEPSEEK_API_KEY")):
+            with self.subTest(provider=provider), patch.dict(
+                "os.environ",
+                {"VIDEO_GENERATION_LLM_PROVIDER": provider, key_name: "test-key"},
+                clear=True,
+            ):
+                settings = Settings.from_env()
+            self.assertIsNone(settings.storyboard_llm_model)
+            self.assertFalse(settings.provider_configured)
 
     def test_storyboard_provider_rejects_unknown_selection(self):
         with patch.dict(

@@ -12,6 +12,14 @@ const API = '';
 
 type Tab = 'agents' | 'equipes' | 'taches' | 'inbox' | 'email' | 'prompts' | 'workflow' | 'chat' | 'llm' | 'rag' | 'canaux' | 'profil' | 'social' | 'studio';
 
+/** Origine de la liste de modèles affichée à l'étape 2 de l'assistant LLM. */
+type ModelCatalogSource = 'api' | 'provider-config' | 'none';
+
+/** Le backend est la seule source de vérité : on n'invente pas de source. */
+function normalizeModelSource(value: unknown): ModelCatalogSource {
+  return value === 'api' || value === 'provider-config' ? value : 'none';
+}
+
 const AGENT_TYPES = [
   { v:'SCRUM_MASTER',      l:'Scrum Master' },
   { v:'EMAIL_MANAGER',     l:'Email Manager' },
@@ -1071,45 +1079,64 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
                   class="llm-pcard"
                   [class.llm-pcard--on]="llmSelectedProvider === pKey"
                   (click)="selectLlmProvider(pKey)">
-            <span class="llm-pcard-icon">{{ LLM_CATALOG[pKey].icon }}</span>
-            <span class="llm-pcard-name">{{ LLM_CATALOG[pKey].label }}</span>
-            <span *ngIf="LLM_CATALOG[pKey].free" class="llm-pcard-badge">Gratuit</span>
+            <span class="llm-pcard-icon">{{ LLM_PROVIDERS[pKey].icon }}</span>
+            <span class="llm-pcard-name">{{ LLM_PROVIDERS[pKey].label }}</span>
+            <span *ngIf="LLM_PROVIDERS[pKey].free" class="llm-pcard-badge">Gratuit</span>
           </button>
         </div>
       </div>
 
-      <!-- ÉTAPE 2 : Modèles du provider sélectionné -->
+      <!-- ÉTAPE 2 : Modèles réellement exposés par le fournisseur -->
       <div *ngIf="llmSelectedProvider" class="llm-step">
         <div class="llm-step-hdr"><span class="llm-step-num">2</span>Choisir un modèle</div>
-        <div class="llm-mlist">
-          <label *ngFor="let m of LLM_CATALOG[llmSelectedProvider].models"
+
+        <div *ngIf="llmModelsLoading" class="llm-phint">Chargement des modèles disponibles…</div>
+
+        <div *ngIf="!llmModelsLoading && llmModels.length > 0" class="llm-mlist">
+          <label *ngFor="let m of llmModels"
                  class="llm-mrow"
-                 [class.llm-mrow--on]="llmForm.modelId === m.id"
-                 (click)="selectLlmModel(m)">
-            <div class="llm-mrow-radio" [class.llm-mrow-radio--on]="llmForm.modelId === m.id"></div>
+                 [class.llm-mrow--on]="llmForm.modelId === m"
+                 (click)="selectLlmModel({ id: m })">
+            <div class="llm-mrow-radio" [class.llm-mrow-radio--on]="llmForm.modelId === m"></div>
             <div class="llm-mrow-body">
-              <span class="llm-mrow-name">{{ m.label }}</span>
-              <div class="llm-mrow-chips">
-                <span class="llm-chip llm-chip--tok">{{ m.maxTokens | number }} tok</span>
-                <span *ngIf="m.info" class="llm-chip">{{ m.info }}</span>
-                <span *ngIf="m.price" class="llm-chip llm-chip--price">{{ m.price }}</span>
-              </div>
+              <span class="llm-mrow-name">{{ m }}</span>
             </div>
-            <span *ngIf="llmForm.modelId === m.id" class="llm-mrow-check">✓</span>
+            <span *ngIf="llmForm.modelId === m" class="llm-mrow-check">✓</span>
           </label>
+        </div>
+
+        <div *ngIf="!llmModelsLoading && llmModelsMessage" class="llm-phint">
+          {{ llmModelsMessage }}
+        </div>
+
+        <div class="llm-step" style="padding:0;margin-top:.6rem">
+          <div class="llm-step-hdr" style="font-size:.78rem">
+            Identifiant du modèle
+            <span style="font-weight:400;color:#64748b">
+              (saisie libre — nécessaire sans clé API, ou si le fournisseur n'expose pas /models)
+            </span>
+          </div>
+          <input class="ws-input" [(ngModel)]="llmForm.modelId"
+                 [disabled]="llmModelsLoading"
+                 placeholder="ex. qwen/qwen3.8-27b, gpt-4o-mini, deepseek-chat…"/>
         </div>
       </div>
 
       <!-- ÉTAPE 3 : Clé API + config auto-remplie -->
       <div *ngIf="llmSelectedProvider && llmForm.modelId" class="llm-step">
         <div class="llm-step-hdr"><span class="llm-step-num">3</span>Clé API &amp; Options</div>
-        <div class="llm-phint">{{ LLM_CATALOG[llmSelectedProvider].hint }}</div>
+        <div class="llm-phint">{{ LLM_PROVIDERS[llmSelectedProvider].hint }}</div>
         <div class="llm-key-row">
           <input class="ws-input llm-key-input"
                  [(ngModel)]="llmForm.apiKey"
                  [type]="llmShowKey ? 'text' : 'password'"
-                 [placeholder]="LLM_CATALOG[llmSelectedProvider].type === 'OLLAMA' ? 'Aucune clé requise (Ollama local)' : 'Collez votre clé API ici…'"/>
+                 [placeholder]="LLM_PROVIDERS[llmSelectedProvider].type === 'OLLAMA' ? 'Aucune clé requise (Ollama local)' : 'Collez votre clé API ici…'"/>
           <button class="llm-key-eye" (click)="llmShowKey=!llmShowKey" title="Afficher / masquer">{{ llmShowKey ? '🙈' : '👁' }}</button>
+          <button class="llm-refresh-btn" (click)="loadLlmModels()"
+                  [disabled]="llmModelsLoading"
+                  title="Relire la liste des modèles chez {{ LLM_PROVIDERS[llmSelectedProvider].label }} avec cette clé">
+            {{ llmModelsLoading ? 'Chargement…' : 'Actualiser' }}
+          </button>
         </div>
         <div class="llm-recap">
           <div class="llm-recap-chip"><span class="llm-rc-lbl">Backend</span><span class="llm-rc-val">{{ llmForm.type }}</span></div>
@@ -3286,6 +3313,9 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 /* Step 3 — key + recap */
 .llm-phint { background:rgba(99,102,241,.07); border:1px solid rgba(99,102,241,.2); border-radius:7px; color:#a5b4fc; font-size:.78rem; padding:.45rem .75rem; margin-bottom:.65rem; line-height:1.4; }
 .llm-key-row { display:flex; gap:.5rem; margin-bottom:.6rem; }
+.llm-refresh-btn { background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.35); border-radius:7px; color:#a5b4fc; cursor:pointer; font-size:.72rem; font-weight:600; padding:.38rem .65rem; transition:.15s; flex-shrink:0; white-space:nowrap; }
+.llm-refresh-btn:hover:not(:disabled) { background:rgba(99,102,241,.22); color:#c7d2fe; }
+.llm-refresh-btn:disabled { opacity:.5; cursor:progress; }
 .llm-key-input { flex:1; }
 .llm-key-eye { background:rgba(255,255,255,.04); border:1px solid rgba(99,102,241,.22); border-radius:7px; color:#94a3b8; cursor:pointer; font-size:.85rem; padding:.38rem .65rem; transition:.15s; flex-shrink:0; }
 .llm-key-eye:hover { background:rgba(99,102,241,.14); color:#c7d2fe; }
@@ -3945,9 +3975,15 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   llmFilter: 'active' | 'deleted' | 'all' = 'active';
   llmConfirmOpen  = false;
   llmConfirmProvider: any = null;
-  llmForm          = { type: 'GEMINI', modelId: 'gemini-3-flash-preview', apiKey: '', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', maxTokens: 1024, primary: true };
+  // modelId volontairement vide : il est choisi dans l'assistant (étape 2) ou saisi.
+  llmForm          = { type: 'GEMINI', modelId: '', apiKey: '', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', maxTokens: 1024, primary: true };
   llmSelectedProvider = '';
   llmShowKey       = false;
+  /** Modèles chargés depuis /llm-providers/models (jamais une liste figée). */
+  llmModels         = [] as string[];
+  llmModelsSource: ModelCatalogSource = 'none';
+  llmModelsLoading  = false;
+  llmModelsMessage  = '';
   revealedKeys: Record<string, string> = {};
   copiedKeyId: string | null = null;
 
@@ -3970,128 +4006,82 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     WEBHOOK:      { hint: 'URL cible, méthode HTTP, headers optionnels.',                                              placeholder: '{"url":"https://hook.example.com/agent","method":"POST","headers":{"X-Api-Key":"secret"}}' },
   };
 
-  private readonly LLM_PRESETS: Record<string, { type: string; modelId: string; baseUrl: string; hint: string }> = {
-    GEMINI:    { type:'GEMINI',    modelId:'gemini-3-flash-preview',  baseUrl:'https://generativelanguage.googleapis.com/v1beta/openai', hint:'🆓 Gratuit — Clé sur aistudio.google.com (Google AI Studio)' },
-    GROQ:      { type:'GROQ',      modelId:'llama-3.3-70b-versatile', baseUrl:'https://api.groq.com/openai/v1',                         hint:'⚡ Gratuit 100K tokens/jour — console.groq.com' },
-    OPENAI:    { type:'OPENAI',    modelId:'gpt-4o-mini',             baseUrl:'',                                                       hint:'💳 Payant — platform.openai.com' },
-    DEEPSEEK:  { type:'OPENAI',    modelId:'deepseek-chat',           baseUrl:'https://api.deepseek.com',                               hint:'💰 ~$0.27/1M tokens — platform.deepseek.com (type backend = OPENAI)' },
-    MISTRAL:   { type:'MISTRAL',   modelId:'mistral-small-latest',    baseUrl:'',                                                       hint:'💳 Abordable — console.mistral.ai' },
-    ANTHROPIC: { type:'ANTHROPIC', modelId:'claude-haiku-4-5-20251001', baseUrl:'',                                                     hint:'💳 Payant — console.anthropic.com' },
-    OLLAMA:    { type:'OLLAMA',    modelId:'llama3.2',                baseUrl:'http://localhost:11434',                                  hint:'🏠 Local — Ollama doit tourner sur ce poste' },
+  /**
+   * Raccourcis de configuration : type de backend + base URL + hint.
+   * Aucun modèle n'y est figé (voir {@link LLM_PROVIDERS}).
+   */
+  private readonly LLM_PRESETS: Record<string, { type: string; baseUrl: string; hint: string }> = {
+    GEMINI:    { type:'GEMINI',    baseUrl:'https://generativelanguage.googleapis.com/v1beta/openai', hint:'🆓 Gratuit — Clé sur aistudio.google.com (Google AI Studio)' },
+    GROQ:      { type:'GROQ',      baseUrl:'https://api.groq.com/openai/v1',                         hint:'⚡ Gratuit 100K tokens/jour — console.groq.com' },
+    OPENAI:    { type:'OPENAI',    baseUrl:'',                                                       hint:'💳 Payant — platform.openai.com' },
+    DEEPSEEK:  { type:'OPENAI',    baseUrl:'https://api.deepseek.com',                               hint:'💰 ~$0.27/1M tokens — platform.deepseek.com (type backend = OPENAI)' },
+    MISTRAL:   { type:'MISTRAL',   baseUrl:'',                                                       hint:'💳 Abordable — console.mistral.ai' },
+    ANTHROPIC: { type:'ANTHROPIC', baseUrl:'',                                                       hint:'💳 Payant — console.anthropic.com' },
+    OLLAMA:    { type:'OLLAMA',    baseUrl:'http://localhost:11434',                                hint:'🏠 Local — Ollama doit tourner sur ce poste' },
   };
 
-  readonly LLM_CATALOG: Record<string, {
+  /**
+   * Providers proposés dans l'espace de travail.
+   *
+   * <p>Volontairement SANS liste de modèles : les fournisseurs en retirent
+   * régulièrement (Groq a supprimé llama-3.3-70b-versatile et
+   * llama-3.1-8b-instant, qui échouaient ensuite en 404 au premier appel).
+   * Les modèles sont chargés à la demande via
+   * {@code GET /api/users/me/llm-providers/models}, avec saisie libre en
+   * secours quand le fournisseur n'expose pas de catalogue.
+   */
+  readonly LLM_PROVIDERS: Record<string, {
     label: string; icon: string; color: string; type: string; baseUrl: string; free: boolean; hint: string;
-    models: { id: string; label: string; maxTokens: number; info?: string; price?: string }[];
   }> = {
     GROQ: {
       label: 'Groq', icon: '⚡', color: '#f59e0b', type: 'GROQ',
       baseUrl: 'https://api.groq.com/openai/v1', free: true,
-      hint: '⚡ Gratuit — 100 000 tokens/jour · console.groq.com',
-      models: [
-        { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B Versatile', maxTokens: 8192, info: '131K ctx · 280 t/s' },
-        { id: 'llama-3.1-8b-instant',    label: 'Llama 3.1 8B Instant',    maxTokens: 8192, info: '131K ctx · 560 t/s' },
-        { id: 'mixtral-8x7b-32768',      label: 'Mixtral 8x7B',            maxTokens: 4096, info: '32K ctx · 180 t/s' },
-        { id: 'gemma2-9b-it',            label: 'Gemma 2 9B-IT',           maxTokens: 4096, info: '8K ctx · 380 t/s' },
-      ]
+      hint: '⚡ Gratuit — 100 000 tokens/jour · console.groq.com'
     },
     DEEPSEEK: {
       label: 'DeepSeek', icon: '🐳', color: '#1d6fa4', type: 'OPENAI',
       baseUrl: 'https://api.deepseek.com', free: false,
-      hint: '💰 Très économique · platform.deepseek.com (compatible OpenAI)',
-      models: [
-        { id: 'deepseek-chat',     label: 'DeepSeek V3 Chat',       maxTokens: 8192, info: '64K ctx', price: '$0.07/1M' },
-        { id: 'deepseek-reasoner', label: 'DeepSeek R1 Raisonnement', maxTokens: 8192, info: '64K ctx', price: '$0.55/1M' },
-      ]
+      hint: '💰 Très économique · platform.deepseek.com (compatible OpenAI)'
     },
     GEMINI: {
       label: 'Google Gemini', icon: '✨', color: '#4285f4', type: 'GEMINI',
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', free: true,
-      hint: '🆓 Gratuit (limites généreuses) · aistudio.google.com',
-      models: [
-        { id: 'gemini-2.0-flash',           label: 'Gemini 2.0 Flash',           maxTokens: 8192, info: '1M ctx' },
-        { id: 'gemini-2.5-flash-preview',   label: 'Gemini 2.5 Flash Preview',   maxTokens: 8192, info: '1M ctx' },
-        { id: 'gemini-2.5-pro-preview',     label: 'Gemini 2.5 Pro Preview',     maxTokens: 8192, info: '1M ctx' },
-        { id: 'gemini-1.5-pro',             label: 'Gemini 1.5 Pro',             maxTokens: 8192, info: '2M ctx' },
-        { id: 'gemini-1.5-flash',           label: 'Gemini 1.5 Flash',           maxTokens: 8192, info: '1M ctx' },
-      ]
+      hint: '🆓 Gratuit (limites généreuses) · aistudio.google.com'
     },
     OPENAI: {
       label: 'OpenAI', icon: '🤖', color: '#74aa9c', type: 'OPENAI',
       baseUrl: '', free: false,
-      hint: '💳 Payant · platform.openai.com',
-      models: [
-        { id: 'gpt-4o',       label: 'GPT-4o',       maxTokens: 4096,  info: '128K ctx', price: '$5/1M' },
-        { id: 'gpt-4o-mini',  label: 'GPT-4o Mini',  maxTokens: 4096,  info: '128K ctx', price: '$0.15/1M' },
-        { id: 'gpt-4-turbo',  label: 'GPT-4 Turbo',  maxTokens: 4096,  info: '128K ctx', price: '$10/1M' },
-        { id: 'o1-mini',      label: 'o1-mini',       maxTokens: 32768, info: '128K ctx', price: '$3/1M' },
-      ]
+      hint: '💳 Payant · platform.openai.com'
     },
     ANTHROPIC: {
       label: 'Anthropic Claude', icon: '🔮', color: '#d4a76a', type: 'ANTHROPIC',
       baseUrl: '', free: false,
-      hint: '💳 Payant · console.anthropic.com',
-      models: [
-        { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5',  maxTokens: 8192,  info: '200K ctx', price: '$0.25/1M' },
-        { id: 'claude-sonnet-4-6',         label: 'Claude Sonnet 4.6', maxTokens: 64000, info: '200K ctx', price: '$3/1M' },
-        { id: 'claude-opus-4-8',           label: 'Claude Opus 4.8',   maxTokens: 8192,  info: '200K ctx', price: '$15/1M' },
-      ]
+      hint: '💳 Payant · console.anthropic.com'
     },
     MISTRAL: {
       label: 'Mistral AI', icon: '🌊', color: '#ff7000', type: 'MISTRAL',
       baseUrl: 'https://api.mistral.ai/v1', free: false,
-      hint: '💰 Abordable · console.mistral.ai',
-      models: [
-        { id: 'mistral-small-latest',  label: 'Mistral Small',  maxTokens: 4096, info: '32K ctx' },
-        { id: 'mistral-medium-latest', label: 'Mistral Medium', maxTokens: 4096, info: '32K ctx' },
-        { id: 'mistral-large-latest',  label: 'Mistral Large',  maxTokens: 4096, info: '128K ctx' },
-        { id: 'codestral-latest',      label: 'Codestral',      maxTokens: 4096, info: '32K ctx (code)' },
-      ]
+      hint: '💰 Abordable · console.mistral.ai'
     },
     QWEN: {
       label: 'Qwen (Alibaba)', icon: '🔱', color: '#ff6a00', type: 'OPENAI',
       baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', free: false,
-      hint: '💰 Économique · dashscope.aliyuncs.com (compatible OpenAI)',
-      models: [
-        { id: 'qwen-max',             label: 'Qwen Max',        maxTokens: 8192, info: '32K ctx' },
-        { id: 'qwen-plus',            label: 'Qwen Plus',       maxTokens: 8192, info: '131K ctx' },
-        { id: 'qwen-turbo',           label: 'Qwen Turbo',      maxTokens: 4096, info: '131K ctx' },
-        { id: 'qwen2.5-72b-instruct', label: 'Qwen 2.5 72B',   maxTokens: 8192, info: '131K ctx' },
-      ]
+      hint: '💰 Économique · dashscope.aliyuncs.com (compatible OpenAI)'
     },
     TOGETHER_AI: {
       label: 'Together AI', icon: '🔗', color: '#7c3aed', type: 'TOGETHER_AI',
       baseUrl: 'https://api.together.xyz/v1', free: false,
-      hint: '💰 200+ modèles · api.together.ai (compatible OpenAI)',
-      models: [
-        { id: 'meta-llama/Llama-3-70b-chat-hf',               label: 'Llama 3 70B Chat',   maxTokens: 4096, info: '8K ctx' },
-        { id: 'mistralai/Mixtral-8x7B-Instruct-v0.1',         label: 'Mixtral 8x7B',       maxTokens: 4096, info: '32K ctx' },
-        { id: 'togethercomputer/llama-2-70b-chat',            label: 'Llama 2 70B Chat',   maxTokens: 4096, info: '4K ctx' },
-        { id: 'Qwen/Qwen2.5-72B-Instruct-Turbo',             label: 'Qwen 2.5 72B Turbo', maxTokens: 4096, info: '32K ctx' },
-      ]
+      hint: '💰 200+ modèles · api.together.ai (compatible OpenAI)'
     },
     OPENROUTER: {
       label: 'OpenRouter', icon: '🌐', color: '#6366f1', type: 'OPENAI',
       baseUrl: 'https://openrouter.ai/api/v1', free: false,
-      hint: '🌐 400+ modèles · openrouter.ai (compatible OpenAI — clé OR requise)',
-      models: [
-        { id: 'openai/gpt-4o-mini',                          label: 'GPT-4o Mini',           maxTokens: 4096, info: '128K ctx' },
-        { id: 'anthropic/claude-3-haiku',                    label: 'Claude 3 Haiku',        maxTokens: 4096, info: '200K ctx' },
-        { id: 'google/gemini-flash-1.5',                     label: 'Gemini Flash 1.5',      maxTokens: 4096, info: '1M ctx' },
-        { id: 'meta-llama/llama-3.1-8b-instruct:free',       label: 'Llama 3.1 8B (Gratuit)', maxTokens: 4096, info: '131K ctx', price: 'Gratuit' },
-      ]
+      hint: '🌐 400+ modèles · openrouter.ai (compatible OpenAI — clé OR requise)'
     },
     OLLAMA: {
       label: 'Ollama (local)', icon: '🏠', color: '#34d399', type: 'OLLAMA',
       baseUrl: 'http://localhost:11434', free: true,
-      hint: '🏠 Gratuit — local · ollama.com · aucune clé requise',
-      models: [
-        { id: 'llama3.2',     label: 'Llama 3.2 3B',  maxTokens: 4096, info: '128K ctx' },
-        { id: 'llama3.1:8b',  label: 'Llama 3.1 8B',  maxTokens: 4096, info: '128K ctx' },
-        { id: 'mistral',      label: 'Mistral 7B',     maxTokens: 4096, info: '32K ctx' },
-        { id: 'qwen2.5:7b',   label: 'Qwen 2.5 7B',   maxTokens: 4096, info: '128K ctx' },
-        { id: 'deepseek-r1',  label: 'DeepSeek R1',    maxTokens: 4096, info: '128K ctx' },
-      ]
+      hint: '🏠 Gratuit — local · ollama.com · aucune clé requise'
     },
   };
 
@@ -5768,34 +5758,91 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
     return this.agents.filter(a => a.teamId === teamId);
   }
 
+  /**
+   * Remplit le formulaire à partir d'un provider déjà enregistré.
+   *
+   * <p>Ne présélectionne plus de modèle : un identifiant mémorisé dans un preset
+   * peut avoir été retiré par le fournisseur depuis. La liste réellement
+   * disponible est rechargée et l'utilisateur choisit.
+   */
   applyLlmPreset(preset: string): void {
     const p = this.LLM_PRESETS[preset];
     if (!p) return;
+    this.llmSelectedProvider = preset;
     this.llmForm.type    = p.type;
-    this.llmForm.modelId = p.modelId;
+    this.llmForm.modelId = '';
     this.llmForm.baseUrl = p.baseUrl;
     this.llmHint         = p.hint;
+    this.llmShowKey      = false;
     this.formError       = '';
+    this.loadLlmModels();
   }
 
-  get llmCatalogKeys(): string[] { return Object.keys(this.LLM_CATALOG); }
+  get llmCatalogKeys(): string[] { return Object.keys(this.LLM_PROVIDERS); }
 
   selectLlmProvider(key: string): void {
     this.llmSelectedProvider = key;
-    const p = this.LLM_CATALOG[key];
+    const p = this.LLM_PROVIDERS[key];
     this.llmForm.type    = p.type;
     this.llmForm.baseUrl = p.baseUrl;
     this.llmHint         = p.hint;
     this.llmShowKey      = false;
-    if (p.models?.length > 0) this.selectLlmModel(p.models[0]);
-    else this.llmForm.modelId = '';
+    this.llmForm.modelId = '';
     this.formError = '';
-    this.cd.markForCheck();
+    this.loadLlmModels();
   }
 
-  selectLlmModel(m: any): void {
-    this.llmForm.modelId   = m.id;
-    this.llmForm.maxTokens = m.maxTokens ?? 4096;
+/**
+   * Charge les modèles réellement exposés par le fournisseur.
+   *
+   * <p>La clé n'est envoyée que si l'utilisateur l'a déjà saisie dans le
+   * formulaire : sans elle, Groq/OpenAI refusent /models et l'interface
+   * bascule automatiquement en saisie libre (étape 2) plutôt que de proposer
+   * une liste périmée.
+   *
+   * <p>La requête est un POST dont le corps porte la clé, pas un GET avec la
+   * clé dans l'URL : une URL est consignée dans les journaux d'accès et dans
+   * l'historique du navigateur, ce qui exposerait la clé en clair.
+   */
+  loadLlmModels(): void {
+    const key = this.llmSelectedProvider;
+    if (!key) return;
+    const provider = this.LLM_PROVIDERS[key];
+    this.llmModelsLoading = true;
+    this.llmModelsMessage = '';
+    this.cd.markForCheck();
+
+    this.http.post<{ source: string; models: string[]; message?: string }>(
+      `${API}/api/users/me/llm-providers/models/preview`, {
+        type: provider.type,
+        baseUrl: provider['baseUrl'] || null,
+        apiKey: (this.llmForm['apiKey'] || '').trim() || null
+      }
+    ).subscribe({
+      next: (res) => {
+        if (this.llmSelectedProvider !== key) return;
+        this.llmModels        = res?.models ?? [];
+        this.llmModelsSource  = normalizeModelSource(res?.source);
+        this.llmModelsMessage = this.llmModels.length === 0
+          ? (res?.message || 'Modèles indisponibles : saisissez l\'identifiant ci-dessous.')
+          : '';
+        this.llmModelsLoading = false;
+        // Ne présélectionne rien : on ne devine pas le modèle « principal ».
+        this.cd.markForCheck();
+      },
+      error: () => {
+        if (this.llmSelectedProvider !== key) return;
+        this.llmModels        = [];
+        this.llmModelsSource  = 'none';
+        this.llmModelsMessage = 'Catalogue indisponible : saisissez l\'identifiant du modèle.';
+        this.llmModelsLoading = false;
+        this.cd.markForCheck();
+      }
+    });
+  }
+
+  selectLlmModel(m: { id: string }): void {
+    this.llmForm.modelId = m.id;
     this.cd.markForCheck();
   }
 
