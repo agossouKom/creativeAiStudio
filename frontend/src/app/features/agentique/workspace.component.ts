@@ -5,6 +5,7 @@ import { RouterModule, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { DialogService } from '../../shared/ui/dialog.service';
+import { AuthService } from '../../services/auth.service';
 import { TipDirective } from '../../shared/ui/tooltip.directive';
 import * as XLSX from 'xlsx';
 
@@ -898,6 +899,8 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
                   (click)="setLlmMode('agent')">Par agent</button>
           <button class="ws-llm-mode-btn" [class.ws-llm-mode-btn--active]="llmMode==='team'"
                   (click)="setLlmMode('team')">Toute une équipe</button>
+          <button class="ws-llm-mode-btn" [class.ws-llm-mode-btn--active]="llmMode==='account'"
+                  (click)="setLlmMode('account')">Mon compte</button>
         </div>
       </div>
 
@@ -1064,6 +1067,112 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
         </div>
 
         <div *ngIf="!llmTeamId" class="ws-empty">Sélectionnez une équipe pour gérer ses providers partagés.</div>
+      </ng-container>
+
+      <!-- ── Mode : Compte ── -->
+      <ng-container *ngIf="llmMode === 'account'">
+        <div class="ws-llm-hint">
+          Ces providers s'appliquent à <strong>tous vos agents</strong>, y compris ceux d'une équipe.
+          Ils servent de repli lorsqu'un agent n'a aucun provider propre.
+        </div>
+
+        <!-- Provider par défaut de la plateforme : réservé aux administrateurs -->
+        <div *ngIf="isAdmin" class="ws-llm-default-box">
+          <div class="ws-llm-default-hdr">🌐 Provider par défaut de la plateforme</div>
+          <div *ngIf="llmPlatformDefaultLoading" class="ws-loading"><div class="ws-spinner"></div></div>
+          <ng-container *ngIf="!llmPlatformDefaultLoading">
+            <p *ngIf="llmPlatformDefault" class="ws-llm-default-desc">
+              Défini : <strong>{{ llmPlatformDefault.type }} · {{ llmPlatformDefault.modelId }}</strong>
+              <span class="ws-cell-sub">({{ llmPlatformDefault.displayName || 'sans nom' }})</span>
+            </p>
+            <p *ngIf="!llmPlatformDefault" class="ws-llm-default-desc">
+              Aucun provider par défaut. Les nouveaux comptes s'inscrivent avec un modèle vide et
+              doivent en configurer un eux-mêmes avant de pouvoir discuter.
+            </p>
+            <p class="ws-llm-default-note">
+              Marquer un provider ici le recopie automatiquement dans chaque compte qui n'en
+              possède pas encore. Les comptes ayant déjà choisi leur modèle ne sont pas touchés,
+              et chaque utilisateur peut remplacer ou supprimer le provider reçu.
+            </p>
+            <div class="ws-qf-actions">
+              <button *ngIf="llmPlatformDefault" class="ws-btn-cancel"
+                      (click)="clearPlatformDefault()">Retirer le défaut</button>
+              <button class="ws-btn-cancel" (click)="loadAccountLlmProviders()">Actualiser</button>
+            </div>
+          </ng-container>
+        </div>
+
+        <div class="ws-llm-target-bar">
+          <div class="ws-llm-filter-pills">
+            <button class="ws-pill" [class.ws-pill--active]="llmFilter==='active'" (click)="setLlmFilter('active')">Actifs</button>
+            <button class="ws-pill" [class.ws-pill--active]="llmFilter==='deleted'" (click)="setLlmFilter('deleted')">Supprimés</button>
+            <button class="ws-pill" [class.ws-pill--active]="llmFilter==='all'" (click)="setLlmFilter('all')">Tous</button>
+          </div>
+          <button class="ws-btn-primary" (click)="toggleQuickAdd('llm-account')">
+            {{ quickAdd === 'llm-account' ? "✕ Fermer" : "＋ Ajouter un provider à mon compte" }}
+          </button>
+        </div>
+
+        <div *ngIf="quickAdd === 'llm-account'" class="ws-quick-form">
+          <ng-container *ngTemplateOutlet="llmForm_tpl"></ng-container>
+          <div *ngIf="llmHint" class="ws-llm-hint">{{ llmHint }}</div>
+          <div *ngIf="formError" class="ws-error">{{ formError }}</div>
+          <div class="ws-qf-actions">
+            <button class="ws-btn-cancel" (click)="quickAdd = ''">Annuler</button>
+            <button class="ws-btn-primary" (click)="addLlmProvider()" [disabled]="saving">
+              <span *ngIf="!saving">Ajouter à mon compte</span>
+              <span *ngIf="saving" class="ws-spin"></span>
+            </button>
+          </div>
+        </div>
+
+        <div *ngIf="loadingLlm" class="ws-loading"><div class="ws-spinner"></div></div>
+        <div class="ws-table-wrap" *ngIf="!loadingLlm">
+          <table class="ws-table">
+            <thead><tr>
+              <th>Type</th><th>Modèle</th><th>Base URL</th><th>Clé API</th><th>Principal</th>
+              <th *ngIf="isAdmin">Défaut plateforme</th>
+              <th>Actions</th>
+            </tr></thead>
+            <tbody>
+              <tr *ngFor="let p of llmDisplayedProviders" [class.ws-row--deleted]="p.deleted">
+                <td data-label="Type"><span class="ws-type-badge">{{ p.type }}</span></td>
+                <td data-label="Modèle" class="ws-cell-name">{{ p.modelId }} <span *ngIf="p.deleted" class="ws-deleted-tag">supprimé</span></td>
+                <td data-label="Base URL"><span class="ws-cell-sub">{{ p.baseUrl || '(défaut)' }}</span></td>
+                <td data-label="Clé API" class="ws-key-cell">
+                  <ng-container *ngIf="p.hasApiKey; else accountNoKey">
+                    <span class="ws-key-mask">{{ revealedKeys[p.id] ? maskDisplay(revealedKeys[p.id]) : '••••••••••••' }}</span>
+                    <button class="ws-key-btn" (click)="revealAndCopyKey(p)" title="Révéler et copier">👁</button>
+                  </ng-container>
+                  <ng-template #accountNoKey><span class="ws-cell-sub">—</span></ng-template>
+                </td>
+                <td data-label="Principal"><span class="ws-bool" [class.ws-bool--on]="p.primary && !p.deleted">{{ p.primary && !p.deleted ? '★ Oui' : '—' }}</span></td>
+                <td *ngIf="isAdmin" data-label="Défaut plateforme">
+                  <span class="ws-bool" [class.ws-bool--on]="p.platformDefault">
+                    {{ p.platformDefault ? '🌐 Défaut' : '—' }}
+                  </span>
+                </td>
+                <td data-label="Actions" class="ws-act-cell">
+                  <button *ngIf="isAdmin && !p.deleted && !p.platformDefault"
+                          class="ws-act-btn ws-act-star"
+                          title="Définir comme provider par défaut de la plateforme"
+                          (click)="markPlatformDefault(p)">🌐</button>
+                  <button *ngIf="!p.primary && !p.deleted" class="ws-act-btn ws-act-star" title="Définir comme principal" (click)="llmSetPrimary(p)">⭐</button>
+                  <button *ngIf="p.deleted" class="ws-act-btn ws-act-restore" title="Restaurer" (click)="llmRestore(p)">♻️</button>
+                  <button *ngIf="!p.deleted" class="ws-act-btn ws-act-del" title="Supprimer" (click)="llmAskDelete(p)">🗑</button>
+                </td>
+              </tr>
+              <tr *ngIf="llmDisplayedProviders.length === 0">
+                <td [attr.colspan]="isAdmin ? 7 : 6">
+                  <div class="ws-empty" style="padding:1rem">
+                    Aucun provider à mon compte. Vos agents utilisent alors le repli : provider d'agent,
+                    d'équipe, puis défaut de la plateforme.
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </ng-container>
 
     </div>
@@ -3082,6 +3191,13 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 .ws-llm-target-bar { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; padding:.75rem 1.25rem; background:#0d1526; border-bottom:1px solid rgba(99,102,241,.1); }
 .ws-llm-team-count { color:#64748b; font-size:.78rem; }
 .ws-llm-team-info { background:rgba(99,102,241,.06); border:1px solid rgba(99,102,241,.15); border-radius:6px; color:#94a3b8; font-size:.78rem; margin-bottom:.75rem; padding:.5rem .75rem; }
+/* Encart du provider par défaut de la plateforme : administrateurs seulement.
+   Vert plutôt que l'indigo des encadrés voisins, pour qu'on ne le confonde pas
+   avec un simple rappel informatif. */
+.ws-llm-default-box { background:rgba(16,185,129,.06); border:1px solid rgba(16,185,129,.28); border-radius:8px; margin:0 1.25rem .75rem; padding:.85rem 1rem; }
+.ws-llm-default-hdr { color:#6ee7b7; font-size:.82rem; font-weight:700; letter-spacing:.02em; margin-bottom:.5rem; }
+.ws-llm-default-desc { color:#e2e8f0; font-size:.82rem; margin:0 0 .4rem; }
+.ws-llm-default-note { color:#94a3b8; font-size:.76rem; line-height:1.5; margin:0 0 .6rem; }
 .ws-llm-agent-chip { color:#a5b4fc; font-weight:600; }
 .ws-llm-bulk-result { padding:.75rem 1.25rem; display:flex; flex-direction:column; gap:.4rem; }
 .ws-llm-bulk-row { align-items:center; border-radius:6px; display:flex; font-size:.82rem; gap:.6rem; padding:.4rem .75rem; }
@@ -3962,7 +4078,7 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   chatQuota: any       = null;
 
   // ── LLM PROVIDERS ─────────────────────────────────────────────────────────
-  llmMode: 'agent' | 'team' = 'agent';
+  llmMode: 'agent' | 'team' | 'account' = 'agent';
   llmAgentId    = '';
   llmTeamId     = '';
   llmProviders: any[] = [];
@@ -3971,6 +4087,14 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   llmPreset     = '';
   llmBulkResult: { agentName: string; status: 'ok' | 'error'; message?: string }[] = [];
   llmBulkRunning = false;
+
+  /**
+   * Provider par défaut de la plateforme (administration). DistINCT des
+   * providers du compte affiché juste en dessous : c'est le modèle partagé que
+   * l'administration a choisi pour les comptes qui n'en ont pas encore.
+   */
+  llmPlatformDefault: any = null;
+  llmPlatformDefaultLoading = false;
   llmFilterTeam   = '';
   llmFilter: 'active' | 'deleted' | 'all' = 'active';
   llmConfirmOpen  = false;
@@ -4091,7 +4215,19 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   saving    = false;
   formError = '';
 
-  constructor(private http: HttpClient, protected cd: ChangeDetectorRef, private router: Router, private sanitizer: DomSanitizer, private dialog: DialogService) {}
+  constructor(private http: HttpClient, protected cd: ChangeDetectorRef, private router: Router, private sanitizer: DomSanitizer, private dialog: DialogService, private auth: AuthService) {}
+
+  /**
+   * Vrai pour un compte administrateur.
+   *
+   * Seuls les administrateurs peuvent marquer un provider comme défaut de la
+   * plateforme : cela revient à faire porter sa clé API par tous les comptes.
+   * Le contrôle est refait côté serveur (@PreAuthorize), l'interface se contente
+   * de ne pas proposer l'action.
+   */
+  get isAdmin(): boolean {
+    return this.auth.currentUser()?.role === 'ADMIN';
+  }
 
   get selectedAgentName(): string {
     const a = this.agents.find(ag => ag.id === this.chatAgentId);
@@ -5744,7 +5880,7 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
   }
 
   // ── LLM PROVIDERS ─────────────────────────────────────────────────────────
-  setLlmMode(mode: 'agent' | 'team'): void {
+  setLlmMode(mode: 'agent' | 'team' | 'account'): void {
     this.llmMode = mode;
     this.quickAdd = '';
     this.llmBulkResult = [];
@@ -5752,6 +5888,10 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
     this.formError = '';
     if (mode === 'agent' && this.llmAgentId) this.loadLlmProviders(this.llmAgentId);
     if (mode === 'team' && this.llmTeamId) this.loadTeamLlmProviders(this.llmTeamId);
+    if (mode === 'account') {
+      this.loadAccountLlmProviders();
+      if (this.isAdmin) this.loadPlatformDefault();
+    }
   }
 
   agentsInTeam(teamId: string): any[] {
@@ -5866,8 +6006,10 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
 
   setLlmFilter(f: 'active' | 'deleted' | 'all'): void {
     this.llmFilter = f;
-    if (this.llmAgentId) this.loadLlmProviders(this.llmAgentId);
-    if (this.llmMode === 'team' && this.llmTeamId) this.loadTeamLlmProviders(this.llmTeamId);
+    // Recharge selon le mode affiché. Sans ce aiguillage, changer de filtre en
+    // mode équipe ou compte laissait la liste précédente : le filtre changeait
+    // l'affichage, pas les données.
+    this.reloadCurrentLlmProviders();
   }
 
   loadLlmProviders(agentId: string): void {
@@ -5898,14 +6040,80 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
   }
 
   private currentLlmProviderUrl(): string {
-    return this.llmMode === 'team'
-      ? `${API}/api/teams/${this.llmTeamId}/llm-providers`
-      : `${API}/api/agents/${this.llmAgentId}/llm-providers`;
+    if (this.llmMode === 'team')    return `${API}/api/teams/${this.llmTeamId}/llm-providers`;
+    if (this.llmMode === 'account') return `${API}/api/users/me/llm-providers`;
+    return `${API}/api/agents/${this.llmAgentId}/llm-providers`;
   }
 
   private reloadCurrentLlmProviders(): void {
     if (this.llmMode === 'team') this.loadTeamLlmProviders(this.llmTeamId);
+    else if (this.llmMode === 'account') this.loadAccountLlmProviders();
     else this.loadLlmProviders(this.llmAgentId);
+  }
+
+  /**
+   * Providers du scope compte. Ils s'appliquent à tous les agents de
+   * l'utilisateur, agents d'équipe compris : c'est le niveau qui correspond au
+   * « mon compte » de l'interface.
+   */
+  loadAccountLlmProviders(): void {
+    this.loadingLlm = true;
+    this.cd.markForCheck();
+    const includeDeleted = this.llmFilter === 'deleted' || this.llmFilter === 'all';
+    this.http.get<any[]>(`${API}/api/users/me/llm-providers?includeDeleted=${includeDeleted}`)
+      .subscribe({
+        next: (res) => {
+          this.llmProviders = Array.isArray(res) ? res : [];
+          this.loadingLlm = false;
+          this.cd.markForCheck();
+        },
+        error: (e) => {
+          this.llmProviders = [];
+          this.loadingLlm = false;
+          this.dialog.alert(`Impossible de charger les providers du compte : ${e?.error?.message || ''}`, 'Erreur', 'error');
+          this.cd.markForCheck();
+        }
+      });
+  }
+
+  /** Provider par défaut de la plateforme, lu à part : il est partagé. */
+  loadPlatformDefault(): void {
+    this.llmPlatformDefaultLoading = true;
+    this.cd.markForCheck();
+    this.http.get<any>(`${API}/api/admin/llm-providers/platform-default`).subscribe({
+      next: (res) => { this.llmPlatformDefault = res; this.llmPlatformDefaultLoading = false; this.cd.markForCheck(); },
+      error: () => {
+        // 404 = aucun provider marqué : ce n'est pas une panne, c'est l'état initial.
+        this.llmPlatformDefault = null;
+        this.llmPlatformDefaultLoading = false;
+        this.cd.markForCheck();
+      }
+    });
+  }
+
+  markPlatformDefault(p: any): void {
+    this.http.put<any>(`${API}/api/admin/llm-providers/platform-default/${p.id}`, {}).subscribe({
+      next: () => {
+        this.loadPlatformDefault();
+        this.loadAccountLlmProviders();
+        this.dialog.alert(
+          `${p.type} · ${p.modelId} est désormais le provider par défaut de la plateforme.\n\n`
+          + 'Son modèle et sa clé sont recopiés dans chaque compte qui n\'a pas encore de provider.',
+          'Provider par défaut défini', 'success');
+      },
+      error: (e) => this.dialog.alert(`Erreur : ${e?.error?.detail || e?.error?.message || ''}`, 'Erreur', 'error')
+    });
+  }
+
+  clearPlatformDefault(): void {
+    this.http.delete(`${API}/api/admin/llm-providers/platform-default`).subscribe({
+      next: () => {
+        this.loadPlatformDefault();
+        this.loadAccountLlmProviders();
+        this.dialog.alert('Aucun provider n\'est désormais le défaut de la plateforme.', 'Défaut retiré', 'success');
+      },
+      error: (e) => this.dialog.alert(`Erreur : ${e?.error?.detail || e?.error?.message || ''}`, 'Erreur', 'error')
+    });
   }
 
   llmSetPrimary(p: any): void {

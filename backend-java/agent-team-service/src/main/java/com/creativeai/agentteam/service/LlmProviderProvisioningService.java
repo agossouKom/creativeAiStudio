@@ -5,6 +5,7 @@ import com.creativeai.agentteam.repository.LlmProviderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -50,10 +51,21 @@ public class LlmProviderProvisioningService {
      * Recopie le provider par défaut de la plateforme dans le compte si celui-ci
      * n'a aucun provider.
      *
+     * <p>{@code REQUIRES_NEW} est indispensable, et non décoratif. L'appelant
+     * est très souvent une méthode {@code @Transactional(readOnly = true)} — la
+     * lecture du provider résolu, par exemple. Spring passe alors Hibernate en
+     * {@code FlushMode.MANUAL} pour cette transaction : le {@code save()} est
+     * exécuté en mémoire, l'identifiant est attribué, la méthode journalise sa
+     * réussite et rend la bonne réponse — mais l'INSERT n'est jamais flushé.
+     * Symptôme : la réponse est correcte, la ligne n'existe pas en base, et
+     * l'appel suivant reprovisionne à l'identique. Suspendre la transaction
+     * parente et écrire dans la sienne évite ce piège ; l'idempotence garantit
+     * qu'un double appel ne crée pas de doublon.
+     *
      * @return le provider créé, ou {@link Optional#empty()} si rien n'a été fait
      *         (le compte a déjà un provider, ou aucun provider par défaut n'est défini)
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<LlmProvider> ensureDefaultProviderFor(String userId) {
         if (userId == null || userId.isBlank()) {
             return Optional.empty();

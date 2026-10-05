@@ -5,6 +5,7 @@ import com.creativeai.agentteam.service.ResourceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -72,6 +73,25 @@ public class GlobalExceptionHandler {
         String reason = ex.getReason() != null ? ex.getReason() : resolved.getReasonPhrase();
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(resolved, reason);
         detail.setType(URI.create("/errors/" + resolved.value()));
+        detail.setProperty("timestamp", Instant.now());
+        return detail;
+    }
+
+/**
+     * Refus d'autorisation issu de {@code @PreAuthorize} → 403, et non 500.
+     *
+     * <p>Sans ce handler, l'{@code AccessDeniedException} tombe dans
+     * {@link #handleGeneric} : un utilisateur non administrateur tentant
+     * d'atteindre une route d'administration obtenait une erreur serveur au lieu
+     * d'un refus explicite. C'est trompeur — la réponse laisse croire à une
+     * panne alors que la décision de sécurité a été prise correctement — et ça
+     * masque aussi ces refus dans les journaux d'alerte.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAccessDenied(AccessDeniedException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.FORBIDDEN, "Accès refusé");
+        detail.setType(URI.create("/errors/403"));
         detail.setProperty("timestamp", Instant.now());
         return detail;
     }
