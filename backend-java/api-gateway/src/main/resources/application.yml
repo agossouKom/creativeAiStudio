@@ -385,6 +385,16 @@ spring:
           filters:
             - name: AuthenticationFilter
 
+        # Provider LLM par défaut de la plateforme (marquage, retrait, lecture).
+        # Même découpage que admin-social : le gateway exige un JWT valide,
+        # le rôle ADMIN est décidé par @PreAuthorize dans le service.
+        - id: admin-llm-providers
+          uri: http://${AGENT_TEAM_SERVICE_HOST:agent-team-service}:8087
+          predicates:
+            - Path=/api/admin/llm-providers/**
+          filters:
+            - name: AuthenticationFilter
+
         # Rédaction assistée d'une légende depuis l'onglet Planning.
         # JWT obligatoire : la génération de texte consomme des crédits.
         - id: social-caption
