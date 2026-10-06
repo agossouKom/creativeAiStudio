@@ -22,6 +22,7 @@ import java.util.List;
 public class AgentTeamService {
 
     private final AgentTeamRepository teamRepo;
+    private final LlmProviderProvisioningService llmProvisioning;
     private final AuditService        auditService;
     private final ObjectMapper        objectMapper;
 
@@ -47,6 +48,18 @@ public class AgentTeamService {
             .build();
 
         team = teamRepo.save(team);
+
+        // L'équipe reçoit son modèle dès sa création, et non à la création de
+        // son premier agent. Déclencher l'attribution sur la création d'un agent
+        // laissait les équipes déjà peuplées sans provider, et faisait dépendre
+        // l'attribution d'un appel qui répond 201 : une équipe vide pouvait
+        // rester sans modèle indéfiniment, et rien ne signalait ce retard.
+        //
+        // REQUIRES_NEW : la copie est écrite dans sa propre transaction. Sans
+        // cela elle resterait en FlushMode.MANUAL et ne serait jamais flushée,
+        // comme ce fut le cas pour le provisionnement du compte.
+        llmProvisioning.ensureTeamProviderFromPlatformDefault(team.getId());
+
         auditService.log(ownerId, "CREATE_TEAM", "team", team.getId(), true,
             AuditService.details("name", team.getName(), "type", team.getType(),
                 "leadAgentId", team.getLeadAgentId()));
