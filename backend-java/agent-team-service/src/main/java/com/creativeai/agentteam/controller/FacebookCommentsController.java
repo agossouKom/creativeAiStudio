@@ -1,5 +1,8 @@
 package com.creativeai.agentteam.controller;
 
+import com.creativeai.agentteam.dto.response.ChannelResponse;
+import com.creativeai.agentteam.model.enums.ChannelStatus;
+import com.creativeai.agentteam.model.enums.PlatformType;
 import com.creativeai.agentteam.service.ChannelSenderService;
 import com.creativeai.agentteam.service.ChannelService;
 import com.creativeai.agentteam.service.FacebookCommentPollerService;
@@ -10,6 +13,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -49,6 +53,25 @@ public class FacebookCommentsController {
      */
     private void requireOwnership(String userId, String agentId) {
         channelService.requireOwnedAgent(userId, agentId);
+    }
+
+    /** Aucun canal Facebook CONNECTED pour cet agent (404 — même si l'agent existe). */
+    private static final String FACEBOOK_CHANNEL_MISSING =
+        "Aucun canal Facebook CONNECTED pour cet agent : connectez le compte avant d'agir sur ses commentaires.";
+
+    /**
+     * Refus propre quand l'agent n'a pas de canal Facebook CONNECTED.
+     * Un 404, pas un 500 : l'absence de canal est un état du compte, pas une panne.
+     */
+    private boolean hasFacebookChannel(String userId, String agentId) {
+        return channelService.listChannels(userId, agentId).stream()
+            .anyMatch(channel -> channel.platformType() == PlatformType.FACEBOOK
+                               && channel.status() == ChannelStatus.CONNECTED);
+    }
+
+    private ResponseEntity<Map<String, Object>> facebookChannelMissing() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+            "success", false, "error", FACEBOOK_CHANNEL_MISSING));
     }
 
     @Operation(
@@ -127,7 +150,11 @@ public class FacebookCommentsController {
         requireOwnership(userId, agentId);
         if (poller.isEmpty())
             return ResponseEntity.ok(Map.of("message", "Polling désactivé (FACEBOOK_POLLING_ENABLED=false)", "newTasks", 0));
+        if (!hasFacebookChannel(userId, agentId))
+            return facebookChannelMissing();
         int channels = poller.get().triggerNow(agentId);
+        if (channels == 0)
+            return facebookChannelMissing();
         return ResponseEntity.ok(Map.of("message", "Scan lancé", "channelsScanned", channels));
     }
 
@@ -140,6 +167,8 @@ public class FacebookCommentsController {
         requireOwnership(userId, agentId);
         if (poller.isEmpty())
             return ResponseEntity.ok(Map.of("message", "Polling désactivé", "newTasks", 0));
+        if (!hasFacebookChannel(userId, agentId))
+            return facebookChannelMissing();
         int newTasks = poller.get().scanPost(agentId, postId);
         return ResponseEntity.ok(Map.of("postId", postId, "newTasksCreated", newTasks));
     }
@@ -160,6 +189,8 @@ public class FacebookCommentsController {
         String message = body != null ? body.get("message") : null;
         if (message == null || message.isBlank())
             return ResponseEntity.badRequest().body(Map.of("error", "Le champ 'message' est obligatoire"));
+        if (!hasFacebookChannel(userId, agentId))
+            return facebookChannelMissing();
 
         log.info("[FB_COMMENTS_API] COMMENT ON POST agentId={} postId={}", agentId, postId);
 
@@ -182,6 +213,9 @@ public class FacebookCommentsController {
 
         requireOwnership(userId, agentId);
 
+        if (!hasFacebookChannel(userId, agentId))
+            return facebookChannelMissing();
+
         log.info("[FB_COMMENTS_API] DELETE post agentId={} postId={}", agentId, postId);
         ChannelSenderService.SendResult result = channelSender.deleteFacebookPost(agentId, postId);
         if (result.success())
@@ -203,6 +237,8 @@ public class FacebookCommentsController {
         String message = body != null ? body.get("message") : null;
         if (message == null || message.isBlank())
             return ResponseEntity.badRequest().body(Map.of("error", "Le champ 'message' est obligatoire"));
+        if (!hasFacebookChannel(userId, agentId))
+            return facebookChannelMissing();
 
         log.info("[FB_COMMENTS_API] EDIT post agentId={} postId={}", agentId, postId);
         ChannelSenderService.SendResult result = channelSender.editFacebookPost(agentId, postId, message);
@@ -260,6 +296,9 @@ public class FacebookCommentsController {
         if (message == null || message.isBlank()) {
             return ResponseEntity.badRequest()
                 .body(Map.of("error", "Le champ 'message' est obligatoire"));
+        }
+        if (!hasFacebookChannel(userId, agentId)) {
+            return facebookChannelMissing();
         }
 
         log.info("[FB_COMMENTS_API] REPLY agentId={} commentId={}", agentId, commentId);

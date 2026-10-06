@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -77,6 +78,16 @@ class FacebookCommentsOwnershipTest {
     private void givenAgentIsOwned() {
         when(channelService.requireOwnedAgent(OWNER, AGENT))
             .thenReturn(mock(com.creativeai.agentteam.model.Agent.class));
+    }
+
+    /** L'agent est au propriétaire et possède un canal Facebook CONNECTED. */
+    private void givenAgentIsOwnedWithFacebookChannel() {
+        givenAgentIsOwned();
+        when(channelService.listChannels(OWNER, AGENT))
+            .thenReturn(List.of(new com.creativeai.agentteam.dto.response.ChannelResponse(
+                "channel-1", AGENT, com.creativeai.agentteam.model.enums.ChannelType.SOCIAL_MEDIA,
+                PlatformType.FACEBOOK, "Page", com.creativeai.agentteam.model.enums.ChannelStatus.CONNECTED,
+                "acc-1", "Compte", null, null, null, null, false, null, null, null, null)));
     }
 
     // ── Lecture ──────────────────────────────────────────────────────────────
@@ -190,7 +201,7 @@ class FacebookCommentsOwnershipTest {
 
     @Test
     void leProprietairePEutSupprimerUnPost() {
-        givenAgentIsOwned();
+        givenAgentIsOwnedWithFacebookChannel();
         when(channelSender.deleteFacebookPost(AGENT, "page-1_42"))
             .thenReturn(new ChannelSenderService.SendResult(true, null, null));
 
@@ -198,6 +209,19 @@ class FacebookCommentsOwnershipTest {
 
         assertEquals(200, response.getStatusCode().value());
         assertTrue((Boolean) response.getBody().get("success"));
+    }
+
+    @Test
+    void leProprietairePEutRepondreAUnCommentaire() {
+        givenAgentIsOwnedWithFacebookChannel();
+        when(channelSender.replyToFacebookComment(OWNER, AGENT, "c-1", "merci"))
+            .thenReturn(new ChannelSenderService.SendResult(true, "reply-1", null));
+
+        ResponseEntity<Map<String, Object>> response =
+            controller.reply(OWNER, AGENT, "c-1", Map.of("message", "merci"));
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals("reply-1", response.getBody().get("replyId"));
     }
 
     /**
@@ -214,6 +238,84 @@ class FacebookCommentsOwnershipTest {
 
         assertEquals(400, response.getStatusCode().value());
         verify(channelSender, never()).commentOnFacebookPost(any(), any(), any(), any());
+    }
+
+    // ── Aucun canal Facebook CONNECTED → 404, pas de fausse panne ───────────
+
+    @Test
+    void repondreSansCanalConnecteRetourneUn404() {
+        givenAgentIsOwned();
+
+        ResponseEntity<Map<String, Object>> response =
+            controller.reply(OWNER, AGENT, "c-1", Map.of("message", "merci"));
+
+        assertEquals(404, response.getStatusCode().value());
+        assertFalse((Boolean) response.getBody().get("success"));
+        // Le service ne reçoit aucun appel : pas de déchiffrage d'un jeton absent.
+        verify(channelSender, never()).replyToFacebookComment(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void commenterSansCanalConnecteRetourneUn404() {
+        givenAgentIsOwned();
+
+        ResponseEntity<Map<String, Object>> response =
+            controller.commentOnPost(OWNER, AGENT, "page-1_42", Map.of("message", "hello"));
+
+        assertEquals(404, response.getStatusCode().value());
+        verify(channelSender, never()).commentOnFacebookPost(any(), any(), any(), any());
+    }
+
+    @Test
+    void modifierSansCanalConnecteRetourneUn404() {
+        givenAgentIsOwned();
+
+        ResponseEntity<Map<String, Object>> response =
+            controller.editPost(OWNER, AGENT, "page-1_42", Map.of("message", "hello"));
+
+        assertEquals(404, response.getStatusCode().value());
+        verify(channelSender, never()).editFacebookPost(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void supprimerSansCanalConnecteRetourneUn404() {
+        givenAgentIsOwned();
+
+        ResponseEntity<Map<String, Object>> response = controller.deletePost(OWNER, AGENT, "page-1_42");
+
+        assertEquals(404, response.getStatusCode().value());
+        verify(channelSender, never()).deleteFacebookPost(anyString(), anyString());
+    }
+
+    @Test
+    void scanSansCanalConnecteRetourneUn404() {
+        givenAgentIsOwned();
+
+        ResponseEntity<Map<String, Object>> response = controller.triggerScan(OWNER, AGENT);
+
+        assertEquals(404, response.getStatusCode().value());
+    }
+
+    @Test
+    void scanPostSansCanalConnecteRetourneUn404() {
+        givenAgentIsOwned();
+
+        ResponseEntity<Map<String, Object>> response = controller.scanPost(OWNER, AGENT, "page-1_42");
+
+        assertEquals(404, response.getStatusCode().value());
+    }
+
+    @Test
+    void scanAvecCanalConnecteDeclencheLePolling() {
+        givenAgentIsOwnedWithFacebookChannel();
+        FacebookCommentPollerService poller = mock(FacebookCommentPollerService.class);
+        controller = new FacebookCommentsController(channelSender, channelService, Optional.of(poller));
+        when(poller.triggerNow(AGENT)).thenReturn(2);
+
+        ResponseEntity<Map<String, Object>> response = controller.triggerScan(OWNER, AGENT);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(2, response.getBody().get("channelsScanned"));
     }
 
     // ── Le refus est un 404, jamais un 403 ───────────────────────────────────
