@@ -4,6 +4,7 @@ import com.creativeai.agentteam.dto.request.AvailableModelsRequest;
 import com.creativeai.agentteam.dto.request.LlmProviderRequest;
 import com.creativeai.agentteam.dto.response.AvailableModelResponse;
 import com.creativeai.agentteam.dto.response.LlmProviderResponse;
+import com.creativeai.agentteam.llm.LlmResolution;
 import com.creativeai.agentteam.model.LlmProvider;
 import com.creativeai.agentteam.model.enums.LlmType;
 import com.creativeai.agentteam.service.AgentService;
@@ -65,20 +66,29 @@ public class UserLlmController {
      * <p>Le frontend s'en sert pour afficher le modèle actif au lieu d'un
      * modèle en dur qui ne correspond pas toujours à la configuration réelle.
      * Aucune clé n'est exposée ici.
+     *
+     * <p>Le champ {@code resolutionSource} indique le tier qui a fourni ce
+     * provider. C'est l'information qui manque quand on veut savoir d'où vient
+     * le modèle d'un agent : les attributs du provider ne permettent pas de le
+     * déduire, et s'en remettre à eux conduit régulièrement à la mauvaise
+     * conclusion.
      */
     @Operation(
         summary = "Provider LLM résolu pour un agent",
         description = """
             Retourne le provider que le LlmGateway sélectionnerait pour cet agent
-            (agent > équipe > compte > admin). 404 si aucun provider n'est configuré.
+            (agent > équipe > compte > équipe auto > défaut plateforme > admin >
+            clé d'environnement), ainsi que le tier d'origine dans
+            resolutionSource. 404 si aucun provider n'est configuré.
             La clé API n'est jamais retournée.
             """)
     @GetMapping("/resolved")
     public ResponseEntity<LlmProviderResponse> resolved(
             @AuthenticationPrincipal String userId,
             @RequestParam(required = false) String agentId) {
-        LlmProvider resolved = agentService.resolveLlmProviderFor(userId, agentId);
-        return ResponseEntity.ok(LlmProviderResponse.from(resolved));
+        LlmResolution resolution = agentService.resolveLlmResolutionFor(userId, agentId);
+        return ResponseEntity.ok(LlmProviderResponse.from(resolution.provider())
+            .withResolutionSource(resolution.source()));
     }
 
     /**

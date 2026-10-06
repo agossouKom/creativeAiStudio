@@ -151,4 +151,89 @@ class LlmGatewayTeamProviderTest {
         verify(llmRepository).findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com");
         assertFalse(inactive.isActive());
     }
+
+    /**
+     * Le cas qui a coûté une fausse lecture en production.
+     *
+     * <p>Un provider d'agent et un provider sans équipe ni compte ne se
+     * distinguent pas par leurs attributs : dans les deux cas userId et teamId
+     * sont nuls, actif est vrai, et le modèle affiché est le même. En ne
+     * regardant que ces champs, le provider d'agent passerait pour le repli sur
+     * la clé d'environnement — ce qui est arrivé, et a fait conclure à tort
+     * qu'aucun provider n'était configuré.
+     *
+     * <p>Le tier est donc la seule information fiable, et il doit venir de la
+     * même chaîne que l'ordre des candidats.
+     */
+    @Test
+    void reportsAgentSourceForAgentScopedProvider() {
+        // Le provider est rattaché par association à l'agent, pas par un
+        // agentId : c'est ce qui produit exactement la situation mal lue, un
+        // provider sans userId ni teamId mais relié à un agent.
+        Agent attached = Agent.builder().ownerId("owner@example.com").build();
+        attached.setId("agent-1");
+        LlmProvider agentProvider = LlmProvider.builder().agent(attached).build();
+        when(llmRepository.findByAgentIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("agent-1"))
+            .thenReturn(List.of(agentProvider));
+
+        LlmResolution resolution = gateway.resolveProviderResolution("agent-1", "owner@example.com");
+
+        assertSame(agentProvider, resolution.provider());
+        assertEquals(LlmSource.AGENT, resolution.source());
+    }
+
+    @Test
+    void reportsAccountSourceForAccountProvider() {
+        Agent agent = Agent.builder().ownerId("owner@example.com").teamId("team-1").build();
+        LlmProvider accountProvider = LlmProvider.builder().userId("owner@example.com").build();
+        when(agentRepository.findByIdAndOwnerIdAndDeletedFalse("agent-1", "owner@example.com"))
+            .thenReturn(Optional.of(agent));
+        when(teamRepository.findByIdAndOwnerIdAndDeletedFalse("team-1", "owner@example.com"))
+            .thenReturn(Optional.of(AgentTeam.builder().build()));
+        when(llmRepository.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
+            .thenReturn(List.of(accountProvider));
+
+        LlmResolution resolution = gateway.resolveProviderResolution("agent-1", "owner@example.com");
+
+        assertEquals(LlmSource.ACCOUNT, resolution.source());
+    }
+
+    @Test
+    void reportsAutoTeamSourceForAutoAssignedProvider() {
+        Agent agent = Agent.builder().ownerId("owner@example.com").teamId("team-1").build();
+        LlmProvider autoTeamProvider = LlmProvider.builder().teamId("team-1").autoAssigned(true).build();
+        when(agentRepository.findByIdAndOwnerIdAndDeletedFalse("agent-1", "owner@example.com"))
+            .thenReturn(Optional.of(agent));
+        when(teamRepository.findByIdAndOwnerIdAndDeletedFalse("team-1", "owner@example.com"))
+            .thenReturn(Optional.of(AgentTeam.builder().build()));
+        when(llmRepository.findByTeamIdAndAutoAssignedTrueAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("team-1"))
+            .thenReturn(List.of(autoTeamProvider));
+
+        LlmResolution resolution = gateway.resolveProviderResolution("agent-1", "owner@example.com");
+
+        assertEquals(LlmSource.TEAM_AUTO, resolution.source());
+    }
+
+    /**
+     * Le premier tier qui fournit un provider gagne pour ce provider. Sans cela,
+     * un même provider présent à la fois au compte et comme défaut plateforme
+     * serait étiqueté par le tier le plus générique, ce qui ferait croire à un
+     * choix personnel alors que l'utilisateur n'a rien choisi.
+     */
+    @Test
+    void keepsFirstTierWhenSameProviderAppearsAtSeveralTiers() {
+        Agent agent = Agent.builder().ownerId("owner@example.com").build();
+        LlmProvider platformDefault = LlmProvider.builder()
+            .userId("owner@example.com").modelId("gpt-oss-20b")
+            .platformDefault(true).active(true).build();
+        when(agentRepository.findByIdAndOwnerIdAndDeletedFalse("agent-1", "owner@example.com"))
+            .thenReturn(Optional.of(agent));
+        when(llmRepository.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
+            .thenReturn(List.of(platformDefault));
+
+        LlmResolution resolution = gateway.resolveProviderResolution("agent-1", "owner@example.com");
+
+        assertSame(platformDefault, resolution.provider());
+        assertEquals(LlmSource.ACCOUNT, resolution.source());
+    }
 }

@@ -9,6 +9,8 @@ import com.creativeai.agentteam.model.enums.LlmType;
 import com.creativeai.agentteam.model.enums.PromptType;
 import com.creativeai.agentteam.repository.*;
 import com.creativeai.agentteam.llm.LlmGateway;
+import com.creativeai.agentteam.llm.LlmResolution;
+import com.creativeai.agentteam.llm.LlmSource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -408,18 +410,32 @@ public class AgentService {
      *                                   404 si aucun provider n'est configuré
      */
     public LlmProvider resolveLlmProviderFor(String callerId, String agentId) {
+        return resolveLlmResolutionFor(callerId, agentId).provider();
+    }
+
+    /**
+     * Même résolution que {@link #resolveLlmProviderFor}, mais en exposant aussi
+     * le tier qui a fourni le modèle.
+     *
+     * <p>Sans ce tier, savoir d'où vient le modèle d'un agent impose de
+     * comparer des identifiants : deux providers actifs peuvent tous deux n'être
+     * rattachés ni à une équipe ni à un compte, et se distinguer seulement par
+     * leur origine. La lecture des seuls attributs conduit régulièrement à la
+     * la mauvaise conclusion.
+     */
+    public LlmResolution resolveLlmResolutionFor(String callerId, String agentId) {
         String ownerId = callerId;
         if (agentId != null && !agentId.isBlank()) {
             Agent agent = agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, callerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Agent introuvable ou non autorisé"));
             ownerId = agent.getOwnerId();
-            return llmGateway.resolveProvider(agentId, ownerId);
+            return llmGateway.resolveProviderResolution(agentId, ownerId);
         }
         List<LlmProvider> own = llmRepo
             .findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(ownerId);
         if (!own.isEmpty()) {
-            return own.get(0);
+            return new LlmResolution(own.get(0), LlmSource.ACCOUNT);
         }
 
         // Compte sans provider : on tente de lui attribuer le modèle par défaut
@@ -429,7 +445,9 @@ public class AgentService {
         // compte > admin > clé d'environnement).
         Optional<LlmProvider> provisioned = provisioningService.ensureDefaultProviderFor(ownerId);
         if (provisioned.isPresent()) {
-            return provisioned.get();
+            // Copie du provider de plateforme déposée dans le compte à l'instant :
+            // pour l'utilisateur, c'est bien son provider, il peut le modifier.
+            return new LlmResolution(provisioned.get(), LlmSource.ACCOUNT);
         }
 
         // Aucun provider par défaut de plateforme à recopier : on retourne le
@@ -437,9 +455,13 @@ public class AgentService {
         // On n'appelle pas LlmGateway ici : avec un agentId null, sa résolution
         // irait interroger l'agent et l'équipe, ce qui n'a pas de sens pour une
         // simple lecture du compte.
-        return provisioningService.resolveInheritedDefault(ownerId)
+        LlmProvider inherited = provisioningService.resolveInheritedDefault(ownerId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Aucun modèle LLM configuré pour ce compte"));
+        // resolveInheritedDefault privilégie le provider marqué par défaut, et se
+        // replie sur le compte admin : le tier se déduit de ce qui a été renvoyé.
+        return new LlmResolution(inherited,
+            inherited.isPlatformDefault() ? LlmSource.PLATFORM_DEFAULT : LlmSource.ADMIN);
     }
 
     public List<LlmProviderResponse> getLlmProviders(String ownerId, String agentId, boolean includeDeleted) {

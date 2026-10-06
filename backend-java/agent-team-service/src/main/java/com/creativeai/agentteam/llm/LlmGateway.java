@@ -21,8 +21,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -522,10 +523,41 @@ public class LlmGateway {
      * précédent échoue au runtime (clé invalide, quota, réseau…).
      */
     public List<LlmProvider> resolveProviderCandidates(String agentId, String ownerId) {
-        LinkedHashSet<LlmProvider> candidates = new LinkedHashSet<>();
+        return new ArrayList<>(resolveWithSources(agentId, ownerId).keySet());
+    }
+
+    /**
+     * Résout le provider retenu et le tier qui l'a fourni.
+     *
+     * <p>Point d'entrée de référence quand il faut comprendre d'où vient le
+     * modèle d'un agent. Les attributs du provider ne le disent pas : un provider
+     * actif, sans équipe ni compte, peut venir du choix personnel comme du
+     * défaut plateforme. Sans ce tier, on en est réduit à comparer des
+     * identifiants à la main, ce qui est lent et source de fausses conclusions.
+     */
+    public LlmResolution resolveProviderResolution(String agentId, String ownerId) {
+        LinkedHashMap<LlmProvider, LlmSource> resolved = resolveWithSources(agentId, ownerId);
+        Map.Entry<LlmProvider, LlmSource> winner = resolved.entrySet().iterator().next();
+        log.info("[LLM] agentId={} résolu sur le provider id={} (source={})",
+            agentId, winner.getKey().getId(), winner.getValue());
+        return new LlmResolution(winner.getKey(), winner.getValue());
+    }
+
+    /**
+     * Chaîne de résolution, une seule fois pour tous.
+     *
+     * <p>Retourne une liste ordonnée de providers, chacun associé au tier qui
+     * l'a introduit — le premier tier qui fournit un provider gagne pour ce
+     * provider, les suivants ne font que l'ajouter comme secours. La liste et
+     * sa provenance sortent donc du même calcul : les deux ne peuvent pas
+     * diverger, ce qui arriverait avec deux implémentations parallèles dès qu'un
+     * tier change.
+     */
+    private LinkedHashMap<LlmProvider, LlmSource> resolveWithSources(String agentId, String ownerId) {
+        LinkedHashMap<LlmProvider, LlmSource> candidates = new LinkedHashMap<>();
 
         // 1. Providers de l'agent (primary puis backups)
-        candidates.addAll(llmRepo.findByAgentIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(agentId));
+        candidates.putAll(tier(llmRepo.findByAgentIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(agentId), LlmSource.AGENT));
 
         // L'équipe n'est retenue que si l'agent ET l'équipe appartiennent bien au
         // propriétaire : sans ce double contrôle, un agent rattaché à l'équipe
@@ -540,12 +572,12 @@ public class LlmGateway {
 
         // 2. Providers de l'équipe choisis explicitement par l'utilisateur.
         if (teamId != null) {
-            candidates.addAll(llmRepo.findByTeamIdAndAutoAssignedFalseAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(teamId));
+            candidates.putAll(tier(llmRepo.findByTeamIdAndAutoAssignedFalseAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(teamId), LlmSource.TEAM));
         }
 
         // 3. Providers du compte utilisateur (agent.ownerId) : le choix personnel.
         if (ownerId != null && !ownerId.isBlank()) {
-            candidates.addAll(llmRepo.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(ownerId));
+            candidates.putAll(tier(llmRepo.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(ownerId), LlmSource.ACCOUNT));
         }
 
         // 4. Providers d'équipe déposés automatiquement. Placés après ceux du
@@ -553,11 +585,7 @@ public class LlmGateway {
         // défaut plateforme : l'équipe doit disposer d'un provider propre, ce
         // qui évite de dépendre d'un accès direct à la configuration admin.
         if (teamId != null) {
-            for (LlmProvider auto : llmRepo.findByTeamIdAndAutoAssignedTrueAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(teamId)) {
-                if (!candidates.contains(auto)) {
-                    candidates.add(auto);
-                }
-            }
+            candidates.putAll(tier(llmRepo.findByTeamIdAndAutoAssignedTrueAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(teamId), LlmSource.TEAM_AUTO));
         }
 
         // 5. Provider par défaut de la plateforme, marqué par un administrateur.
@@ -567,7 +595,7 @@ public class LlmGateway {
             llmRepo.findByPlatformDefaultTrueAndActiveTrueAndDeletedFalse().ifPresent(platformDefault -> {
                 log.info("[LLM] Utilisation du provider par défaut de la plateforme (id={}) pour agentId={}",
                     platformDefault.getId(), agentId);
-                candidates.add(platformDefault);
+                candidates.put(platformDefault, LlmSource.PLATFORM_DEFAULT);
             });
         }
 
@@ -577,7 +605,7 @@ public class LlmGateway {
             List<LlmProvider> adminProviders = llmRepo.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(adminUserId);
             if (!adminProviders.isEmpty()) {
                 log.info("[LLM] Utilisation du provider par défaut (admin) pour agentId={}", agentId);
-                candidates.addAll(adminProviders);
+                candidates.putAll(tier(adminProviders, LlmSource.ADMIN));
             }
         }
 
@@ -586,9 +614,16 @@ public class LlmGateway {
         // absente, buildGroqFallback lève IllegalStateException avec un message
         // qui invite à configurer un provider dans l'espace de travail.
         if (candidates.isEmpty()) {
-            candidates.add(buildGroqFallback(agentId));
+            candidates.put(buildGroqFallback(agentId), LlmSource.ENVIRONMENT);
         }
-        return new ArrayList<>(candidates);
+        return candidates;
+    }
+
+    /** Associe une collection de providers à un tier, pour {@link #resolveWithSources}. */
+    private static LinkedHashMap<LlmProvider, LlmSource> tier(List<LlmProvider> providers, LlmSource source) {
+        LinkedHashMap<LlmProvider, LlmSource> tagged = new LinkedHashMap<>();
+        providers.forEach(p -> tagged.put(p, source));
+        return tagged;
     }
 
     private String providerLabel(LlmProvider p) {
