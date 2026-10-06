@@ -49,6 +49,25 @@ public class Agent extends BaseEntity {
     @Column(name = "team_id", length = 36)
     private String teamId;
 
+    /**
+     * Agent « Studio », créé automatiquement dans chaque compte.
+     *
+     * <p>Il n'appartient à aucune équipe en particulier : {@code teamId} reste
+     * nul et l'interface l'affiche dans le filtre de chaque équipe du compte.
+     *
+     * <p>Une ligne par compte, et non un agent partagé. L'agent reste ainsi
+     * rattaché à un propriétaire unique, ce qui préserve les contrôles
+     * d'accès existants : un agent sans propriétaire connu n'appartiendrait à
+     * personne et ne pourrait plus être protégé par
+     * {@code findByIdAndOwnerIdAndDeletedFalse}.
+     *
+     * <p>Il suit la chaîne de résolution ordinaire — le choix de modèle de
+     * l'utilisateur s'y applique comme pour tout autre agent.
+     */
+    @Builder.Default
+    @Column(name = "is_default_system", nullable = false)
+    private boolean defaultSystem = false;
+
     @Column(name = "last_active_at")
     private LocalDateTime lastActiveAt;
 

@@ -35,7 +35,12 @@ public record CreateAgentRequest(
     @Size(max = 100)
     String slug,
 
-    @Schema(description = "UUID de l'équipe à laquelle associer cet agent dès la création", example = "c6b1312d-a126-4e5c-8d37-b1b7f4bab7d5")
+    @Schema(
+        description = "UUID de l'équipe à laquelle associer cet agent. Obligatoire : "
+                    + "l'agent dérive son modèle de son équipe, il ne peut pas en être détaché. "
+                    + "Doit appartenir à l'appelant.",
+        example = "c6b1312d-a126-4e5c-8d37-b1b7f4bab7d5")
+    @NotBlank
     String teamId,
 
     @Schema(description = "Configuration comportementale (température, tokens, mémoire…). Valeurs par défaut appliquées si absent.")

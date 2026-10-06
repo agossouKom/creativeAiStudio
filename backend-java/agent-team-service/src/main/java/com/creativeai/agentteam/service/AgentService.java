@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +45,7 @@ public class AgentService {
     private final AgentTemplateService    templateService;
     private final LlmGateway              llmGateway;
     private final LlmProviderProvisioningService provisioningService;
+    private final DefaultAgentProvisioningService defaultAgentProvisioning;
     private final LlmUrlPolicy            urlPolicy;
     private final ObjectMapper            objectMapper;
 
@@ -57,10 +59,16 @@ public class AgentService {
     public AgentDetailResponse createAgent(String ownerId, CreateAgentRequest req) {
         String slug = buildSlug(req.slug() != null ? req.slug() : req.name(), ownerId);
 
+        // Un agent appartient obligatoirement à une équipe. Le contrôle de
+        // propriété est indispensable : sans lui, un utilisateur pouvait
+        // rattacher son agent à l'équipe d'autrui en fournissant son
+        // identifiant, et cet agent héritait alors de ladite équipe.
+        AgentTeam team = requireOwnedTeam(ownerId, req.teamId());
+
         Agent agent = Agent.builder()
             .name(req.name()).slug(slug).code(generateUniqueAgentCode()).description(req.description())
             .type(req.type()).status(AgentStatus.ACTIVE)
-            .ownerId(ownerId).teamId(req.teamId())
+            .ownerId(ownerId).teamId(team.getId())
             .build();
         agent = agentRepo.save(agent);
 
@@ -71,6 +79,10 @@ public class AgentService {
         KnowledgeBase kb = KnowledgeBase.builder()
             .agent(agent).name(agent.getName() + " - Knowledge Base").build();
         kbRepo.save(kb);
+
+        // L'équipe ne peut pas rester sans modèle : on y dépose le provider par
+        // défaut de la plateforme, en dernier recours derrière le choix du compte.
+        provisioningService.ensureTeamProviderFromPlatformDefault(team.getId());
 
         auditService.log(ownerId, "CREATE_AGENT", "agent", agent.getId(), true,
             AuditService.details("name", agent.getName(), "type", agent.getType(), "slug", slug));
@@ -91,15 +103,20 @@ public class AgentService {
         String description = (req != null && req.description() != null && !req.description().isBlank())
                 ? req.description() : tpl.defaultDescription();
         String teamId = req != null ? req.teamId() : null;
+        // Même règle que pour une création directe : équipe obligatoire et
+        // vérifiée comme appartenant à l'appelant.
+        AgentTeam team = requireOwnedTeam(ownerId, teamId);
 
         String slug = buildSlug(name, ownerId);
 
         Agent agent = Agent.builder()
             .name(name).slug(slug).code(generateUniqueAgentCode()).description(description)
             .type(type).status(AgentStatus.ACTIVE)
-            .ownerId(ownerId).teamId(teamId)
+            .ownerId(ownerId).teamId(team.getId())
             .build();
         agent = agentRepo.save(agent);
+
+        provisioningService.ensureTeamProviderFromPlatformDefault(team.getId());
 
         // Config avec valeurs du template
         String toolsJson = serializeDefaultTools(tpl.defaultTools());
@@ -190,6 +207,19 @@ public class AgentService {
 
     @Transactional(readOnly = true)
     public List<AgentResponse> listAgents(String ownerId) {
+        // Première visite du tableau de bord : on crée l'agent système du
+        // compte. Le service travaille en REQUIRES_NEW, sinon l'écriture serait
+        // avalée par la transaction readOnly de cette méthode.
+        //
+        // DataIntegrityViolationException : deux chargements simultanés du même
+        // compte ont voulu créer le Studio en même temps. La contrainte
+        // d'unicité a tranché en faveur de l'autre requête ; l'agent existe
+        // déjà et sera renvoyé par la lecture qui suit.
+        try {
+            defaultAgentProvisioning.ensureStudioFor(ownerId);
+        } catch (DataIntegrityViolationException e) {
+            log.debug("Agent système déjà provisionné en parallèle pour userId={}", ownerId);
+        }
         return agentRepo.findByOwnerIdAndDeletedFalseOrderByCreatedAtDesc(ownerId)
             .stream().map(AgentResponse::from).toList();
     }
@@ -239,7 +269,17 @@ public class AgentService {
         if (req.name()        != null) agent.setName(req.name());
         if (req.description() != null) agent.setDescription(req.description());
         if (req.status()      != null) agent.setStatus(req.status());
-        if (req.teamId()      != null) agent.setTeamId(req.teamId());
+        if (req.teamId()      != null) {
+            // Changement d'équipe : on vérifie que la cible appartient bien à
+            // l'appelant, sinon l'agent hériterait des providers d'autrui.
+            // L'agent système n'est pas déplaçable : il appartient au compte,
+            // pas à une équipe, et c'est ce qui le fait apparaître partout.
+            if (!agent.isDefaultSystem()) {
+                AgentTeam team = requireOwnedTeam(ownerId, req.teamId());
+                agent.setTeamId(team.getId());
+                provisioningService.ensureTeamProviderFromPlatformDefault(team.getId());
+            }
+        }
         if (req.extraConfig() != null) agent.setExtraConfig(req.extraConfig());
 
         agent = agentRepo.save(agent);
@@ -692,6 +732,15 @@ public class AgentService {
     }
 
     private AgentTeam requireOwnedTeam(String ownerId, String teamId) {
+        if (teamId == null || teamId.isBlank()) {
+            // 404 plutôt que 400 : l'équipe est une ressource, et l'agent est
+            // validé avant cette méthode. Ce garde-fou n'attrape que les
+            // appels internes ou les bodies non validés.
+            throw new ResourceNotFoundException("Équipe introuvable: équipe non fournie");
+        }
+        // Le filtre porte sur ownerId : une équipe existante mais appartenant à
+        // quelqu'un d'autre est traitée comme inexistante, pour ne pas révéler
+        // son existence à l'appelant.
         return teamRepo.findByIdAndOwnerIdAndDeletedFalse(teamId, ownerId)
             .orElseThrow(() -> new ResourceNotFoundException("Équipe introuvable: " + teamId));
     }

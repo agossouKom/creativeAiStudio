@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -191,5 +192,82 @@ class LlmProviderProvisioningServiceTest {
         assertThat(service.resolveInheritedDefault("admin@creativeai.com")).isEmpty();
 
         verify(repo, never()).findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(anyString());
+    }
+
+    // ── Dépôt automatique sur une équipe ───────────────────────────────────
+
+    @Test
+    @DisplayName("Une équipe sans provider reçoit le provider par défaut, marqué comme auto-attribué")
+    void depositsPlatformDefaultOnTeamWithoutProvider() {
+        when(repo.existsByTeamIdAndActiveTrueAndDeletedFalse("team-1")).thenReturn(false);
+        when(repo.findByPlatformDefaultTrueAndActiveTrueAndDeletedFalse())
+            .thenReturn(Optional.of(platformDefault("src", "gpt-oss-20b")));
+        when(repo.save(any(LlmProvider.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        LlmProvider copy = service.ensureTeamProviderFromPlatformDefault("team-1").orElseThrow();
+
+        assertThat(copy.getTeamId()).isEqualTo("team-1");
+        assertThat(copy.getUserId()).isNull();
+        assertThat(copy.getModelId()).isEqualTo("gpt-oss-20b");
+        assertThat(copy.getEncryptedApiKey()).isEqualTo("iv:ciphertext");
+
+        // Le marqueur est ce qui permet à la résolution de passer le choix
+        // personnel de l'utilisateur devant ce provider de plateforme.
+        assertThat(copy.isAutoAssigned()).isTrue();
+        assertThat(copy.isPlatformDefault()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Une équipe qui a déjà son propre provider n'est jamais doublée")
+    void doesNotDepositOnTeamThatAlreadyHasProvider() {
+        when(repo.existsByTeamIdAndActiveTrueAndDeletedFalse("team-1")).thenReturn(true);
+
+        assertThat(service.ensureTeamProviderFromPlatformDefault("team-1")).isEmpty();
+
+        verify(repo, never()).save(any(LlmProvider.class));
+        verify(repo, never()).findByPlatformDefaultTrueAndActiveTrueAndDeletedFalse();
+    }
+
+    @Test
+    @DisplayName("Sans provider de plateforme, l'équipe retombe sur le provider du compte admin")
+    void teamDepositFallsBackToAdminAccount() {
+        when(repo.existsByTeamIdAndActiveTrueAndDeletedFalse("team-1")).thenReturn(false);
+        when(repo.findByPlatformDefaultTrueAndActiveTrueAndDeletedFalse())
+            .thenReturn(Optional.empty());
+        LlmProvider adminProvider = withId(LlmProvider.builder()
+            .userId("admin@creativeai.com").type(LlmType.GROQ).modelId("gpt-oss-20b")
+            .primary(true).active(true).build(), "admin-l");
+        when(repo.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("admin@creativeai.com"))
+            .thenReturn(List.of(adminProvider));
+        when(repo.save(any(LlmProvider.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        LlmProvider copy = service.ensureTeamProviderFromPlatformDefault("team-1").orElseThrow();
+
+        assertThat(copy.getModelId()).isEqualTo("gpt-oss-20b");
+        assertThat(copy.getUserId()).isNull();
+        assertThat(copy.isAutoAssigned()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Sans aucune source disponible, l'équipe reste sans provider")
+    void teamDepositDoesNothingWithoutSource() {
+        when(repo.existsByTeamIdAndActiveTrueAndDeletedFalse("team-1")).thenReturn(false);
+        when(repo.findByPlatformDefaultTrueAndActiveTrueAndDeletedFalse())
+            .thenReturn(Optional.empty());
+        when(repo.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(anyString()))
+            .thenReturn(List.of());
+
+        assertThat(service.ensureTeamProviderFromPlatformDefault("team-1")).isEmpty();
+
+        verify(repo, never()).save(any(LlmProvider.class));
+    }
+
+    @Test
+    @DisplayName("Un teamId absent n'est jamais traité")
+    void teamDepositIgnoresBlankTeamId() {
+        assertThat(service.ensureTeamProviderFromPlatformDefault(null)).isEmpty();
+        assertThat(service.ensureTeamProviderFromPlatformDefault("  ")).isEmpty();
+
+        verifyNoInteractions(repo);
     }
 }

@@ -38,6 +38,16 @@ public interface AgentRepository extends JpaRepository<Agent, String> {
     List<Agent>     findByTeamIdAndStatusAndDeletedFalse(String teamId, AgentStatus status);
     List<Agent>     findByStatusAndDeletedFalse(AgentStatus status);
     boolean         existsBySlugAndOwnerIdAndDeletedFalse(String slug, String ownerId);
+
+    /**
+     * Agent système du compte (« Studio »). Utilisé pour le provisionner une
+     * seule fois : le getter est idempotent et renvoie l'agent existant s'il y
+     * en a déjà un.
+     */
+    List<Agent>      findByOwnerIdAndDefaultSystemTrueAndDeletedFalse(String ownerId);
+
+    /** Le code court est unique en base : sert à générer celui de l'agent système. */
+    boolean          existsByCode(String code);
     long            countByOwnerIdAndDeletedFalse(String ownerId);
     long            countByTeamIdAndDeletedFalse(String teamId);
 

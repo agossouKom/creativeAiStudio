@@ -49,13 +49,13 @@ class LlmGatewayTeamProviderTest {
     @Test
     void resolvesTeamProvidersBeforeAccountProviders() {
         Agent agent = Agent.builder().ownerId("owner@example.com").teamId("team-1").build();
-        LlmProvider teamProvider = LlmProvider.builder().teamId("team-1").build();
+        LlmProvider teamProvider = LlmProvider.builder().teamId("team-1").autoAssigned(false).build();
         LlmProvider accountProvider = LlmProvider.builder().userId("owner@example.com").build();
         when(agentRepository.findByIdAndOwnerIdAndDeletedFalse("agent-1", "owner@example.com"))
             .thenReturn(Optional.of(agent));
         when(teamRepository.findByIdAndOwnerIdAndDeletedFalse("team-1", "owner@example.com"))
             .thenReturn(Optional.of(AgentTeam.builder().build()));
-        when(llmRepository.findByTeamIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("team-1"))
+        when(llmRepository.findByTeamIdAndAutoAssignedFalseAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("team-1"))
             .thenReturn(List.of(teamProvider));
         when(llmRepository.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
             .thenReturn(List.of(accountProvider));
@@ -66,7 +66,59 @@ class LlmGatewayTeamProviderTest {
         assertEquals(2, candidates.size());
         assertSame(teamProvider, candidates.get(0));
         assertSame(accountProvider, candidates.get(1));
-        verify(llmRepository).findByTeamIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("team-1");
+        verify(llmRepository).findByTeamIdAndAutoAssignedFalseAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("team-1");
+    }
+
+    /**
+     * C'est la régression que tout ce dispositif d'attribution automatique
+     * cherche à éviter. Le provider d'équipe déposé automatiquement est un
+     * choix de la plateforme, pas de l'utilisateur : s'il passait avant le
+     * provider de compte, l'utilisateur verrait son modèle dans son espace de
+     * travail tout en étant servi par un autre, sans le savoir et sans moyen de
+     * le constater.
+     */
+    @Test
+    void resolvesAccountProvidersBeforeAutoAssignedTeamProviders() {
+        Agent agent = Agent.builder().ownerId("owner@example.com").teamId("team-1").build();
+        LlmProvider autoTeamProvider = LlmProvider.builder().teamId("team-1").autoAssigned(true).build();
+        LlmProvider accountProvider = LlmProvider.builder().userId("owner@example.com").build();
+        when(agentRepository.findByIdAndOwnerIdAndDeletedFalse("agent-1", "owner@example.com"))
+            .thenReturn(Optional.of(agent));
+        when(teamRepository.findByIdAndOwnerIdAndDeletedFalse("team-1", "owner@example.com"))
+            .thenReturn(Optional.of(AgentTeam.builder().build()));
+        when(llmRepository.findByTeamIdAndAutoAssignedTrueAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("team-1"))
+            .thenReturn(List.of(autoTeamProvider));
+        when(llmRepository.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("owner@example.com"))
+            .thenReturn(List.of(accountProvider));
+
+        List<LlmProvider> candidates =
+            gateway.resolveProviderCandidates("agent-1", "owner@example.com");
+
+        assertEquals(2, candidates.size());
+        assertSame(accountProvider, candidates.get(0));
+        assertSame(autoTeamProvider, candidates.get(1));
+    }
+
+    /**
+     * Sans provider de compte, l'attribution automatique prend le relais : une
+     * équipe doit toujours avoir un modèle, sinon l'agent resterait muet.
+     */
+    @Test
+    void fallsBackToAutoAssignedTeamProviderWhenAccountHasNone() {
+        Agent agent = Agent.builder().ownerId("owner@example.com").teamId("team-1").build();
+        LlmProvider autoTeamProvider = LlmProvider.builder().teamId("team-1").autoAssigned(true).build();
+        when(agentRepository.findByIdAndOwnerIdAndDeletedFalse("agent-1", "owner@example.com"))
+            .thenReturn(Optional.of(agent));
+        when(teamRepository.findByIdAndOwnerIdAndDeletedFalse("team-1", "owner@example.com"))
+            .thenReturn(Optional.of(AgentTeam.builder().build()));
+        when(llmRepository.findByTeamIdAndAutoAssignedTrueAndActiveTrueAndDeletedFalseOrderByPrimaryDesc("team-1"))
+            .thenReturn(List.of(autoTeamProvider));
+
+        List<LlmProvider> candidates =
+            gateway.resolveProviderCandidates("agent-1", "owner@example.com");
+
+        assertEquals(1, candidates.size());
+        assertSame(autoTeamProvider, candidates.get(0));
     }
 
     @Test

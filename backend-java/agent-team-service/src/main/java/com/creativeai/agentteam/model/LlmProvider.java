@@ -91,6 +91,24 @@ public class LlmProvider extends BaseEntity {
     @Column(name = "is_platform_default", nullable = false)
     private boolean platformDefault = false;
 
+    /**
+     * Provider copié automatiquement sur une équipe qui n'en avait pas encore.
+     *
+     * <p>Ce marqueur n'est pas décoratif. L'ordre de résolution est
+     * agent &gt; équipe &gt; compte, donc un provider d'équipe l'emporte
+     * toujours sur un choix personnel de l'utilisateur. Sans cette
+     * distinction, attribuer le provider de la plateforme à chaque nouvelle
+     * équipe reviendrait à interdire à l'utilisateur d'utiliser le modèle qu'il
+     * a lui-même enregistré : son choix resterait dans son espace de travail
+     * sans jamais être appelé.
+     *
+     * <p>Les providers auto-assignés sont donc proposés après ceux du compte.
+     * Un choix explicite de l'utilisateur prime toujours.
+     */
+    @Builder.Default
+    @Column(name = "auto_assigned", nullable = false)
+    private boolean autoAssigned = false;
+
     /** Paramètres additionnels JSON (ex: system_fingerprint, seed) */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "extra_params", columnDefinition = "jsonb")

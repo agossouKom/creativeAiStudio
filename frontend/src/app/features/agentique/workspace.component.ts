@@ -260,10 +260,15 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
           <div class="ws-qf-field">
             <label class="ws-qf-lbl">Équipe</label>
             <div style="display:flex;gap:.4rem;">
+              <!-- Pas d'option « sans équipe » : un agent dérive son modèle de son
+                   équipe, il ne peut pas en être détaché. -->
               <select class="ws-input" [(ngModel)]="agentForm.teamId" style="flex:1">
-                <option value="">— Aucune —</option>
                 <option *ngFor="let t of teams" [value]="t.id">{{ t.name }}</option>
               </select>
+            </div>
+            <div *ngIf="!teams.length" class="ws-error">
+              Créez d'abord une équipe : un agent doit appartenir à une équipe pour
+              hériter d'un modèle.
             </div>
           </div>
           <div class="ws-qf-field">
@@ -3695,7 +3700,9 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
     return this.agents.filter(a => {
       const q = this.searchAgents.toLowerCase();
       return (!q || a.name?.toLowerCase().includes(q) || a.agentType?.toLowerCase().includes(q))
-          && (!this.filterAgentTeam || a.teamId === this.filterAgentTeam)
+          // Studio est l'agent du compte : il reste visible dans le filtre de
+          // chaque équipe, sinon il disparaît dès qu'on en sélectionne une.
+          && (!this.filterAgentTeam || a.teamId === this.filterAgentTeam || a.defaultSystem)
           && (!this.filterAgentType || a.agentType === this.filterAgentType);
     });
   }
@@ -5027,9 +5034,22 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
 
   saveAgent(): void {
     if (!this.agentForm.name.trim()) { this.formError = 'Le nom est obligatoire.'; return; }
+    // L'équipe est obligatoire, et le refus est anticipé ici : le backend
+    // répondrait 404 sur une équipe absente, message incompréhensible pour
+    // l'utilisateur qui n'a simplement pas encore choisi.
+    if (!this.agentForm.teamId) {
+      this.formError = this.teams.length
+        ? 'Choisissez l\'équipe de rattachement de l\'agent.'
+        : 'Créez d\'abord une équipe : un agent doit appartenir à une équipe.';
+      return;
+    }
     this.saving = true; this.formError = '';
-    const body: any = { name: this.agentForm.name.trim(), type: this.agentForm.type, description: this.agentForm.description };
-    if (this.agentForm.teamId) body.teamId = this.agentForm.teamId;
+    const body: any = {
+      name: this.agentForm.name.trim(),
+      type: this.agentForm.type,
+      description: this.agentForm.description,
+      teamId: this.agentForm.teamId
+    };
 
     const req = this.editingId
       ? this.http.put<any>(`${API}/api/agents/${this.editingId}`, body)
@@ -5903,8 +5923,16 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
     }
   }
 
+  /**
+   * Agents d'une équipe, augmentés de l'agent système du compte.
+   *
+   * Studio n'appartient à aucune équipe — il est rattaché au compte, pas à une
+   * équipe — mais il est proposé dans chacune d'elles : c'est l'agent que
+   * l'utilisateur retrouve quel que soit le filtre, et son modèle se règle
+   * comme celui de n'importe quel agent.
+   */
   agentsInTeam(teamId: string): any[] {
-    return this.agents.filter(a => a.teamId === teamId);
+    return this.agents.filter(a => a.teamId === teamId || a.defaultSystem);
   }
 
   /**
@@ -5997,7 +6025,7 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
 
   get llmFilteredAgents(): any[] {
     if (!this.llmFilterTeam) return this.agents;
-    return this.agents.filter(a => a.teamId === this.llmFilterTeam);
+    return this.agents.filter(a => a.teamId === this.llmFilterTeam || a.defaultSystem);
   }
 
   get llmDisplayedProviders(): any[] {

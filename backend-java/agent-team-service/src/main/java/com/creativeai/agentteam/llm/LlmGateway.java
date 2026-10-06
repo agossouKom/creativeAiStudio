@@ -499,18 +499,26 @@ public class LlmGateway {
     }
 
     /**
-     * Résout la liste ordonnée des providers LLM utilisables pour un agent (failover).
+* Résout la liste ordonnée des providers LLM utilisables pour un agent (failover).
      * Ordre de résolution :
      *   1. Providers rattachés à l'agent (primary puis backups)
-     *   2. Providers de l'équipe de l'agent (l'agent ET l'équipe doivent
-     *      appartenir au même propriétaire, sinon le tier est ignoré)
+     *   2. Providers de l'équipe choisis par l'utilisateur
      *   3. Providers du compte de l'agent (ownerId = email JWT)
-     *   4. Provider par défaut de la plateforme, défini par un administrateur
-     *   5. Providers du compte admin (ADMIN_USER_ID), repli si aucun provider
+     *   4. Providers d'équipe déposés automatiquement (provider de la plateforme)
+     *   5. Provider par défaut de la plateforme, défini par un administrateur
+     *   6. Providers du compte admin (ADMIN_USER_ID), repli si aucun provider
      *      par défaut de plateforme n'est marqué
-     *   6. Fallback : GROQ_API_KEY de l'environnement
-     * Seuls les providers active=true sont proposés. Le premier élément est le
-     * provider primaire ; les suivants servent de secours automatique si le
+     *   7. Fallback : GROQ_API_KEY de l'environnement
+     *
+     * <p>Les étapes 2 et 4 sont volontairement séparées. Chaque équipe reçoit
+     * le provider de la plateforme dès son premier agent, mais un provider
+     * d'équipe l'emporte normalement sur un choix de compte. Sans cette
+     * distinction, l'attribution automatique neutraliserait le modèle choisi par
+     * l'utilisateur : il resterait affiché dans son espace de travail sans
+     * jamais être appelé. Un choix explicite doit donc toujours primer.
+     *
+     * <p>Seuls les providers active=true sont proposés. Le premier élément est
+     * le provider primaire ; les suivants servent de secours automatique si le
      * précédent échoue au runtime (clé invalide, quota, réseau…).
      */
     public List<LlmProvider> resolveProviderCandidates(String agentId, String ownerId) {
@@ -519,24 +527,42 @@ public class LlmGateway {
         // 1. Providers de l'agent (primary puis backups)
         candidates.addAll(llmRepo.findByAgentIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(agentId));
 
-        // 2. Providers de l'équipe, uniquement si l'agent appartient bien au propriétaire.
-        if (ownerId != null && !ownerId.isBlank()) {
-            agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, ownerId)
+        // L'équipe n'est retenue que si l'agent ET l'équipe appartiennent bien au
+        // propriétaire : sans ce double contrôle, un agent rattaché à l'équipe
+        // d'autrui hériterait de ses providers.
+        String teamId = (ownerId != null && !ownerId.isBlank())
+            ? agentRepo.findByIdAndOwnerIdAndDeletedFalse(agentId, ownerId)
                 .map(Agent::getTeamId)
-                .filter(teamId -> teamId != null && !teamId.isBlank())
-                .filter(teamId -> teamRepo.findByIdAndOwnerIdAndDeletedFalse(teamId, ownerId).isPresent())
-                .ifPresent(teamId -> candidates.addAll(
-                    llmRepo.findByTeamIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(teamId)));
+                .filter(t -> t != null && !t.isBlank())
+                .filter(t -> teamRepo.findByIdAndOwnerIdAndDeletedFalse(t, ownerId).isPresent())
+                .orElse(null)
+            : null;
+
+        // 2. Providers de l'équipe choisis explicitement par l'utilisateur.
+        if (teamId != null) {
+            candidates.addAll(llmRepo.findByTeamIdAndAutoAssignedFalseAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(teamId));
         }
 
-        // 3. Providers du compte utilisateur (agent.ownerId)
+        // 3. Providers du compte utilisateur (agent.ownerId) : le choix personnel.
         if (ownerId != null && !ownerId.isBlank()) {
             candidates.addAll(llmRepo.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(ownerId));
         }
 
-        // 4. Provider par défaut de la plateforme, marqué par un administrateur.
+        // 4. Providers d'équipe déposés automatiquement. Placés après ceux du
+        // compte pour qu'un choix personnel reste prioritaire, mais avant le
+        // défaut plateforme : l'équipe doit disposer d'un provider propre, ce
+        // qui évite de dépendre d'un accès direct à la configuration admin.
+        if (teamId != null) {
+            for (LlmProvider auto : llmRepo.findByTeamIdAndAutoAssignedTrueAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(teamId)) {
+                if (!candidates.contains(auto)) {
+                    candidates.add(auto);
+                }
+            }
+        }
+
+        // 5. Provider par défaut de la plateforme, marqué par un administrateur.
         // Prime sur les providers du compte admin : c'est le mécanisme explicite,
-        // alors que le tier 5 repose sur une adresse email dans la configuration.
+        // alors que le tier 6 repose sur une adresse email dans la configuration.
         if (candidates.isEmpty()) {
             llmRepo.findByPlatformDefaultTrueAndActiveTrueAndDeletedFalse().ifPresent(platformDefault -> {
                 log.info("[LLM] Utilisation du provider par défaut de la plateforme (id={}) pour agentId={}",
@@ -545,7 +571,7 @@ public class LlmGateway {
             });
         }
 
-        // 5. Providers du compte admin : repli pour les installations qui n'ont pas
+        // 6. Providers du compte admin : repli pour les installations qui n'ont pas
         // encore marqué de provider par défaut de plateforme.
         if (adminUserId != null && !adminUserId.isBlank() && !adminUserId.equals(ownerId) && candidates.isEmpty()) {
             List<LlmProvider> adminProviders = llmRepo.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(adminUserId);
@@ -555,7 +581,7 @@ public class LlmGateway {
             }
         }
 
-        // 5. Clé partagée (GROQ_API_KEY env) : dernier recours, après les providers DB,
+        // 7. Clé partagée (GROQ_API_KEY env) : dernier recours, après les providers DB,
         // pour ne pas casser les installations à une seule clé. Si elle est
         // absente, buildGroqFallback lève IllegalStateException avec un message
         // qui invite à configurer un provider dans l'espace de travail.

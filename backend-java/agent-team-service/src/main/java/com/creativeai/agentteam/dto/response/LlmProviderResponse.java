@@ -10,6 +10,8 @@ public record LlmProviderResponse(
     boolean streamingEnabled, int rateLimitRpm,
     boolean primary, boolean active, boolean deleted,
     boolean platformDefault,
+    /** Provider déposé automatiquement sur l'équipe, plutôt que choisi par l'utilisateur. */
+    boolean autoAssigned,
     LocalDateTime createdAt,
     boolean hasApiKey
 ) {
@@ -19,7 +21,7 @@ public record LlmProviderResponse(
             p.getType(), p.getModelId(), p.getBaseUrl(), p.getDisplayName(),
             p.getTemperature(), p.getMaxTokens(), p.isStreamingEnabled(),
             p.getRateLimitRpm(), p.isPrimary(), p.isActive(), p.isDeleted(),
-            p.isPlatformDefault(), p.getCreatedAt(),
+            p.isPlatformDefault(), p.isAutoAssigned(), p.getCreatedAt(),
             p.getEncryptedApiKey() != null && !p.getEncryptedApiKey().isBlank());
     }
 }

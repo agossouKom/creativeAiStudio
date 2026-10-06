@@ -84,9 +84,71 @@ public class LlmProviderProvisioningService {
             return Optional.empty();
         }
 
-        LlmProvider source = platformDefault.get();
-        LlmProvider copy = LlmProvider.builder()
+        LlmProvider copy = copyFrom(platformDefault.get())
             .userId(userId)
+            .autoAssigned(false)
+            .build();
+
+        LlmProvider saved = llmRepo.save(copy);
+        log.info("[LLM] Provider par défaut provisionné pour userId={} depuis le provider plateforme id={}",
+            userId, platformDefault.get().getId());
+        return Optional.of(saved);
+    }
+
+    /**
+     * Dépose le provider par défaut de la plateforme sur une équipe qui n'en
+     * possède encore aucun.
+     *
+     * <p>Appelé à la création d'un agent : un agent devant appartenir à une
+     * équipe, celle-ci ne peut pas rester sans modèle. La copie porte
+     * {@code autoAssigned = true}, ce qui la place après les providers de compte
+     * dans la résolution : dès que l'utilisateur enregistre son propre modèle,
+     * c'est celui-ci qui est appelé.
+     *
+     * <p>Si l'équipe a déjà un provider — choisi par l'utilisateur ou déposé
+     * précédemment — l'opération ne fait rien, pour ne pas multiplier les
+     * lignes ni écraser un choix.
+     *
+     * <p>Si aucun provider par défaut de plateforme n'est marqué, on retombe
+     * sur les providers du compte administrateur : mieux vaut une équipe
+     * fonctionnelle sans intervention qu'une équipe sans modèle.
+     *
+     * @return le provider créé, ou vide si l'équipe en avait déjà un ou si
+     *         aucune source n'est disponible
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Optional<LlmProvider> ensureTeamProviderFromPlatformDefault(String teamId) {
+        if (teamId == null || teamId.isBlank()) {
+            return Optional.empty();
+        }
+        if (llmRepo.existsByTeamIdAndActiveTrueAndDeletedFalse(teamId)) {
+            return Optional.empty();
+        }
+
+        Optional<LlmProvider> source = llmRepo.findByPlatformDefaultTrueAndActiveTrueAndDeletedFalse();
+        if (source.isEmpty() && adminUserId != null && !adminUserId.isBlank()) {
+            source = llmRepo.findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(adminUserId)
+                .stream().findFirst();
+        }
+        if (source.isEmpty()) {
+            return Optional.empty();
+        }
+
+        LlmProvider copy = copyFrom(source.get())
+            .teamId(teamId)
+            .autoAssigned(true)
+            .displayName(source.get().getDisplayName())
+            .build();
+
+        LlmProvider saved = llmRepo.save(copy);
+        log.info("[LLM] Provider par défaut déposé sur l'équipe teamId={} depuis le provider id={}",
+            teamId, source.get().getId());
+        return Optional.of(saved);
+    }
+
+    /** Copie de configuration d'un provider, réutilisée par les deux provisions. */
+    private LlmProvider.LlmProviderBuilder copyFrom(LlmProvider source) {
+        return LlmProvider.builder()
             .type(source.getType())
             .modelId(source.getModelId())
             .baseUrl(source.getBaseUrl())
@@ -101,13 +163,7 @@ public class LlmProviderProvisioningService {
             .extraParams(source.getExtraParams())
             .primary(true)
             .active(true)
-            .platformDefault(false)
-            .build();
-
-        LlmProvider saved = llmRepo.save(copy);
-        log.info("[LLM] Provider par défaut provisionné pour userId={} depuis le provider plateforme id={}",
-            userId, source.getId());
-        return Optional.of(saved);
+            .platformDefault(false);
     }
 
     /**

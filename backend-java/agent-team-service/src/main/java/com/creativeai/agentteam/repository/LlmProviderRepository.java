@@ -34,9 +34,33 @@ public interface LlmProviderRepository extends JpaRepository<LlmProvider, String
     List<LlmProvider> findByUserIdAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(String userId);
 
     /**
+     * Providers d'équipe choisis explicitement par l'utilisateur.
+     *
+     * <p>Variante restreinte à {@code autoAssigned=false} : le runtime doit
+     * distinguer le provider que l'utilisateur a réellement choisi pour son
+     * équipe de celui que la plateforme y a déposé automatiquement à la
+     * création du premier agent. Les deux retournent la même méthode
+     * préfixée, sans quoi le choix personnel serait neutralisé.
+     */
+    List<LlmProvider> findByTeamIdAndAutoAssignedFalseAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(String teamId);
+
+    /**
+     * Providers d'équipe déposés automatiquement (provider de la plateforme
+     * recopié parce que l'équipe n'en avait pas). Proposés au runtime
+     * seulement après les providers de compte.
+     */
+    List<LlmProvider> findByTeamIdAndAutoAssignedTrueAndActiveTrueAndDeletedFalseOrderByPrimaryDesc(String teamId);
+
+    /** Un provider existe-t-il déjà pour cette équipe, quel qu'en soit le type ? */
+    boolean existsByTeamIdAndActiveTrueAndDeletedFalse(String teamId);
+
+    /**
      * Provider par défaut de la plateforme, défini par un administrateur.
      * Un seul peut être actif à la fois (index unique partiel). Utilisé comme
      * source de recopie lors de l'inscription d'un utilisateur.
      */
     Optional<LlmProvider> findByPlatformDefaultTrueAndActiveTrueAndDeletedFalse();
+
+    /** Provider d'équipe déposé automatiquement : sert à ne pas en dupliquer un autre. */
+    boolean existsByTeamIdAndAutoAssignedTrueAndDeletedFalse(String teamId);
 }

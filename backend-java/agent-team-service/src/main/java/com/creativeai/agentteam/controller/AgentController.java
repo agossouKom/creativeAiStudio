@@ -117,7 +117,7 @@ public class AgentController {
             @AuthenticationPrincipal String userId,
             @Parameter(description = "Type d'agent à instancier", example = "SCRUM_MASTER")
             @PathVariable AgentType type,
-            @RequestBody(required = false) CreateFromTemplateRequest req) {
+            @RequestBody @Valid CreateFromTemplateRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(agentService.createFromTemplate(userId, type, req));
     }
