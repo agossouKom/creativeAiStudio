@@ -79,7 +79,7 @@ INIT_SERVICES=(kafka-topics-init)
 CORE_SERVICES=(auth-service api-gateway)
 APP_SERVICES=(agent-team-service generation-service rag-service search-service docfusion-service)
 AI_WORKERS=(audio-worker video-worker face-worker pdf-worker ocr-worker video-generation-worker image-generation-worker file-security-service)
-SUPPORT_SERVICES=(gotenberg onlyoffice rxresume penpot-backend penpot-exporter penpot-frontend penpot-mcp telegram-mcp-service ollama)
+SUPPORT_SERVICES=(gotenberg telegram-mcp-service ollama)
 FRONT_SERVICES=(frontend)
 
 # ── URLs d'accès connues ──────────────────────────────────────
@@ -242,7 +242,8 @@ cmd_status() {
     "Core:auth-service api-gateway"
     "Métier:agent-team-service generation-service rag-service search-service docfusion-service"
     "Workers IA:audio-worker video-worker face-worker pdf-worker ocr-worker"
-    "Support:gotenberg onlyoffice rxresume penpot-frontend telegram-mcp-service ollama"
+    "Support:gotenberg telegram-mcp-service ollama"
+    "Neutralisés (profil manual):onlyoffice rxresume penpot-backend penpot-frontend penpot-exporter penpot-mcp"
     "Frontend:frontend"
   )
 

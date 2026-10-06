@@ -480,6 +480,7 @@ services:
   onlyoffice:
     image: onlyoffice/documentserver:latest
     container_name: creativeai-onlyoffice
+    profiles: ["manual"]
     environment:
       - JWT_ENABLED=false
       - USE_UNAUTHORIZED_STORAGE=true
@@ -499,6 +500,7 @@ services:
   rxresume:
     image: ghcr.io/amruthpillai/reactive-resume:latest
     container_name: creativeai-rxresume
+    profiles: ["manual"]
     environment:
       - TZ=Europe/Paris
       - NODE_ENV=production
@@ -530,12 +532,14 @@ services:
   penpot-mcp:
     image: nginx:alpine
     container_name: creativeai-penpot-mcp
+    profiles: ["manual"]
     restart: unless-stopped
 
   # Penpot — Éditeur design vectoriel (logo, cartes, badges, identité visuelle)
   penpot-frontend:
     image: penpotapp/frontend:latest
     container_name: creativeai-penpot-frontend
+    profiles: ["manual"]
     environment:
       - PENPOT_FLAGS=enable-registration enable-login disable-email-verification disable-mcp
     ports:
@@ -549,6 +553,7 @@ services:
   penpot-backend:
     image: penpotapp/backend:latest
     container_name: creativeai-penpot-backend
+    profiles: ["manual"]
     environment:
       - PENPOT_FLAGS=enable-registration enable-login disable-email-verification
       - PENPOT_PUBLIC_URI=http://localhost:9090
@@ -572,6 +577,7 @@ services:
   penpot-exporter:
     image: penpotapp/exporter:latest
     container_name: creativeai-penpot-exporter
+    profiles: ["manual"]
     environment:
       - PENPOT_FLAGS=enable-login
       - PENPOT_PUBLIC_URI=http://penpot-frontend

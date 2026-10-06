@@ -89,6 +89,8 @@ TIER3=(
   "face-worker|creativeai-face-ai|started|search"
   "pdf-worker|creativeai-pdf-ai|started|search"
   "ocr-worker|creativeai-ocr-ai|started|search"
+  "video-generation-worker|creativeai-video-generation|started|generation"
+  "image-generation-worker|creativeai-image-generation|started|generation"
   # Scanner antivirus. Non bloquant pour le démarrage (les uploads répondent
   # 503, pas 200), mais à surveiller : c'est un point de défaillance unique
   # pour tous les uploads, et MediaController est volontairement fail-closed.
@@ -349,7 +351,7 @@ run_healthcheck() {
   done
  
   # ── TIER 3 : Workers IA ───────────────────────────────────────────────────
-  title "▸ Tier 3 — Workers IA (audio · video · face · pdf · ocr)"
+  title "▸ Tier 3 — Workers IA (audio · video · face · pdf · ocr · génération)"
   for entry in "${TIER3[@]}"; do
     check_service "$entry" "$report_only" 3
   done
