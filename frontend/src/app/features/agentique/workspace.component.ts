@@ -4095,6 +4095,11 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
    */
   llmPlatformDefault: any = null;
   llmPlatformDefaultLoading = false;
+  /**
+   * Une seule demande de provisionnement par passage dans l'onglet « Mon
+   * compte » : évite une boucle entre la liste vide et /resolved.
+   */
+  private accountProvisioningChecked = false;
   llmFilterTeam   = '';
   llmFilter: 'active' | 'deleted' | 'all' = 'active';
   llmConfirmOpen  = false;
@@ -5889,6 +5894,10 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
     if (mode === 'agent' && this.llmAgentId) this.loadLlmProviders(this.llmAgentId);
     if (mode === 'team' && this.llmTeamId) this.loadTeamLlmProviders(this.llmTeamId);
     if (mode === 'account') {
+      // Nouveau passage dans l'onglet : on réautorise une tentative de
+      // provisionnement, pour qu'un défaut de plateforme marqué depuis peu
+      // apparaisse chez un utilisateur qui était encore vide.
+      this.accountProvisioningChecked = false;
       this.loadAccountLlmProviders();
       if (this.isAdmin) this.loadPlatformDefault();
     }
@@ -6066,6 +6075,11 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
           this.llmProviders = Array.isArray(res) ? res : [];
           this.loadingLlm = false;
           this.cd.markForCheck();
+          // Un compte sans provider n'a rien à afficher : sans cet appel, la copie
+          // du défaut plateforme n'est jamais demandée et l'espace paraît vide.
+          if (this.llmProviders.length === 0 && !includeDeleted) {
+            this.provisionAccountDefaultProvider();
+          }
         },
         error: (e) => {
           this.llmProviders = [];
@@ -6074,6 +6088,32 @@ Génère uniquement le texte, sans titre ni formatage markdown.`;
           this.cd.markForCheck();
         }
       });
+  }
+
+  /**
+   * Demande le provider résolu du compte, ce qui déclenche côté serveur la copie
+   * du provider par défaut de la plateforme lorsqu'il n'existe encore aucun
+   * provider pour cet utilisateur.
+   *
+   * <p>La liste seule ne suffit pas : le provisionnement vit dans
+   * {@code /resolved}. Sans cet appel, l'espace de travail d'un compte créé
+   * depuis peu resterait vide même quand un défaut de plateforme est défini, et
+   * le mécanisme donnerait l'impression d'être cassé.
+   *
+   * <p>Une seule tentative par passage dans l'onglet : le drapeau évite que le
+   * retour de {@code /resolved} puis le rechargement de la liste — qui reste vide
+   * si aucun défaut n'est défini — ne redéclenche l'appel indéfiniment.
+   * Un 404 n'est pas une erreur : il signifie simplement qu'aucun défaut n'est
+   * marqué, et l'utilisateur voit alors l'état vide, ce qui est le comportement
+   * attendu.
+   */
+  private provisionAccountDefaultProvider(): void {
+    if (this.accountProvisioningChecked) return;
+    this.accountProvisioningChecked = true;
+    this.http.get<any>(`${API}/api/users/me/llm-providers/resolved`).subscribe({
+      next: () => this.loadAccountLlmProviders(),
+      error: () => { /* aucun défaut de plateforme : l'espace reste vide, c'est normal */ }
+    });
   }
 
   /** Provider par défaut de la plateforme, lu à part : il est partagé. */
