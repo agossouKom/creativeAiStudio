@@ -65,6 +65,15 @@ npm test         # ng test (Karma/Jasmine)
 
 `healthcheck.sh` runs as a watchdog (invoked by `start.sh`) that checks and auto-repairs "indispensable" services; `healthcheck.sh --report` or `--watch` for manual runs. `control_server.py` exposes `/api/control/{status,start,stop,restart}` on :8490 so the frontend can remotely manage the Docker stack — it shells out to `start.sh`.
 
+## Backend conventions (backend-java)
+
+Two rules that both came from bugs which unit tests with mocks could not see:
+
+- **A write reachable from a `@Transactional(readOnly = true)` path must be `Propagation.REQUIRES_NEW`.** In readOnly mode Spring sets Hibernate to `FlushMode.MANUAL`: `save()` stays in memory, the method logs success and returns the right answer, but the INSERT is never flushed. Seen in `LlmProviderProvisioningService.ensureDefaultProviderFor` (the account's provider "appeared and disappeared" on every call) and prevented in `DefaultAgentProvisioningService`/`AuditService`. Regression guard: an `*IT` that calls the service from a real readOnly method then re-reads the DB in a separate transaction, plus a reflection test on the annotation itself.
+- **Every `@RestControllerAdvice` with an `@ExceptionHandler(Exception.class)` catch-all must also handle `AccessDeniedException` (→ 403), `ResponseStatusException` and `IllegalStateException` (→ 409), and must NOT put `e.getMessage()` in the 500 body** — that leaks internal details (hosts, SQL, class names); log it instead. Without the dedicated handlers the catch-all turns `@PreAuthorize` denials into 500s, which misreports a correct security decision as a server failure and hides it from alerting. Applied in `agent-team-service` and `auth-service`.
+
+`*IT.java` files run only under Failsafe (`mvn verify`), not under `mvn test`.
+
 ## Directories that look relevant but aren't part of the app
 
 `cardTemplage/`, `template cv/` — reference screenshots only. `ameliorationAgenntTeam/` — plain-text planning notes for agent-team-service. `BOOT-INF/` — an accidentally-exploded Spring Boot JAR at repo root, not source. `GenerateBacklog.java`/`.class` — one-off PDFBox script for generating a backlog PDF, unrelated to the running system.
