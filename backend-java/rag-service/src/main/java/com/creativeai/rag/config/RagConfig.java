@@ -41,8 +41,17 @@ public class RagConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
+                // Aligné sur le globalcors du api-gateway : le RAG étant en aval
+                // du gateway, un Origin autorisé côté gateway mais absent ici
+                // revenait en 403 depuis le navigateur (ex. ai.labibpro.com).
                 registry.addMapping("/rag/**")
-                        .allowedOrigins("http://localhost:4200", "http://localhost:4400", "http://localhost")
+                        .allowedOrigins(
+                            "http://localhost:4200",
+                            "http://localhost:4400",
+                            "http://localhost",
+                            "http://ai.labibpro.com",
+                            "https://ai.labibpro.com")
+                        .allowedOriginPatterns("https://*.labibpro.com")
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
                         .allowCredentials(true)
