@@ -183,11 +183,40 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
   imports: [CommonModule, FormsModule, RouterModule, TipDirective],
   changeDetection: ChangeDetectionStrategy.Default,
   template: `
-<div class="ws-page">
+<div class="ws-page" [class.ws-sidebar-collapsed]="sidebarCollapsed">
   <div class="ws-orb ws-orb1"></div>
   <div class="ws-orb ws-orb2"></div>
 
-  <div class="ws-wrap">
+  <!-- ── Sidebar verticale pliable ─────────────────────────────────────── -->
+  <aside class="ws-sidebar" [class.ws-sidebar--collapsed]="sidebarCollapsed" aria-label="Navigation workspace">
+    <!-- Toggle collapse -->
+    <button class="ws-sb-toggle" (click)="sidebarCollapsed = !sidebarCollapsed"
+            [attr.aria-label]="sidebarCollapsed ? 'Déplier le menu' : 'Replier le menu'"
+            [tip]="sidebarCollapsed ? 'Déplier' : 'Replier'" tipSide="right">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round">
+        <path *ngIf="!sidebarCollapsed" d="M15 18l-6-6 6-6"/>
+        <path *ngIf="sidebarCollapsed"  d="M9 18l6-6-6-6"/>
+      </svg>
+    </button>
+
+    <!-- Navigation items -->
+    <nav class="ws-sb-nav">
+      <button *ngFor="let t of tabs"
+              class="ws-sb-item"
+              [class.ws-sb-item--active]="activeTab === t.id"
+              (click)="switchTab(t.id)"
+              [tip]="sidebarCollapsed ? (t.label + '\n' + t.hint) : ''"
+              tipSide="right">
+        <span class="ws-sb-icon">{{ t.icon }}</span>
+        <span class="ws-sb-label">{{ t.label }}</span>
+        <span *ngIf="t.count && t.count > 0" class="ws-tab-badge ws-sb-badge">{{ t.count }}</span>
+      </button>
+    </nav>
+  </aside>
+
+  <!-- ── Zone de contenu principale ────────────────────────────────────── -->
+  <div class="ws-content-area">
+    <div class="ws-wrap">
 
     <!-- Header -->
     <div class="ws-header">
@@ -204,16 +233,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
       <p class="ws-sub">Gérez vos agents, équipes, tâches, canaux et workflows</p>
     </div>
 
-    <!-- Tabs -->
-    <div #wsTabs class="ws-tabs">
-      <button *ngFor="let t of tabs" class="ws-tab" [class.ws-tab--active]="activeTab === t.id"
-              (click)="switchTab(t.id)" tipSide="bottom" [tip]="t.label + '\\n' + t.hint">
-        <span class="ws-tab-icon">{{ t.icon }}</span>{{ t.label }}
-        <span *ngIf="t.count && t.count > 0" class="ws-tab-badge">{{ t.count }}</span>
-      </button>
-    </div>
-
-    <!-- Drawer menu onglets (mobile / petite tablette) -->
+    <!-- Drawer menu onglets (mobile uniquement) -->
     <div class="ws-tab-backdrop" [class.open]="tabsMenuOpen" (click)="tabsMenuOpen = false"></div>
     <aside class="ws-tab-drawer" [class.open]="tabsMenuOpen" [attr.aria-hidden]="!tabsMenuOpen">
       <div class="ws-tab-drawer-head">
@@ -2702,14 +2722,143 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
         </div>
       </ng-container>
 
-    </div>
-  </div>
-</div>
-
+    </div><!-- /ws-wrap -->
+  </div><!-- /ws-content-area -->
 </div><!-- /ws-page -->
 `,
   styles: [`
-.ws-page { min-height:100vh; background:#0b0f1e; padding:1.5rem; position:relative; overflow:hidden; overflow:clip; }
+/* ── Layout général : sidebar + contenu ── */
+.ws-page {
+  min-height: 100vh;
+  background: #0b0f1e;
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* ── Sidebar verticale ── */
+--ws-sb-w-open: 216px;
+--ws-sb-w-collapsed: 56px;
+
+.ws-sidebar {
+  position: fixed;
+  top: 64px;                              /* juste sous la main-nav */
+  left: 0;
+  bottom: 0;
+  width: var(--ws-sb-w-open, 216px);
+  z-index: 600;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(11,15,30,.97) 0%, rgba(9,13,26,.99) 100%);
+  border-right: 1px solid rgba(99,102,241,.18);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 6px 0 32px rgba(2,6,23,.45);
+  transition: width .26s cubic-bezier(.4,0,.2,1);
+  overflow: hidden;
+}
+.ws-sidebar--collapsed { width: 56px; }
+
+/* Bouton collapse (chevron) */
+.ws-sb-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 38px;
+  flex-shrink: 0;
+  background: rgba(99,102,241,.06);
+  border: none;
+  border-bottom: 1px solid rgba(99,102,241,.14);
+  color: #64748b;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+.ws-sb-toggle:hover { background: rgba(99,102,241,.14); color: #a5b4fc; }
+.ws-sb-toggle svg { flex-shrink: 0; transition: transform .26s; }
+
+/* Liste nav */
+.ws-sb-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99,102,241,.22) transparent;
+  padding: .5rem .4rem;
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+}
+.ws-sb-nav::-webkit-scrollbar { width: 4px; }
+.ws-sb-nav::-webkit-scrollbar-thumb { background: rgba(99,102,241,.25); border-radius: 4px; }
+
+/* Bouton nav item */
+.ws-sb-item {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  width: 100%;
+  padding: .52rem .65rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #64748b;
+  font-size: .78rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .18s, color .18s, border-color .18s;
+  text-align: left;
+  position: relative;
+}
+.ws-sb-item:hover {
+  background: rgba(99,102,241,.1);
+  border-color: rgba(99,102,241,.2);
+  color: #a5b4fc;
+}
+.ws-sb-item--active {
+  background: rgba(99,102,241,.18);
+  border-color: rgba(99,102,241,.38);
+  color: #c7d2fe;
+}
+.ws-sb-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 20%; bottom: 20%;
+  width: 3px;
+  background: #6366f1;
+  border-radius: 0 3px 3px 0;
+}
+.ws-sb-icon { font-size: .95rem; flex-shrink: 0; width: 20px; text-align: center; }
+.ws-sb-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity .2s, max-width .26s;
+  max-width: 140px;
+}
+.ws-sb-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: opacity .2s;
+}
+
+/* Collapsed : masquer labels et badges */
+.ws-sidebar--collapsed .ws-sb-label { opacity: 0; max-width: 0; }
+.ws-sidebar--collapsed .ws-sb-badge { opacity: 0; }
+
+/* ── Zone de contenu ── */
+.ws-content-area {
+  flex: 1;
+  min-width: 0;
+  margin-left: 216px;
+  padding: 1.5rem;
+  transition: margin-left .26s cubic-bezier(.4,0,.2,1);
+}
+.ws-sidebar-collapsed .ws-content-area { margin-left: 56px; }
+
 .ws-orb { position:fixed; border-radius:50%; filter:blur(80px); pointer-events:none; }
 .ws-orb1 { width:500px; height:500px; background:rgba(99,102,241,.12); top:-100px; right:-100px; }
 .ws-orb2 { width:400px; height:400px; background:rgba(14,165,233,.08); bottom:-80px; left:-80px; }
@@ -2727,8 +2876,8 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 .ws-title { font-size:1.8rem; font-weight:800; background:linear-gradient(135deg,#e2e8f0,#a5b4fc); -webkit-background-clip:text; -webkit-text-fill-color:transparent; letter-spacing:.05em; }
 .ws-sub { color:#64748b; font-size:.85rem; margin-top:.25rem; }
 
-/* Tabs */
-.ws-tabs { display:flex; gap:.35rem; flex-wrap:wrap; margin-bottom:1.25rem; padding-bottom:.75rem; border-bottom:1px solid rgba(99,102,241,.15); }
+/* Compat legacy (classes ws-tabs/ws-tab gardées pour le drawer mobile) */
+.ws-tabs { display:none; }
 .ws-tab { background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.18); border-radius:8px; color:#94a3b8; cursor:pointer; font-size:.78rem; padding:.35rem .75rem; transition:all .2s; display:flex; align-items:center; gap:.3rem; white-space:nowrap; flex-shrink:0; }
 .ws-tab--active,.ws-tab:hover { background:rgba(99,102,241,.22); border-color:rgba(99,102,241,.5); color:#c7d2fe; }
 .ws-tab-icon { font-size:.85rem; }
@@ -2739,6 +2888,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 .ws-panel-hdr { display:flex; align-items:center; justify-content:space-between; padding:1rem 1.25rem; border-bottom:1px solid rgba(99,102,241,.12); gap:.75rem; flex-wrap:wrap; }
 .ws-panel-title { font-size:.95rem; font-weight:700; color:#c7d2fe; }
 .ws-panel-hdr-actions { display:flex; gap:.5rem; align-items:center; }
+
 
 /* Buttons */
 .ws-btn-primary { background:linear-gradient(135deg,#6366f1,#4f46e5); border:none; border-radius:8px; color:#fff; cursor:pointer; font-size:.82rem; font-weight:600; padding:.45rem 1rem; transition:all .2s; }
@@ -3448,30 +3598,28 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 .llm-primary-chk { display:flex; align-items:center; gap:.4rem; color:#94a3b8; font-size:.8rem; cursor:pointer; padding-bottom:.4rem; }
 .llm-primary-chk input { accent-color:#6366f1; }
 
-/* ═══ Responsive & premium (ne modifie aucune logique) ═══ */
-.ws-page { padding: 1rem; }
+/* ═══ Responsive & premium (sidebar) ═══ */
 .ws-wrap { scroll-behavior: smooth; }
-
-/* Rail d'onglets sticky + scrollable, design premium */
-.ws-tabs { position: sticky; top: 64px; z-index: 500;
-           background: linear-gradient(180deg, rgba(11,15,30,.94), rgba(11,15,30,.82));
-           backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-           margin: 0 -1.25rem 1.25rem; padding: .5rem 1.25rem .65rem;
-           border-bottom: 1px solid rgba(99,102,241,.18);
-           scrollbar-width: none; }
-.ws-tabs::-webkit-scrollbar { display: none; }
-.ws-tab { position: relative; }
 .ws-panel { box-shadow: 0 18px 50px rgba(2,6,23,.35), 0 0 0 1px rgba(99,102,241,.06) inset; }
 
+/* Tablette (1025px–1280px) : sidebar réduite par défaut */
+@media (max-width: 1280px) and (min-width: 1025px) {
+  .ws-sidebar { width: 56px; }
+  .ws-sidebar .ws-sb-label { opacity: 0; max-width: 0; }
+  .ws-sidebar .ws-sb-badge { opacity: 0; }
+  .ws-content-area { margin-left: 56px; }
+  /* Si l'user a explicitement dépliée, respecter */
+  .ws-sidebar:not(.ws-sidebar--collapsed) { width: 216px; }
+  .ws-page:not(.ws-sidebar-collapsed) .ws-content-area { margin-left: 216px; }
+}
+
 @media (max-width: 1024px) {
-  .ws-page { padding: .75rem; }
+  /* Sur mobile : masquer sidebar fixe, afficher hamburger */
+  .ws-sidebar { display: none; }
+  .ws-content-area { margin-left: 0; padding: .75rem; }
   .ws-header { margin-bottom: 1rem; }
   .ws-title { font-size: 1.5rem; }
   .ws-sub { font-size: .8rem; }
-  .ws-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
-             margin: 0 -.75rem 1rem; padding: .5rem .75rem .6rem;
-             scroll-snap-type: x proximity; }
-  .ws-tab { flex: 0 0 auto; scroll-snap-align: start; }
   .ws-table { min-width: 760px; }
   .ws-qf-grid, .ws-qf-grid--2col, .ws-pf-grid { grid-template-columns: 1fr; }
   .fb-renew-fields { grid-template-columns: 1fr; }
@@ -3480,13 +3628,11 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 }
 
 @media (max-width: 640px) {
-  .ws-page { padding: .5rem; }
+  .ws-content-area { padding: .5rem; }
   .ws-header { flex-direction: column; align-items: stretch; }
   .ws-header-row { flex-wrap: wrap; gap: .5rem; }
   .ws-user-label { display: none; }
   .ws-title { font-size: 1.2rem; letter-spacing: .03em; }
-  .ws-tabs { margin: 0 -.5rem .875rem; padding: .45rem .5rem .55rem; top: 64px; }
-  .ws-tab { font-size: .74rem; padding: .32rem .65rem; }
   .ws-panel-hdr { flex-direction: column; align-items: stretch; padding: .85rem 1rem; }
   .ws-panel-hdr-actions { width: 100%; flex-wrap: wrap; }
   .ws-panel-hdr-actions .ws-btn-primary,
@@ -3512,7 +3658,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
   .ws-pstep-dot .ws-pstep-label { font-size: .6rem; }
 }
 
-/* ═══ Onglets → hamburger (mobile & petite tablette) ═══ */
+/* ═══ Hamburger (mobile uniquement — sidebar cachée) ═══ */
 .ws-tabs-btn {
   display: none;
   align-items: center;
@@ -3542,6 +3688,7 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
   opacity: 0;
   pointer-events: none;
   transition: opacity .25s ease;
+  display: none;
 }
 .ws-tab-backdrop.open { opacity: 1; pointer-events: auto; }
 
@@ -3600,10 +3747,10 @@ const AGENT_TASK_LABELS: Record<string, string[]> = {
 
 @media (max-width: 1024px) {
   .ws-tabs-btn { display: flex; }
-  .ws-tabs { display: none; }
   .ws-tab-backdrop { display: block; }
   .ws-tab-drawer { display: flex; }
 }
+
 
 /* ═══ Tableaux → cartes liste (mobile & petite tablette) ═══ */
 @media (max-width: 900px) {
@@ -3667,7 +3814,8 @@ export class WorkspaceComponent implements OnInit, OnDestroy {
   @ViewChild('wsTabs', { static: false }) wsTabs?: ElementRef<HTMLElement>;
 
   activeTab: Tab = 'agents';
-  tabsMenuOpen = false;
+  tabsMenuOpen   = false;
+  sidebarCollapsed = false;
   tabs = [
     { id: 'agents'   as Tab, icon: '🤖', label: 'Agents',    count: 0, hint: 'Créer, configurer et mettre en service vos agents' },
     { id: 'equipes'  as Tab, icon: '🏢', label: 'Équipes',   count: 0, hint: 'Regrouper des agents qui collaborent sur un même objectif' },
